@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flujo de Caja — Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-adapter-date-fns/3.0.0/chartjs-adapter-date-fns.bundle.min.js"></script>
+<style>
+  :root{
+    --ink:#101826;
+    --navy:#16243F;
+    --navy-2:#1F3358;
+    --paper:#F4F5F7;
+    --panel:#FFFFFF;
+    --line:#E3E6EC;
+    --muted:#6B7488;
+    --executed:#EDEFF3;
+    --executed-ink:#7A8194;
+    --projected:#B8672A;
+    --projected-bg:#FBF0E6;
+    --good:#0E7A5F;
+    --good-bg:#E7F5F0;
+    --bad:#B4353C;
+    --bad-bg:#FBEAEA;
+    --focus:#2E5AAC;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:'Inter',system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .nums{font-family:'JetBrains Mono',monospace; font-variant-numeric:tabular-nums;}
+  header.top{
+    background:linear-gradient(135deg,var(--navy) 0%,var(--navy-2) 100%);
+    color:#fff; padding:22px 28px 26px;
+  }
+  .top-row{display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap;}
+  .brand-eyebrow{
+    font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#B9C6E4; margin:0 0 6px;
+  }
+  h1{
+    font-family:'Space Grotesk',sans-serif; font-size:26px; margin:0; font-weight:600; letter-spacing:-.01em;
+  }
+  .demo-tag{
+    background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.25);
+    color:#fff; font-size:11.5px; padding:5px 10px; border-radius:20px; white-space:nowrap;
+    cursor:pointer;
+  }
+  .demo-tag:hover{background:rgba(255,255,255,.2);}
+  .sub{color:#C6CFE3; font-size:13.5px; margin-top:6px; max-width:56ch;}
+
+  main{max-width:1180px; margin:0 auto; padding:22px 24px 60px;}
+
+  .kpis{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:24px;}
+  @media(max-width:820px){.kpis{grid-template-columns:repeat(2,1fr);}}
+  .kpi{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px 18px;
+  }
+  .kpi-label{font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px;}
+  .kpi-val{font-size:21px; font-weight:600; font-family:'JetBrains Mono',monospace;}
+  .kpi-val.good{color:var(--good);}
+  .kpi-val.bad{color:var(--bad);}
+
+  section.panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px; margin-bottom:22px; overflow:hidden;
+  }
+  .panel-head{
+    padding:16px 20px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;
+  }
+  .panel-title{font-family:'Space Grotesk',sans-serif; font-size:15.5px; font-weight:600;}
+  .panel-note{font-size:12.5px; color:var(--muted);}
+  .chart-wrap{padding:18px 20px 8px;}
+
+  table{width:100%; border-collapse:collapse; font-size:13.5px;}
+  thead th{
+    text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted);
+    padding:10px 20px; border-bottom:1px solid var(--line); background:#FAFBFC; font-weight:600;
+  }
+  tbody td{padding:11px 20px; border-bottom:1px solid var(--line); vertical-align:middle;}
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr.executed{background:var(--executed); color:var(--executed-ink);}
+  tbody tr.executed td.concepto::before{
+    content:"🔒"; margin-right:6px; font-size:10.5px; opacity:.6;
+  }
+  .badge{
+    display:inline-block; font-size:10.5px; padding:3px 8px; border-radius:20px; font-weight:600; letter-spacing:.02em;
+  }
+  .badge.exec{background:#E1E4EA; color:#5B6274;}
+  .badge.proj{background:var(--projected-bg); color:var(--projected);}
+  .amt-in{color:var(--good); font-weight:600;}
+  .amt-out{color:var(--bad); font-weight:600;}
+  .balance{font-weight:600;}
+  .balance.neg{color:var(--bad);}
+
+  input[type=date]{
+    font-family:'JetBrains Mono',monospace; font-size:12.5px; border:1px solid var(--line);
+    border-radius:6px; padding:5px 7px; background:#fff; color:var(--ink); cursor:pointer;
+  }
+  input[type=date]:disabled{
+    border-color:transparent; background:transparent; color:var(--executed-ink); cursor:default;
+  }
+  input[type=date]:focus-visible{outline:2px solid var(--focus); outline-offset:1px;}
+
+  .quickmove{display:flex; gap:4px; margin-top:4px;}
+  .quickmove button{
+    font-size:10.5px; border:1px solid var(--line); background:#fff; color:var(--muted);
+    border-radius:5px; padding:2px 6px; cursor:pointer; font-family:'Inter',sans-serif;
+  }
+  .quickmove button:hover{border-color:var(--projected); color:var(--projected);}
+  .quickmove button:focus-visible{outline:2px solid var(--focus);}
+
+  .banco-card{
+    background:#FAFBFC; border:1px solid var(--line); border-radius:9px; padding:14px 16px;
+    display:flex; flex-direction:column; gap:4px; min-width:170px; flex:1;
+  }
+  .banco-name{font-size:12px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.04em;}
+  .banco-saldo{font-size:19px; font-weight:600;}
+  .banco-proj{font-size:11.5px; color:var(--muted);}
+  #bancosGrid{display:flex; gap:12px; flex-wrap:wrap;}
+  @media(max-width:640px){#bancosGrid{flex-direction:column;}}
+
+  .oc-grid{padding:6px 20px 18px; display:flex; flex-direction:column; gap:10px;}
+  .oc-card{
+    border:1px solid var(--line); border-radius:9px; padding:14px 16px; display:grid;
+    grid-template-columns:1.4fr 1fr 1fr; gap:14px; align-items:center;
+  }
+  @media(max-width:760px){.oc-card{grid-template-columns:1fr;}}
+  .oc-top{display:flex; justify-content:space-between; align-items:baseline; gap:8px;}
+  .oc-name{font-weight:600; font-size:13.5px;}
+  .oc-prov{font-size:12px; color:var(--muted); margin-top:2px;}
+  .oc-amounts{font-size:12px; color:var(--muted); display:flex; justify-content:space-between; margin-top:8px;}
+  .oc-bar-track{height:7px; background:#EEF0F4; border-radius:5px; margin-top:5px; overflow:hidden;}
+  .oc-bar-fill{height:100%; border-radius:5px; background:var(--good); transition:width .5s ease;}
+  .oc-bar-fill.mid{background:var(--projected);}
+  .oc-status{
+    justify-self:start; font-size:11px; font-weight:600; padding:4px 10px; border-radius:20px; white-space:nowrap;
+  }
+  .oc-status.abierta{background:var(--projected-bg); color:var(--projected);}
+  .oc-status.cerrada{background:var(--good-bg); color:var(--good);}
+  .oc-actions{justify-self:end; display:flex; align-items:center; gap:8px;}
+  .oc-saldo{font-size:14px; font-weight:600;}
+  .oc-card{cursor:pointer;}
+  .oc-toggle{
+    font-size:11px; color:var(--muted); display:flex; align-items:center; gap:4px; margin-top:8px;
+    user-select:none;
+  }
+  .oc-toggle svg{transition:transform .2s ease;}
+  .oc-card.open .oc-toggle svg{transform:rotate(180deg);}
+  .oc-detail{
+    grid-column:1 / -1; overflow:hidden; max-height:0; transition:max-height .28s ease;
+  }
+  .oc-card.open .oc-detail{max-height:400px; overflow-y:auto;}
+  .oc-detail-inner{border-top:1px solid var(--line); margin-top:12px; padding-top:10px;}
+  .oc-detail-row{
+    display:flex; justify-content:space-between; align-items:center; padding:6px 0; font-size:12.5px;
+  }
+  .oc-detail-row + .oc-detail-row{border-top:1px dashed var(--line);}
+  .oc-detail-prov{color:var(--ink); font-weight:500;}
+  .oc-detail-concepto{color:var(--muted); font-size:11.5px; margin-top:1px;}
+  .oc-detail-empty{font-size:12px; color:var(--muted); padding:6px 0; font-style:italic;}
+  .oc-analitica{
+    display:inline-block; font-size:10.5px; color:var(--focus); background:#EAF0FC; border-radius:5px;
+    padding:2px 7px; margin-top:6px; font-weight:600;
+  }
+  #filtroAnalitica, #filtroPO, #filtroProveedor, #filtroCuenta{
+    font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px;
+    padding:5px 8px; background:#fff; color:var(--ink); cursor:pointer;
+  }
+  #filtroAnalitica:focus-visible{outline:2px solid var(--focus);}
+
+  .estado-carga{
+    padding:60px 20px; text-align:center; color:var(--muted); font-size:13.5px;
+  }
+  .estado-error{
+    padding:20px; background:var(--bad-bg); color:var(--bad); border-radius:8px; margin:20px 24px;
+    font-size:13px; line-height:1.6;
+  }
+  .btn-refrescar{
+    font-size:11.5px; font-family:'Inter',sans-serif; font-weight:600; border:1px solid var(--line);
+    color:var(--ink); background:#fff; border-radius:6px; padding:6px 12px; cursor:pointer;
+  }
+  .btn-refrescar:hover{border-color:var(--focus); color:var(--focus);}
+
+  footer.note{
+    max-width:1180px; margin:0 auto; padding:0 24px 40px; font-size:12.5px; color:var(--muted); line-height:1.6;
+  }
+  footer.note b{color:var(--ink);}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-row">
+    <div>
+      <p class="brand-eyebrow">ENERGYCONTROL S.A. · Tesorería</p>
+      <h1>Flujo de Caja</h1>
+      <p class="sub">Capa gris = ya ejecutado en banco (desde Odoo, no editable). Capa naranja = proyectado — mueve la fecha y el saldo se recalcula al instante.</p>
+    </div>
+    <span class="demo-tag" id="estadoConexion" title="Clic para recargar datos">Conectando a Supabase…</span>
+  </div>
+</header>
+
+<main>
+
+  <div id="errorBox"></div>
+
+  <div class="kpis">
+    <div class="kpi">
+      <div class="kpi-label">Saldo bancario actual</div>
+      <div class="kpi-val nums" id="kpiActual">—</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Entradas proyectadas (30d)</div>
+      <div class="kpi-val nums good" id="kpiIn">—</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Salidas proyectadas (30d)</div>
+      <div class="kpi-val nums bad" id="kpiOut">—</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Saldo proyectado día 30</div>
+      <div class="kpi-val nums" id="kpiFinal">—</div>
+    </div>
+  </div>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Saldo por Banco</div>
+      <div class="panel-note">Solo movimientos ya ejecutados (gris) — lo proyectado no mueve el saldo real todavía</div>
+    </div>
+    <div class="oc-grid" id="bancosGrid" style="padding:16px 20px;"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Saldo acumulado — próximos 30 días</div>
+      <div class="panel-note">Se redibuja cada vez que mueves una fecha proyectada</div>
+    </div>
+    <div class="chart-wrap"><canvas id="chart" height="90"></canvas></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Movimientos</div>
+      <div class="panel-note" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <span><span class="badge exec">EJECUTADO</span> &nbsp;<span class="badge proj">PROYECTADO</span></span>
+        <span style="display:flex; align-items:center; gap:6px;">P.O.: <select id="filtroPO"></select></span>
+        <span style="display:flex; align-items:center; gap:6px;">Proveedor: <select id="filtroProveedor"></select></span>
+        <span style="display:flex; align-items:center; gap:6px;">Cuenta contable: <select id="filtroCuenta"></select></span>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Concepto</th>
+          <th>Proveedor</th>
+          <th>Banco</th>
+          <th>P.O.</th>
+          <th>Cuenta contable</th>
+          <th>Monto</th>
+          <th>Fecha</th>
+          <th>Saldo acumulado</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Saldo por Orden de Compra</div>
+      <div class="panel-note" style="display:flex; align-items:center; gap:8px;">
+        Filtrar por proveedor:
+        <select id="filtroAnalitica"></select>
+      </div>
+    </div>
+    <div class="oc-grid" id="ocGrid"></div>
+  </section>
+
+</main>
+
+<footer class="note">
+  Datos en vivo desde <b>Supabase</b>, alimentados directo desde Odoo (sin Excel de por medio): la capa gris viene de pagos ya registrados (<code class="nums">account.payment</code>), y la capa naranja de facturas pendientes de pago (<code class="nums">account.move</code>). La fecha proyectada se puede mover para simular escenarios — ese cambio es solo visual en esta pantalla, no se guarda en la base todavía.
+  <br><br>
+  El bloque de <b>Saldo por Orden de Compra</b> calcula el saldo pendiente restando, de cada OC, los pagos ya ejecutados que la referencian — se actualiza solo la próxima vez que corras el script de carga.
+</footer>
+
+<script>
+// ============================================================
+// Config Supabase — reemplaza SUPABASE_URL y SUPABASE_KEY con los tuyos.
+// SUPABASE_KEY debe ser la clave PUBLICABLE (sb_publishable_...), nunca la secreta.
+// ============================================================
+const SUPABASE_URL = "https://wiqnfnlnsdnkxgshchjg.supabase.co";
+const SUPABASE_KEY = "PEGA_AQUI_TU_CLAVE_PUBLICABLE";
+
+const SB_HEADERS = {
+  apikey: sb_publishable_Rk88NYc5jpdJiTQgUKViZA_0VvpbRpE,
+  Authorization: `Bearer ${SUPABASE_KEY}`,
+};
+
+function addDays(date, n){ const d = new Date(date); d.setDate(d.getDate()+n); return d; }
+function fmtDate(d){ return d.toISOString().slice(0,10); }
+function fmtMoney(n){
+  const sign = n < 0 ? '-' : '';
+  return sign + '$' + Math.abs(n).toLocaleString('es-EC', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+let movimientos = [];
+let ordenesCompra = [];
+let bancosBase = {};
+let HOY = new Date();
+let ocAbiertas = new Set();
+let chart;
+
+async function fetchTabla(nombre, query=""){
+  const resp = await fetch(`${SUPABASE_URL}/rest/v1/${nombre}?select=*${query}`, {headers: SB_HEADERS});
+  if(!resp.ok){
+    throw new Error(`${nombre}: ${resp.status} ${await resp.text()}`);
+  }
+  return resp.json();
+}
+
+async function cargarDatos(){
+  const estado = document.getElementById('estadoConexion');
+  const errorBox = document.getElementById('errorBox');
+  errorBox.innerHTML = '';
+  estado.textContent = 'Cargando datos…';
+  try{
+    const [bancosData, movData, ocData] = await Promise.all([
+      fetchTabla('bancos'),
+      fetchTabla('movimientos', '&order=fecha.asc'),
+      fetchTabla('ordenes_compra'),
+    ]);
+
+    bancosBase = Object.fromEntries(bancosData.map(b => [b.nombre, Number(b.saldo_base) || 0]));
+
+    movimientos = movData.map(m => ({
+      id: m.id,
+      concepto: m.concepto,
+      proveedor: m.proveedor,
+      banco: m.banco,
+      po: m.po_id,
+      cuenta: m.cuenta_contable,
+      monto: Number(m.monto),
+      fecha: new Date(m.fecha + 'T00:00:00'),
+      estado: m.estado,
+    }));
+
+    ordenesCompra = ocData.map(oc => ({
+      id: oc.id,
+      proveedor: oc.proveedor,
+      analitica: oc.cuenta_analitica || 'Sin cuenta analítica',
+      total: Number(oc.total),
+    }));
+
+    estado.textContent = `Conectado · ${movimientos.length} movimientos`;
+    render();
+    renderOC();
+  } catch(err){
+    console.error(err);
+    estado.textContent = 'Error de conexión — clic para reintentar';
+    errorBox.innerHTML = `<div class="estado-error">No se pudo cargar desde Supabase: ${err.message}.<br>Revisa que SUPABASE_URL y SUPABASE_KEY estén bien puestos en el código, y que la clave sea la <b>publicable</b> (no la secreta).</div>`;
+  }
+}
+
+function poblarSelect(sel, valores, onChange){
+  sel.innerHTML = '';
+  ['Todas', ...valores].forEach(v=>{
+    const opt = document.createElement('option');
+    opt.value = v; opt.textContent = v;
+    sel.appendChild(opt);
+  });
+  sel.onchange = onChange;
+}
+
+function render(){
+  const selPO = document.getElementById('filtroPO');
+  const selProv = document.getElementById('filtroProveedor');
+  const selCuenta = document.getElementById('filtroCuenta');
+
+  const valPO = selPO.value, valProv = selProv.value, valCuenta = selCuenta.value;
+  poblarSelect(selPO, [...new Set(movimientos.map(m => m.po || 'Sin P.O.'))].sort(), render);
+  poblarSelect(selProv, [...new Set(movimientos.map(m => m.proveedor).filter(Boolean))].sort(), render);
+  poblarSelect(selCuenta, [...new Set(movimientos.map(m => m.cuenta).filter(Boolean))].sort(), render);
+  if(valPO) selPO.value = valPO;
+  if(valProv) selProv.value = valProv;
+  if(valCuenta) selCuenta.value = valCuenta;
+
+  const fPO = selPO.value || 'Todas';
+  const fProv = selProv.value || 'Todas';
+  const fCuenta = selCuenta.value || 'Todas';
+
+  const sorted = [...movimientos].sort((a,b)=> a.fecha - b.fecha);
+  const saldoInicial = Object.values(bancosBase).reduce((a,b)=>a+b, 0);
+  let running = saldoInicial;
+  const rowsEl = document.getElementById('rows');
+  rowsEl.innerHTML = '';
+
+  let saldoActual = saldoInicial;
+  let entradas30 = 0, salidas30 = 0;
+  const chartPoints = [{x: fmtDate(HOY), y: saldoInicial}];
+
+  sorted.forEach(m=>{
+    running += m.monto;
+    if(m.estado === 'ejecutado') saldoActual = running;
+    if(m.fecha > HOY && m.fecha <= addDays(HOY,30)){
+      if(m.monto > 0) entradas30 += m.monto; else salidas30 += Math.abs(m.monto);
+    }
+    if(m.fecha >= HOY) chartPoints.push({x: fmtDate(m.fecha), y: running});
+
+    const poLabel = m.po || 'Sin P.O.';
+    if(fPO !== 'Todas' && poLabel !== fPO) return;
+    if(fProv !== 'Todas' && m.proveedor !== fProv) return;
+    if(fCuenta !== 'Todas' && m.cuenta !== fCuenta) return;
+
+    const tr = document.createElement('tr');
+    tr.className = m.estado;
+    const isProj = m.estado === 'proyectado';
+
+    tr.innerHTML = `
+      <td class="concepto">${m.concepto || '—'}</td>
+      <td>${m.proveedor || '—'}</td>
+      <td style="font-size:12.5px;">${m.banco || '—'}</td>
+      <td>${m.po ? `<span class="badge ${isProj?'proj':'exec'}">${m.po}</span>` : `<span style="color:var(--muted); font-size:12px;">—</span>`}</td>
+      <td style="color:var(--muted); font-size:12.5px;">${m.cuenta || '—'}</td>
+      <td class="nums ${m.monto>0?'amt-in':'amt-out'}">${m.monto>0?'+':''}${fmtMoney(m.monto)}</td>
+      <td>
+        <input type="date" class="nums" value="${fmtDate(m.fecha)}" data-id="${m.id}" ${isProj?'':'disabled'}>
+        ${isProj?`<div class="quickmove">
+          <button data-id="${m.id}" data-shift="-7">-7d</button>
+          <button data-id="${m.id}" data-shift="-1">-1d</button>
+          <button data-id="${m.id}" data-shift="1">+1d</button>
+          <button data-id="${m.id}" data-shift="7">+7d</button>
+        </div>`:''}
+      </td>
+      <td class="nums balance ${running<0?'neg':''}">${fmtMoney(running)}</td>
+    `;
+    rowsEl.appendChild(tr);
+  });
+
+  if(rowsEl.children.length === 0){
+    rowsEl.innerHTML = `<tr><td colspan="8" style="color:var(--muted); font-style:italic; text-align:center; padding:24px;">Sin movimientos para este filtro.</td></tr>`;
+  }
+
+  document.getElementById('kpiActual').textContent = fmtMoney(saldoActual);
+  document.getElementById('kpiIn').textContent = '+' + fmtMoney(entradas30);
+  document.getElementById('kpiOut').textContent = '-' + fmtMoney(salidas30);
+  const kpiFinal = document.getElementById('kpiFinal');
+  kpiFinal.textContent = fmtMoney(running);
+  kpiFinal.className = 'kpi-val nums ' + (running < saldoActual ? '' : 'good');
+
+  try{ drawChart(chartPoints); }
+  catch(err){ console.warn('No se pudo dibujar el gráfico:', err); }
+
+  renderBancos();
+  attachHandlers();
+}
+
+function renderBancos(){
+  const grid = document.getElementById('bancosGrid');
+  grid.innerHTML = '';
+  Object.keys(bancosBase).forEach(banco=>{
+    let saldo = bancosBase[banco];
+    let proyectado30 = 0;
+    movimientos.filter(m=>m.banco===banco).forEach(m=>{
+      if(m.estado === 'ejecutado') saldo += m.monto;
+      if(m.fecha > HOY && m.fecha <= addDays(HOY,30)) proyectado30 += m.monto;
+    });
+    const card = document.createElement('div');
+    card.className = 'banco-card';
+    card.innerHTML = `
+      <div class="banco-name">${banco}</div>
+      <div class="banco-saldo nums ${saldo<0?'amt-out':''}">${fmtMoney(saldo)}</div>
+      <div class="banco-proj nums">${proyectado30>=0?'+':''}${fmtMoney(proyectado30)} proyectado (30d)</div>
+    `;
+    grid.appendChild(card);
+  });
+  if(Object.keys(bancosBase).length === 0){
+    grid.innerHTML = '<div class="oc-detail-empty">Sin bancos cargados todavía.</div>';
+  }
+}
+
+function drawChart(points){
+  const canvas = document.getElementById('chart');
+  if(typeof Chart === 'undefined'){
+    canvas.insertAdjacentHTML('afterend','<p style="font-size:12px;color:var(--muted);margin:6px 0 0;">No se pudo cargar la librería del gráfico (revisa conexión/bloqueo de CDN) — el resto de la página funciona normal.</p>');
+    return;
+  }
+  const ctx = canvas.getContext('2d');
+  if(chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type:'line',
+    data:{ datasets:[{
+      data: points,
+      borderColor:'#B8672A',
+      backgroundColor:'rgba(184,103,42,0.08)',
+      fill:true, tension:0.25, pointRadius:3, pointBackgroundColor:'#B8672A', borderWidth:2
+    }]},
+    options:{
+      responsive:true,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{ type:'time', time:{unit:'day', displayFormats:{day:'d MMM'}}, grid:{display:false}, ticks:{font:{family:'JetBrains Mono', size:10.5}} },
+        y:{ grid:{color:'#EEF0F4'}, ticks:{font:{family:'JetBrains Mono', size:10.5}, callback:v=>'$'+ (v/1000).toFixed(0)+'k'} }
+      }
+    }
+  });
+}
+
+function attachHandlers(){
+  document.querySelectorAll('input[type=date]').forEach(inp=>{
+    inp.addEventListener('change', e=>{
+      const id = parseInt(e.target.dataset.id);
+      const m = movimientos.find(x=>x.id===id);
+      if(m){ m.fecha = new Date(e.target.value + 'T00:00:00'); render(); }
+    });
+  });
+  document.querySelectorAll('button[data-shift]').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      const id = parseInt(e.target.dataset.id);
+      const shift = parseInt(e.target.dataset.shift);
+      const m = movimientos.find(x=>x.id===id);
+      if(m){ m.fecha = addDays(m.fecha, shift); render(); }
+    });
+  });
+}
+
+function renderOC(){
+  const filtroSel = document.getElementById('filtroAnalitica');
+  const valorPrevio = filtroSel.value;
+  const proveedores = [...new Set(ordenesCompra.map(o=>o.proveedor).filter(Boolean))].sort();
+  poblarSelect(filtroSel, proveedores, renderOC);
+  if(valorPrevio) filtroSel.value = valorPrevio;
+  const filtroActivo = filtroSel.value || 'Todas';
+
+  const grid = document.getElementById('ocGrid');
+  grid.innerHTML = '';
+
+  const lista = ordenesCompra.filter(oc => filtroActivo === 'Todas' || oc.proveedor === filtroActivo);
+
+  if(lista.length === 0){
+    grid.innerHTML = '<div class="oc-detail-empty">No hay órdenes de compra para este filtro.</div>';
+    return;
+  }
+
+  lista.forEach(oc=>{
+    const pagosOC = movimientos.filter(m => m.po === oc.id && m.estado === 'ejecutado');
+    const pagado = pagosOC.reduce((s,p)=>s+Math.abs(p.monto),0);
+    const saldo = Math.max(oc.total - pagado, 0);
+    const pct = oc.total ? Math.min((pagado/oc.total)*100, 100) : 0;
+    const cerrada = saldo <= 0.01;
+    const isOpen = ocAbiertas.has(oc.id);
+
+    const detailRows = pagosOC.length
+      ? pagosOC.map(p=>`
+          <div class="oc-detail-row">
+            <div>
+              <div class="oc-detail-prov">${p.proveedor || oc.proveedor}</div>
+              <div class="oc-detail-concepto">${p.concepto} · ${fmtDate(p.fecha)}</div>
+            </div>
+            <div class="nums">${fmtMoney(Math.abs(p.monto))}</div>
+          </div>`).join('')
+      : `<div class="oc-detail-empty">Sin pagos ejecutados todavía para esta OC.</div>`;
+
+    const card = document.createElement('div');
+    card.className = 'oc-card' + (isOpen ? ' open' : '');
+    card.innerHTML = `
+      <div>
+        <div class="oc-top">
+          <span class="oc-name">${oc.id}</span>
+          <span class="oc-status ${cerrada?'cerrada':'abierta'}">${cerrada?'Cerrada':'Abierta'}</span>
+        </div>
+        <div class="oc-prov">${oc.proveedor || '—'}</div>
+        <span class="oc-analitica">${oc.analitica}</span>
+        <div class="oc-amounts nums">
+          <span>Total ${fmtMoney(oc.total)}</span>
+          <span>Pagado ${fmtMoney(pagado)}</span>
+        </div>
+        <div class="oc-bar-track"><div class="oc-bar-fill ${cerrada?'':'mid'}" style="width:${pct}%"></div></div>
+        <div class="oc-toggle">
+          <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          ${pagosOC.length} pago${pagosOC.length===1?'':'s'} registrado${pagosOC.length===1?'':'s'} — ver desglose
+        </div>
+      </div>
+      <div>
+        <div class="oc-saldo nums">${cerrada?'Saldo pendiente: $0.00':'Saldo pendiente: '+fmtMoney(saldo)}</div>
+      </div>
+      <div class="oc-actions"></div>
+      <div class="oc-detail">
+        <div class="oc-detail-inner">${detailRows}</div>
+      </div>
+    `;
+
+    card.addEventListener('click', ()=>{
+      if(ocAbiertas.has(oc.id)) ocAbiertas.delete(oc.id); else ocAbiertas.add(oc.id);
+      renderOC();
+    });
+
+    grid.appendChild(card);
+  });
+}
+
+document.getElementById('estadoConexion').addEventListener('click', cargarDatos);
+cargarDatos();
+</script>
+</body>
+</html>
