@@ -119,13 +119,13 @@
 
   .banco-card{
     background:#FAFBFC; border:1px solid var(--line); border-radius:9px; padding:14px 16px;
-    display:flex; flex-direction:column; gap:4px; width:200px; flex:0 0 auto;
+    display:flex; flex-direction:column; gap:4px;
   }
   .banco-name{font-size:12px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.04em;}
   .banco-saldo{font-size:19px; font-weight:600;}
   .banco-proj{font-size:11.5px; color:var(--muted);}
-  #bancosGrid{display:flex; gap:12px; flex-wrap:wrap;}
-  @media(max-width:640px){#bancosGrid{flex-direction:column;}}
+  #bancosGrid{display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:12px;}
+  @media(max-width:640px){#bancosGrid{grid-template-columns:1fr;}}
 
   @media(max-width:700px){
     table, thead, tbody, tr, th, td{display:block;}
@@ -464,19 +464,18 @@ function render(){
   const fCuenta = selCuenta.value || 'Todas';
 
   const sorted = [...movimientos].sort((a,b)=> a.fecha - b.fecha);
-  const saldoInicial = Object.values(bancosBase).reduce((a,b)=>a+b, 0);
-  let running = saldoInicial;
+  const saldoActual = Object.values(bancosBase).reduce((a,b)=>a+b, 0);
+  let running = saldoActual;
   const rowsEl = document.getElementById('rows');
   rowsEl.innerHTML = '';
 
-  let saldoActual = saldoInicial;
   let entradas30 = 0, salidas30 = 0;
-  const chartPoints = [{x: fmtDate(HOY), y: saldoInicial}];
+  const chartPoints = [{x: fmtDate(HOY), y: saldoActual}];
 
   sorted.forEach(m=>{
-    running += m.monto;
-    if(m.estado === 'ejecutado') saldoActual = running;
-    if(m.fecha > HOY && m.fecha <= addDays(HOY,30)){
+    // El saldo real ya incluye todo lo ejecutado — solo lo proyectado mueve el saldo hacia adelante
+    if(m.estado === 'proyectado') running += m.monto;
+    if(m.estado === 'proyectado' && m.fecha > HOY && m.fecha <= addDays(HOY,30)){
       if(m.monto > 0) entradas30 += m.monto; else salidas30 += Math.abs(m.monto);
     }
     if(m.fecha >= HOY) chartPoints.push({x: fmtDate(m.fecha), y: running});
@@ -538,10 +537,9 @@ function renderBancos(){
   grid.innerHTML = '';
   const nombresBanco = Object.keys(bancosBase).filter(b => !EXCLUIR_DE_SALDO_BANCO.test(b));
   nombresBanco.forEach(banco=>{
-    let saldo = bancosBase[banco];
+    const saldo = bancosBase[banco];
     let proyectado30 = 0;
-    movimientos.filter(m=>m.banco===banco).forEach(m=>{
-      if(m.estado === 'ejecutado') saldo += m.monto;
+    movimientos.filter(m=>m.banco===banco && m.estado==='proyectado').forEach(m=>{
       if(m.fecha > HOY && m.fecha <= addDays(HOY,30)) proyectado30 += m.monto;
     });
     const card = document.createElement('div');
