@@ -279,6 +279,8 @@
         <span style="display:flex; align-items:center; gap:6px;">P.O.: <select id="filtroPO"></select></span>
         <span style="display:flex; align-items:center; gap:6px;">Proveedor: <select id="filtroProveedor"></select></span>
         <span style="display:flex; align-items:center; gap:6px;">Cuenta contable: <select id="filtroCuenta"></select></span>
+        <span style="display:flex; align-items:center; gap:6px;">Desde: <input type="date" id="filtroFechaDesde"></span>
+        <span style="display:flex; align-items:center; gap:6px;">Hasta: <input type="date" id="filtroFechaHasta"></span>
       </div>
     </div>
     <table>
@@ -452,6 +454,10 @@ function render(){
   const selPO = document.getElementById('filtroPO');
   const selProv = document.getElementById('filtroProveedor');
   const selCuenta = document.getElementById('filtroCuenta');
+  const inpDesde = document.getElementById('filtroFechaDesde');
+  const inpHasta = document.getElementById('filtroFechaHasta');
+  inpDesde.onchange = render;
+  inpHasta.onchange = render;
 
   const valPO = selPO.value, valProv = selProv.value, valCuenta = selCuenta.value;
   poblarSelect(selPO, [...new Set(movimientos.map(m => m.po || 'Sin P.O.'))].sort(), render);
@@ -464,6 +470,8 @@ function render(){
   const fPO = selPO.value || 'Todas';
   const fProv = selProv.value || 'Todas';
   const fCuenta = selCuenta.value || 'Todas';
+  const fDesde = inpDesde.value ? new Date(inpDesde.value + 'T00:00:00') : null;
+  const fHasta = inpHasta.value ? new Date(inpHasta.value + 'T23:59:59') : null;
 
   const sorted = [...movimientos].sort((a,b)=> a.fecha - b.fecha);
   const saldoActual = Object.values(bancosBase).reduce((a,b)=>a+b, 0);
@@ -486,6 +494,8 @@ function render(){
     if(fPO !== 'Todas' && poLabel !== fPO) return;
     if(fProv !== 'Todas' && m.proveedor !== fProv) return;
     if(fCuenta !== 'Todas' && m.cuenta !== fCuenta) return;
+    if(fDesde && m.fecha < fDesde) return;
+    if(fHasta && m.fecha > fHasta) return;
 
     const tr = document.createElement('tr');
     tr.className = m.estado;
