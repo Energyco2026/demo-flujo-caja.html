@@ -7,7 +7,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-adapter-date-fns/3.0.0/chartjs-adapter-date-fns.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
@@ -486,8 +485,9 @@ function render(){
       <td style="color:var(--muted); font-size:12.5px;">${m.cuenta || '—'}</td>
       <td class="nums ${m.monto>0?'amt-in':'amt-out'}">${m.monto>0?'+':''}${fmtMoney(m.monto)}</td>
       <td>
-        <input type="date" class="nums" value="${fmtDate(m.fecha)}" data-id="${m.id}" ${isProj?'':'disabled'}>
-        ${m.esFechaManual?'<span style="font-size:10px; color:var(--projected);" title="Fecha movida manualmente">✏️ manual</span>':''}
+        ${isProj?'<div style="font-size:9.5px; color:var(--projected); text-transform:uppercase; letter-spacing:.03em; margin-bottom:3px; font-weight:600;">Fecha de pago (editable)</div>':''}
+        <input type="date" class="nums" value="${fmtDate(m.fecha)}" data-id="${m.id}" ${isProj?'style="border-color:var(--projected);"':'disabled'}>
+        ${m.esFechaManual?'<span style="font-size:10px; color:var(--projected);" title="Fecha movida manualmente">✏️ guardada</span>':''}
         ${isProj?`<div class="quickmove">
           <button data-id="${m.id}" data-shift="-7">-7d</button>
           <button data-id="${m.id}" data-shift="-1">-1d</button>
@@ -542,6 +542,11 @@ function renderBancos(){
   }
 }
 
+function fmtDateCorta(d){
+  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  return `${d.getDate()} ${meses[d.getMonth()]}`;
+}
+
 function drawChart(points){
   const canvas = document.getElementById('chart');
   if(typeof Chart === 'undefined'){
@@ -550,19 +555,24 @@ function drawChart(points){
   }
   const ctx = canvas.getContext('2d');
   if(chart) chart.destroy();
+  const labels = points.map(p => fmtDateCorta(new Date(p.x + 'T00:00:00')));
+  const valores = points.map(p => p.y);
   chart = new Chart(ctx, {
     type:'line',
-    data:{ datasets:[{
-      data: points,
-      borderColor:'#B8672A',
-      backgroundColor:'rgba(184,103,42,0.08)',
-      fill:true, tension:0.25, pointRadius:3, pointBackgroundColor:'#B8672A', borderWidth:2
-    }]},
+    data:{
+      labels: labels,
+      datasets:[{
+        data: valores,
+        borderColor:'#B8672A',
+        backgroundColor:'rgba(184,103,42,0.08)',
+        fill:true, tension:0.25, pointRadius:3, pointBackgroundColor:'#B8672A', borderWidth:2
+      }]
+    },
     options:{
       responsive:true,
       plugins:{legend:{display:false}},
       scales:{
-        x:{ type:'time', time:{unit:'day', displayFormats:{day:'d MMM'}}, grid:{display:false}, ticks:{font:{family:'JetBrains Mono', size:10.5}} },
+        x:{ grid:{display:false}, ticks:{font:{family:'JetBrains Mono', size:10.5}, maxTicksLimit:10} },
         y:{ grid:{color:'#EEF0F4'}, ticks:{font:{family:'JetBrains Mono', size:10.5}, callback:v=>'$'+ (v/1000).toFixed(0)+'k'} }
       }
     }
