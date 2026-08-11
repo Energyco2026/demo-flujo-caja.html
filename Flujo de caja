@@ -295,10 +295,10 @@
 // SUPABASE_KEY debe ser la clave PUBLICABLE (sb_publishable_...), nunca la secreta.
 // ============================================================
 const SUPABASE_URL = "https://wiqnfnlnsdnkxgshchjg.supabase.co";
-const SUPABASE_KEY = "PEGA_AQUI_TU_CLAVE_PUBLICABLE";
+const SUPABASE_KEY = "sb_publishable_Rk88NYc5jpdJiTQgUKViZA_0VvpbRpE";
 
 const SB_HEADERS = {
-  apikey: sb_publishable_Rk88NYc5jpdJiTQgUKViZA_0VvpbRpE,
+  apikey: SUPABASE_KEY,
   Authorization: `Bearer ${SUPABASE_KEY}`,
 };
 
