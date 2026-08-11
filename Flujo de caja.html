@@ -119,13 +119,26 @@
 
   .banco-card{
     background:#FAFBFC; border:1px solid var(--line); border-radius:9px; padding:14px 16px;
-    display:flex; flex-direction:column; gap:4px; min-width:170px; flex:1;
+    display:flex; flex-direction:column; gap:4px; width:200px; flex:0 0 auto;
   }
   .banco-name{font-size:12px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.04em;}
   .banco-saldo{font-size:19px; font-weight:600;}
   .banco-proj{font-size:11.5px; color:var(--muted);}
   #bancosGrid{display:flex; gap:12px; flex-wrap:wrap;}
   @media(max-width:640px){#bancosGrid{flex-direction:column;}}
+
+  @media(max-width:700px){
+    table, thead, tbody, tr, th, td{display:block;}
+    thead tr{position:absolute; top:-9999px; left:-9999px;}
+    tbody tr{border:1px solid var(--line); border-radius:9px; margin:0 20px 12px;}
+    tbody tr.executed{margin:0 20px 12px;}
+    tbody td{border-bottom:none; padding:8px 14px;}
+    tbody td:before{
+      content:attr(data-label); display:block; font-size:10px; font-weight:700;
+      color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:3px;
+    }
+    table{border:none;}
+  }
 
   .oc-grid{padding:6px 20px 18px; display:flex; flex-direction:column; gap:10px;}
   .oc-card{
@@ -478,13 +491,13 @@ function render(){
     const isProj = m.estado === 'proyectado';
 
     tr.innerHTML = `
-      <td class="concepto">${m.concepto || '—'}</td>
-      <td>${m.proveedor || '—'}</td>
-      <td style="font-size:12.5px;">${m.banco || '—'}</td>
-      <td>${m.po ? `<span class="badge ${isProj?'proj':'exec'}">${m.po}</span>` : `<span style="color:var(--muted); font-size:12px;">—</span>`}</td>
-      <td style="color:var(--muted); font-size:12.5px;">${m.cuenta || '—'}</td>
-      <td class="nums ${m.monto>0?'amt-in':'amt-out'}">${m.monto>0?'+':''}${fmtMoney(m.monto)}</td>
-      <td>
+      <td class="concepto" data-label="Concepto">${m.concepto || '—'}</td>
+      <td data-label="Proveedor">${m.proveedor || '—'}</td>
+      <td style="font-size:12.5px;" data-label="Banco">${m.banco || '—'}</td>
+      <td data-label="P.O.">${m.po ? `<span class="badge ${isProj?'proj':'exec'}">${m.po}</span>` : `<span style="color:var(--muted); font-size:12px;">—</span>`}</td>
+      <td style="color:var(--muted); font-size:12.5px;" data-label="Cuenta contable">${m.cuenta || '—'}</td>
+      <td class="nums ${m.monto>0?'amt-in':'amt-out'}" data-label="Monto">${m.monto>0?'+':''}${fmtMoney(m.monto)}</td>
+      <td data-label="Fecha">
         ${isProj?'<div style="font-size:9.5px; color:var(--projected); text-transform:uppercase; letter-spacing:.03em; margin-bottom:3px; font-weight:600;">Fecha de pago (editable)</div>':''}
         <input type="date" class="nums" value="${fmtDate(m.fecha)}" data-id="${m.id}" ${isProj?'style="border-color:var(--projected);"':'disabled'}>
         ${m.esFechaManual?'<span style="font-size:10px; color:var(--projected);" title="Fecha movida manualmente">✏️ guardada</span>':''}
@@ -495,7 +508,7 @@ function render(){
           <button data-id="${m.id}" data-shift="7">+7d</button>
         </div>`:''}
       </td>
-      <td class="nums balance ${running<0?'neg':''}">${fmtMoney(running)}</td>
+      <td class="nums balance ${running<0?'neg':''}" data-label="Saldo acumulado">${fmtMoney(running)}</td>
     `;
     rowsEl.appendChild(tr);
   });
@@ -518,10 +531,13 @@ function render(){
   attachHandlers();
 }
 
+const EXCLUIR_DE_SALDO_BANCO = /VISA|DINERS|MASTERCARD|TARJETA|ANTICIPO/i;
+
 function renderBancos(){
   const grid = document.getElementById('bancosGrid');
   grid.innerHTML = '';
-  Object.keys(bancosBase).forEach(banco=>{
+  const nombresBanco = Object.keys(bancosBase).filter(b => !EXCLUIR_DE_SALDO_BANCO.test(b));
+  nombresBanco.forEach(banco=>{
     let saldo = bancosBase[banco];
     let proyectado30 = 0;
     movimientos.filter(m=>m.banco===banco).forEach(m=>{
@@ -537,7 +553,7 @@ function renderBancos(){
     `;
     grid.appendChild(card);
   });
-  if(Object.keys(bancosBase).length === 0){
+  if(nombresBanco.length === 0){
     grid.innerHTML = '<div class="oc-detail-empty">Sin bancos cargados todavía.</div>';
   }
 }
