@@ -110,14 +110,6 @@
   }
   input[type=date]:focus-visible{outline:2px solid var(--focus); outline-offset:1px;}
 
-  .quickmove{display:flex; flex-wrap:wrap; gap:3px; margin-top:4px;}
-  .quickmove button{
-    font-size:10.5px; border:1px solid var(--line); background:#fff; color:var(--muted);
-    border-radius:5px; padding:2px 6px; cursor:pointer; font-family:'Inter',sans-serif;
-  }
-  .quickmove button:hover{border-color:var(--projected); color:var(--projected);}
-  .quickmove button:focus-visible{outline:2px solid var(--focus);}
-
   .banco-card{
     background:#FAFBFC; border:1px solid var(--line); border-radius:9px; padding:14px 16px;
     display:flex; flex-direction:column; gap:4px;
@@ -508,12 +500,7 @@ function render(){
         ${isProj?'<div style="font-size:9.5px; color:var(--projected); text-transform:uppercase; letter-spacing:.03em; margin-bottom:3px; font-weight:600;">Fecha de pago (editable)</div>':''}
         <input type="date" class="nums" value="${fmtDate(m.fecha)}" data-id="${m.id}" ${isProj?'style="border-color:var(--projected);"':'disabled'}>
         ${m.esFechaManual?'<span style="font-size:10px; color:var(--projected);" title="Fecha movida manualmente">✏️ guardada</span>':''}
-        ${isProj?`<div class="quickmove">
-          <button data-id="${m.id}" data-shift="-7">-7d</button>
-          <button data-id="${m.id}" data-shift="-1">-1d</button>
-          <button data-id="${m.id}" data-shift="1">+1d</button>
-          <button data-id="${m.id}" data-shift="7">+7d</button>
-        </div>`:''}
+
       </td>
       <td class="nums balance ${running<0?'neg':''}" data-label="Saldo acumulado">${fmtMoney(running)}</td>
     `;
@@ -613,19 +600,6 @@ function attachHandlers(){
       const m = movimientos.find(x=>x.id===id);
       if(m){
         m.fecha = new Date(e.target.value + 'T00:00:00');
-        m.esFechaManual = true;
-        guardarFechaManual(id, m.fecha);
-        render();
-      }
-    });
-  });
-  document.querySelectorAll('button[data-shift]').forEach(btn=>{
-    btn.addEventListener('click', e=>{
-      const id = parseInt(e.target.dataset.id);
-      const shift = parseInt(e.target.dataset.shift);
-      const m = movimientos.find(x=>x.id===id);
-      if(m){
-        m.fecha = addDays(m.fecha, shift);
         m.esFechaManual = true;
         guardarFechaManual(id, m.fecha);
         render();
