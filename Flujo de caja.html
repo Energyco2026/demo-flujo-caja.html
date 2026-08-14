@@ -298,7 +298,17 @@
       <div class="panel-title">Movimientos</div>
       <div class="panel-note" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
         <span><span class="badge exec">EJECUTADO</span> &nbsp;<span class="badge proj">PROYECTADO</span></span>
-        <span style="display:flex; align-items:center; gap:6px;">Mes: <select id="filtroMes"></select></span>
+        <span style="display:flex; align-items:center; gap:6px; position:relative;">
+          Mes:
+          <button type="button" id="btnFiltroMes" style="font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px; background:#fff; color:var(--ink); cursor:pointer; min-width:150px; text-align:left;">Todos los meses</button>
+          <div id="panelFiltroMes" style="display:none; position:absolute; top:calc(100% + 4px); left:34px; z-index:50; background:#fff; border:1px solid var(--line); border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,.14); padding:8px; width:210px; max-height:280px; overflow-y:auto;">
+            <div style="display:flex; justify-content:space-between; gap:6px; margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid var(--line);">
+              <button type="button" id="mesSeleccionarTodos" style="font-size:11px; border:none; background:none; color:var(--focus); cursor:pointer; text-decoration:underline; padding:0;">Todos</button>
+              <button type="button" id="mesLimpiar" style="font-size:11px; border:none; background:none; color:var(--muted); cursor:pointer; text-decoration:underline; padding:0;">Ninguno</button>
+            </div>
+            <div id="listaMeses"></div>
+          </div>
+        </span>
         <span style="display:flex; align-items:center; gap:6px;">P.O.: <select id="filtroPO"></select></span>
         <span style="display:flex; align-items:center; gap:6px;">Proveedor: <select id="filtroProveedor"></select></span>
         <span style="display:flex; align-items:center; gap:6px;">Cuenta contable: <select id="filtroCuenta"></select></span>
@@ -475,25 +485,53 @@ function claveMes(fecha){
   return `${fecha.getFullYear()}-${String(fecha.getMonth()+1).padStart(2,'0')}`;
 }
 
-function poblarSelectMeses(sel, lista, onChange){
-  const valorPrevio = sel.value;
+let mesesSeleccionados = null; // null = todavía no inicializado; luego un Set con las claves "yyyy-mm" marcadas
+
+function poblarFiltroMes(lista){
   const vistos = new Map(); // "2026-01" -> "Enero 2026"
   lista.forEach(m=>{
     const clave = claveMes(m.fecha);
     if(!vistos.has(clave)) vistos.set(clave, `${MESES_NOMBRE[m.fecha.getMonth()]} ${m.fecha.getFullYear()}`);
   });
   const claves = [...vistos.keys()].sort(); // "yyyy-mm" ordena cronológicamente como texto
-  sel.innerHTML = '';
-  const optTodos = document.createElement('option');
-  optTodos.value = 'Todas'; optTodos.textContent = 'Todos los meses';
-  sel.appendChild(optTodos);
+
+  if(mesesSeleccionados === null){
+    mesesSeleccionados = new Set(claves); // por defecto: todos marcados (sin filtrar)
+  } else {
+    mesesSeleccionados = new Set([...mesesSeleccionados].filter(c => claves.includes(c)));
+  }
+
+  const listaEl = document.getElementById('listaMeses');
+  listaEl.innerHTML = '';
   claves.forEach(clave=>{
-    const opt = document.createElement('option');
-    opt.value = clave; opt.textContent = vistos.get(clave);
-    sel.appendChild(opt);
+    const row = document.createElement('label');
+    row.style.cssText = 'display:flex; align-items:center; gap:6px; padding:3px 2px; font-size:12px; cursor:pointer;';
+    row.innerHTML = `<input type="checkbox" data-mes="${clave}" ${mesesSeleccionados.has(clave)?'checked':''} style="cursor:pointer;"> ${vistos.get(clave)}`;
+    listaEl.appendChild(row);
   });
-  if(valorPrevio) sel.value = valorPrevio;
-  sel.onchange = onChange;
+
+  listaEl.querySelectorAll('input[type=checkbox]').forEach(chk=>{
+    chk.addEventListener('change', e=>{
+      const clave = e.target.dataset.mes;
+      if(e.target.checked) mesesSeleccionados.add(clave); else mesesSeleccionados.delete(clave);
+      actualizarBotonMes(claves.length);
+      render();
+    });
+  });
+
+  actualizarBotonMes(claves.length);
+}
+
+function actualizarBotonMes(totalDisponibles){
+  const btn = document.getElementById('btnFiltroMes');
+  const n = mesesSeleccionados.size;
+  if(n === 0) btn.textContent = 'Ningún mes';
+  else if(n === totalDisponibles) btn.textContent = 'Todos los meses';
+  else if(n === 1){
+    const clave = [...mesesSeleccionados][0];
+    const label = document.querySelector(`#listaMeses input[data-mes="${clave}"]`)?.parentElement.textContent.trim();
+    btn.textContent = label || '1 mes';
+  } else btn.textContent = `${n} meses seleccionados`;
 }
 
 function poblarSelect(sel, valores, onChange){
@@ -507,7 +545,6 @@ function poblarSelect(sel, valores, onChange){
 }
 
 function render(){
-  const selMes = document.getElementById('filtroMes');
   const selPO = document.getElementById('filtroPO');
   const selProv = document.getElementById('filtroProveedor');
   const selCuenta = document.getElementById('filtroCuenta');
@@ -518,18 +555,15 @@ function render(){
   inpHasta.onchange = render;
   chkOcultarVencidas.onchange = render;
 
-  const valMes = selMes.value;
   const valPO = selPO.value, valProv = selProv.value, valCuenta = selCuenta.value;
-  poblarSelectMeses(selMes, movimientos, render);
+  poblarFiltroMes(movimientos);
   poblarSelect(selPO, [...new Set(movimientos.map(m => m.po || 'Sin P.O.'))].sort(), render);
   poblarSelect(selProv, [...new Set(movimientos.map(m => m.proveedor).filter(Boolean))].sort(), render);
   poblarSelect(selCuenta, [...new Set(movimientos.map(m => m.cuenta).filter(Boolean))].sort(), render);
-  if(valMes) selMes.value = valMes;
   if(valPO) selPO.value = valPO;
   if(valProv) selProv.value = valProv;
   if(valCuenta) selCuenta.value = valCuenta;
 
-  const fMes = selMes.value || 'Todas';
   const fPO = selPO.value || 'Todas';
   const fProv = selProv.value || 'Todas';
   const fCuenta = selCuenta.value || 'Todas';
@@ -557,7 +591,7 @@ function render(){
     if(m.fecha >= HOY) chartPoints.push({x: fmtDate(m.fecha), y: running});
 
     const poLabel = m.po || 'Sin P.O.';
-    if(fMes !== 'Todas' && claveMes(m.fecha) !== fMes) return;
+    if(!mesesSeleccionados.has(claveMes(m.fecha))) return;
     if(fPO !== 'Todas' && poLabel !== fPO) return;
     if(fProv !== 'Todas' && m.proveedor !== fProv) return;
     if(fCuenta !== 'Todas' && m.cuenta !== fCuenta) return;
@@ -805,6 +839,34 @@ function renderOC(){
 }
 
 document.getElementById('estadoConexion').addEventListener('click', cargarDatos);
+
+// ---------- Dropdown de filtro de Mes (checkboxes múltiples) ----------
+document.getElementById('btnFiltroMes').addEventListener('click', e=>{
+  e.stopPropagation();
+  const panel = document.getElementById('panelFiltroMes');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+});
+document.addEventListener('click', e=>{
+  const panel = document.getElementById('panelFiltroMes');
+  const btn = document.getElementById('btnFiltroMes');
+  if(panel.style.display !== 'none' && !panel.contains(e.target) && e.target !== btn){
+    panel.style.display = 'none';
+  }
+});
+document.getElementById('mesSeleccionarTodos').addEventListener('click', ()=>{
+  const checks = document.querySelectorAll('#listaMeses input[type=checkbox]');
+  checks.forEach(c => c.checked = true);
+  mesesSeleccionados = new Set([...checks].map(c => c.dataset.mes));
+  actualizarBotonMes(checks.length);
+  render();
+});
+document.getElementById('mesLimpiar').addEventListener('click', ()=>{
+  const checks = document.querySelectorAll('#listaMeses input[type=checkbox]');
+  checks.forEach(c => c.checked = false);
+  mesesSeleccionados = new Set();
+  actualizarBotonMes(checks.length);
+  render();
+});
 </script>
 </body>
 </html>
