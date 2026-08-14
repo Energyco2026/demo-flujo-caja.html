@@ -298,6 +298,7 @@
       <div class="panel-title">Movimientos</div>
       <div class="panel-note" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
         <span><span class="badge exec">EJECUTADO</span> &nbsp;<span class="badge proj">PROYECTADO</span></span>
+        <span style="display:flex; align-items:center; gap:6px;">Mes: <select id="filtroMes"></select></span>
         <span style="display:flex; align-items:center; gap:6px;">P.O.: <select id="filtroPO"></select></span>
         <span style="display:flex; align-items:center; gap:6px;">Proveedor: <select id="filtroProveedor"></select></span>
         <span style="display:flex; align-items:center; gap:6px;">Cuenta contable: <select id="filtroCuenta"></select></span>
@@ -468,6 +469,33 @@ async function cargarDatos(){
   }
 }
 
+const MESES_NOMBRE = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+function claveMes(fecha){
+  return `${fecha.getFullYear()}-${String(fecha.getMonth()+1).padStart(2,'0')}`;
+}
+
+function poblarSelectMeses(sel, lista, onChange){
+  const valorPrevio = sel.value;
+  const vistos = new Map(); // "2026-01" -> "Enero 2026"
+  lista.forEach(m=>{
+    const clave = claveMes(m.fecha);
+    if(!vistos.has(clave)) vistos.set(clave, `${MESES_NOMBRE[m.fecha.getMonth()]} ${m.fecha.getFullYear()}`);
+  });
+  const claves = [...vistos.keys()].sort(); // "yyyy-mm" ordena cronológicamente como texto
+  sel.innerHTML = '';
+  const optTodos = document.createElement('option');
+  optTodos.value = 'Todas'; optTodos.textContent = 'Todos los meses';
+  sel.appendChild(optTodos);
+  claves.forEach(clave=>{
+    const opt = document.createElement('option');
+    opt.value = clave; opt.textContent = vistos.get(clave);
+    sel.appendChild(opt);
+  });
+  if(valorPrevio) sel.value = valorPrevio;
+  sel.onchange = onChange;
+}
+
 function poblarSelect(sel, valores, onChange){
   sel.innerHTML = '';
   ['Todas', ...valores].forEach(v=>{
@@ -479,6 +507,7 @@ function poblarSelect(sel, valores, onChange){
 }
 
 function render(){
+  const selMes = document.getElementById('filtroMes');
   const selPO = document.getElementById('filtroPO');
   const selProv = document.getElementById('filtroProveedor');
   const selCuenta = document.getElementById('filtroCuenta');
@@ -489,14 +518,18 @@ function render(){
   inpHasta.onchange = render;
   chkOcultarVencidas.onchange = render;
 
+  const valMes = selMes.value;
   const valPO = selPO.value, valProv = selProv.value, valCuenta = selCuenta.value;
+  poblarSelectMeses(selMes, movimientos, render);
   poblarSelect(selPO, [...new Set(movimientos.map(m => m.po || 'Sin P.O.'))].sort(), render);
   poblarSelect(selProv, [...new Set(movimientos.map(m => m.proveedor).filter(Boolean))].sort(), render);
   poblarSelect(selCuenta, [...new Set(movimientos.map(m => m.cuenta).filter(Boolean))].sort(), render);
+  if(valMes) selMes.value = valMes;
   if(valPO) selPO.value = valPO;
   if(valProv) selProv.value = valProv;
   if(valCuenta) selCuenta.value = valCuenta;
 
+  const fMes = selMes.value || 'Todas';
   const fPO = selPO.value || 'Todas';
   const fProv = selProv.value || 'Todas';
   const fCuenta = selCuenta.value || 'Todas';
@@ -524,6 +557,7 @@ function render(){
     if(m.fecha >= HOY) chartPoints.push({x: fmtDate(m.fecha), y: running});
 
     const poLabel = m.po || 'Sin P.O.';
+    if(fMes !== 'Todas' && claveMes(m.fecha) !== fMes) return;
     if(fPO !== 'Todas' && poLabel !== fPO) return;
     if(fProv !== 'Todas' && m.proveedor !== fProv) return;
     if(fCuenta !== 'Todas' && m.cuenta !== fCuenta) return;
