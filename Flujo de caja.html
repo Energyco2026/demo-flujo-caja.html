@@ -288,7 +288,7 @@
   <section class="panel">
     <div class="panel-head">
       <div class="panel-title">Saldo acumulado — próximos 30 días</div>
-      <div class="panel-note">Se redibuja cada vez que mueves una fecha proyectada</div>
+      <div class="panel-note">Se redibuja cada vez que mueves una fecha proyectada · lo vencido no se cuenta como pagado hoy</div>
     </div>
     <div class="chart-wrap"><canvas id="chart" height="90"></canvas></div>
   </section>
@@ -303,6 +303,10 @@
         <span style="display:flex; align-items:center; gap:6px;">Cuenta contable: <select id="filtroCuenta"></select></span>
         <span style="display:flex; align-items:center; gap:6px;">Desde: <input type="date" id="filtroFechaDesde"></span>
         <span style="display:flex; align-items:center; gap:6px;">Hasta: <input type="date" id="filtroFechaHasta"></span>
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12.5px;">
+          <input type="checkbox" id="filtroOcultarVencidas" checked style="cursor:pointer;">
+          Ocultar vencidas
+        </label>
       </div>
     </div>
     <table>
@@ -370,6 +374,7 @@ let movimientos = [];
 let ordenesCompra = [];
 let bancosBase = {};
 let HOY = new Date();
+HOY.setHours(0,0,0,0); // medianoche de hoy, para comparar fechas sin la hora actual de por medio
 let ocAbiertas = new Set();
 let chart;
 
@@ -479,8 +484,10 @@ function render(){
   const selCuenta = document.getElementById('filtroCuenta');
   const inpDesde = document.getElementById('filtroFechaDesde');
   const inpHasta = document.getElementById('filtroFechaHasta');
+  const chkOcultarVencidas = document.getElementById('filtroOcultarVencidas');
   inpDesde.onchange = render;
   inpHasta.onchange = render;
+  chkOcultarVencidas.onchange = render;
 
   const valPO = selPO.value, valProv = selProv.value, valCuenta = selCuenta.value;
   poblarSelect(selPO, [...new Set(movimientos.map(m => m.po || 'Sin P.O.'))].sort(), render);
@@ -506,8 +513,11 @@ function render(){
   const chartPoints = [{x: fmtDate(HOY), y: saldoActual}];
 
   sorted.forEach(m=>{
-    // El saldo real ya incluye todo lo ejecutado — solo lo proyectado mueve el saldo hacia adelante
-    if(m.estado === 'proyectado') running += m.monto;
+    // Vencida = proyectado con fecha ya pasada (factura pendiente antigua, sin fecha de pago real todavía)
+    const esVencida = m.estado === 'proyectado' && m.fecha < HOY;
+    // El saldo real ya incluye todo lo ejecutado. Lo proyectado con fecha futura mueve el saldo hacia adelante.
+    // Lo vencido NO se suma de golpe al día de hoy (evita que el gráfico "caiga" simulando que se paga todo hoy).
+    if(m.estado === 'proyectado' && !esVencida) running += m.monto;
     if(m.estado === 'proyectado' && m.fecha > HOY && m.fecha <= addDays(HOY,30)){
       if(m.monto > 0) entradas30 += m.monto; else salidas30 += Math.abs(m.monto);
     }
@@ -519,13 +529,14 @@ function render(){
     if(fCuenta !== 'Todas' && m.cuenta !== fCuenta) return;
     if(fDesde && m.fecha < fDesde) return;
     if(fHasta && m.fecha > fHasta) return;
+    if(chkOcultarVencidas.checked && esVencida) return;
 
     const tr = document.createElement('tr');
     tr.className = m.estado;
     const isProj = m.estado === 'proyectado';
 
     tr.innerHTML = `
-      <td class="concepto" data-label="Concepto">${m.concepto || '—'}</td>
+      <td class="concepto" data-label="Concepto">${m.concepto || '—'}${esVencida ? ' <span class="badge" style="background:var(--bad-bg); color:var(--bad);">VENCIDA</span>' : ''}</td>
       <td data-label="Proveedor">${m.proveedor || '—'}</td>
       <td style="font-size:12.5px;" data-label="Banco">${m.banco || '—'}</td>
       <td data-label="P.O.">${m.po ? `<span class="badge ${isProj?'proj':'exec'}">${m.po}</span>` : `<span style="color:var(--muted); font-size:12px;">—</span>`}</td>
