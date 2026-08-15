@@ -370,8 +370,8 @@
         <span style="display:flex; align-items:center; gap:6px;">Desde: <input type="date" id="filtroFechaDesde"></span>
         <span style="display:flex; align-items:center; gap:6px;">Hasta: <input type="date" id="filtroFechaHasta"></span>
         <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12.5px;">
-          <input type="checkbox" id="filtroOcultarVencidas" checked style="cursor:pointer;">
-          Ocultar vencidas
+          <input type="checkbox" id="filtroOcultarVencidas" style="cursor:pointer;">
+          Ocultar obligaciones vencidas
         </label>
         <button type="button" id="btnExportarCSV" class="btn-refrescar">⬇ Descargar Excel</button>
       </div>
@@ -559,6 +559,9 @@ async function intentarLogin(){
 function mostrarDashboard(){
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('dashboard').style.display = 'block';
+  // Las CxP vencidas siguen siendo obligaciones pendientes y deben verse por
+  // defecto en el flujo. El usuario puede ocultarlas voluntariamente.
+  document.getElementById('filtroOcultarVencidas').checked = false;
   cargarDatos();
 }
 
@@ -881,13 +884,14 @@ function render(){
     tr.className = m.estado;
     const isProj = m.estado === 'proyectado';
 
-    const opcionesBanco = ['<option value="">Sin banco</option>']
-      .concat(Object.keys(bancosBase).sort().map(b =>
+    const bancosValidos = bancosDePagoValidos();
+    const bancoActualEsValido = bancosValidos.includes(m.banco);
+    const opcionesBanco = [
+      `<option value="" ${bancoActualEsValido ? '' : 'selected'}>Selecciona un banco</option>`,
+      ...bancosValidos.map(b =>
         `<option value="${b.replace(/"/g,'&quot;')}" ${b===m.banco?'selected':''}>${b}</option>`
-      ));
-    if(m.banco && !bancosBase.hasOwnProperty(m.banco)){
-      opcionesBanco.push(`<option value="${m.banco.replace(/"/g,'&quot;')}" selected>${m.banco}</option>`);
-    }
+      )
+    ];
 
     tr.innerHTML = `
       <td class="concepto" data-label="Concepto">${m.concepto || '—'}${esVencida ? ' <span class="badge" style="background:var(--bad-bg); color:var(--bad);">VENCIDA</span>' : ''}</td>
@@ -954,12 +958,18 @@ function render(){
   attachHandlers();
 }
 
-const EXCLUIR_DE_SALDO_BANCO = /VISA|DINERS|MASTERCARD|TARJETA|ANTICIPO|CAJA CHICA|CAJA GENERAL|^CASH$/i;
+const EXCLUIR_DE_SALDO_BANCO = /VISA|DINERS|MASTERCARD|TARJETA|ANTICIPO|SALDOS INICIALES|CAJA CHICA|CAJA GENERAL|^CASH$/i;
+
+function bancosDePagoValidos(){
+  return Object.keys(bancosBase)
+    .filter(b => !EXCLUIR_DE_SALDO_BANCO.test(b))
+    .sort();
+}
 
 function renderBancos(){
   const grid = document.getElementById('bancosGrid');
   grid.innerHTML = '';
-  const nombresBanco = Object.keys(bancosBase).filter(b => !EXCLUIR_DE_SALDO_BANCO.test(b));
+  const nombresBanco = bancosDePagoValidos();
   nombresBanco.forEach(banco=>{
     const saldo = bancosBase[banco];
     let proyectado30 = 0;
@@ -1457,7 +1467,7 @@ function escapeHTML(valor){
 }
 
 function opcionesBancoAnticipo(){
-  const bancos = Object.keys(bancosBase).filter(b => !EXCLUIR_DE_SALDO_BANCO.test(b)).sort();
+  const bancos = bancosDePagoValidos();
   return '<option value="">Selecciona un banco</option>' + bancos.map(b => `<option value="${escapeHTML(b)}">${escapeHTML(b)}</option>`).join('');
 }
 
