@@ -128,6 +128,8 @@
   .detail-close{border:1px solid var(--line); background:#fff; border-radius:7px; padding:7px 11px; cursor:pointer; font-weight:600;}
   .detail-scroll{overflow:auto;}
   .detail-scroll thead th{position:sticky; top:0; z-index:2;}
+  .exposure-scroll{max-height:490px; overflow:auto;}
+  .exposure-scroll thead th{position:sticky; top:0; z-index:3;}
 
   input[type=date]{
     font-family:'JetBrains Mono',monospace; font-size:12.5px; border:1px solid var(--line);
@@ -423,7 +425,7 @@
     </section>
     <section class="panel">
       <div class="panel-head"><div class="panel-title">Mayor exposición por tercero</div><div class="panel-note">Saldos abiertos</div></div>
-      <table class="mini-table"><thead><tr><th>Cliente / proveedor</th><th>Tipo</th><th>Saldo</th></tr></thead><tbody id="exposicionRows"></tbody></table>
+      <div class="exposure-scroll"><table class="mini-table"><thead><tr><th>Cliente / proveedor</th><th>Tipo</th><th>Saldo</th></tr></thead><tbody id="exposicionRows"></tbody></table></div>
     </section>
   </div>
   <div class="estado-error" style="background:#FFF8E8; color:#6B5420;">
@@ -986,6 +988,10 @@ function diasEntre(inicio, fin){
   return Math.max(0, Math.round((fin - inicio) / 86400000));
 }
 
+function esReconocimientoIngresos(m){
+  return /\b001-003-000009\d{3}\b/i.test(String(m.concepto || ''));
+}
+
 function renderIndices(){
   const esCxc = m => /Cuentas por Cobrar/i.test(m.cuenta || '');
   const esCxp = m => /Cuentas por Pagar/i.test(m.cuenta || '');
@@ -1018,23 +1024,24 @@ function renderIndices(){
     {label:'31–60 días', min:31, max:60},
     {label:'61–90 días', min:61, max:90},
     {label:'Más de 90 días', min:91, max:Infinity},
-    {label:'Sin fecha original', sinFecha:true}
+    {label:'Reconocimiento de ingresos', reconocimiento:true}
   ];
   const agingRows = document.getElementById('agingRows');
   agingRows.innerHTML = rangos.map(r=>{
     const enRango = m => {
-      if(r.sinFecha) return !m.fechaFactura;
+      if(r.reconocimiento) return esCxc(m) && esReconocimientoIngresos(m);
+      if(esReconocimientoIngresos(m)) return false;
       if(!m.fechaFactura) return false;
       const edad = diasEntre(m.fechaFactura, HOY);
       return edad >= r.min && edad <= r.max;
     };
     const cxc = abiertas.filter(m=>esCxc(m)&&enRango(m)).reduce((s,m)=>s+Math.abs(m.monto),0);
     const cxp = abiertas.filter(m=>esCxp(m)&&enRango(m)).reduce((s,m)=>s+Math.abs(m.monto),0);
-    const attrs = r.sinFecha ? 'data-sin-fecha="1"' : `data-min="${r.min}" data-max="${r.max}"`;
+    const attrs = r.reconocimiento ? 'data-reconocimiento="1"' : `data-min="${r.min}" data-max="${r.max}"`;
     return `<tr><td>${r.label}</td><td class="nums amt-in"><button type="button" class="aging-link" data-tipo="CxC" ${attrs}>${fmtMoney(cxc)}</button></td><td class="nums amt-out"><button type="button" class="aging-link" data-tipo="CxP" ${attrs}>${fmtMoney(cxp)}</button></td></tr>`;
   }).join('');
   agingRows.querySelectorAll('.aging-link').forEach(btn=>btn.addEventListener('click',()=>{
-    abrirDetalleAntiguedad(btn.dataset.tipo, Number(btn.dataset.min), Number(btn.dataset.max), btn.dataset.sinFecha === '1');
+    abrirDetalleAntiguedad(btn.dataset.tipo, Number(btn.dataset.min), Number(btn.dataset.max), btn.dataset.reconocimiento === '1');
   }));
 
   const exposicion = new Map();
@@ -1047,20 +1054,21 @@ function renderIndices(){
   const top = [...exposicion.entries()].map(([clave,saldo])=>{
     const [tipo, tercero] = clave.split('|');
     return {tipo, tercero, saldo};
-  }).sort((a,b)=>b.saldo-a.saldo).slice(0,10);
+  }).sort((a,b)=>a.tipo.localeCompare(b.tipo) || b.saldo-a.saldo);
   document.getElementById('exposicionRows').innerHTML = top.length ? top.map(x=>
     `<tr><td>${escapeHTML(x.tercero)}</td><td><span class="badge ${x.tipo==='CxC'?'exec':'proj'}">${x.tipo}</span></td><td class="nums">${fmtMoney(x.saldo)}</td></tr>`
   ).join('') : '<tr><td colspan="3" class="oc-detail-empty">Sin saldos abiertos.</td></tr>';
 }
 
-function abrirDetalleAntiguedad(tipo, min, max, sinFecha=false){
+function abrirDetalleAntiguedad(tipo, min, max, reconocimiento=false){
   const esTipo = tipo === 'CxC'
     ? m => /Cuentas por Cobrar/i.test(m.cuenta || '')
     : m => /Cuentas por Pagar/i.test(m.cuenta || '');
-  const rangoLabel = sinFecha ? 'Sin fecha original' : max === Infinity ? 'Más de 90 días' : `${min}–${max} días`;
+  const rangoLabel = reconocimiento ? 'Reconocimiento de ingresos' : max === Infinity ? 'Más de 90 días' : `${min}–${max} días`;
   const detalle = movimientosCartera.filter(m=>{
     if(m.estado !== 'proyectado' || m.origen !== 'account.move' || Math.abs(m.monto) <= 0.005 || !esTipo(m)) return false;
-    if(sinFecha) return !m.fechaFactura;
+    if(reconocimiento) return tipo === 'CxC' && esReconocimientoIngresos(m);
+    if(esReconocimientoIngresos(m)) return false;
     if(!m.fechaFactura) return false;
     const edad = diasEntre(m.fechaFactura, HOY);
     return edad >= min && edad <= max;
