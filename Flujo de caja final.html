@@ -506,6 +506,19 @@ async function cargarDatos(){
     const poComercialPorId = Object.fromEntries(
       ocData.map(oc => [String(oc.id), obtenerPOComercial(oc)])
     );
+    const codigosPorNumero = new Map();
+    ocData.forEach(oc=>{
+      const codigo = obtenerPOComercial(oc);
+      const match = String(codigo || '').match(/\d{3,5}/);
+      if(!match || codigo === 'STOCK') return;
+      if(!codigosPorNumero.has(match[0])) codigosPorNumero.set(match[0], new Set());
+      codigosPorNumero.get(match[0]).add(codigo);
+    });
+    const poComercialUnicoPorNumero = Object.fromEntries(
+      [...codigosPorNumero.entries()]
+        .filter(([_numero, codigos]) => codigos.size === 1)
+        .map(([numero, codigos]) => [numero, [...codigos][0]])
+    );
 
     movimientos = movData
       .filter(m =>
@@ -524,7 +537,10 @@ async function cargarDatos(){
         // po_id es la llave técnica (puede ser PEN...). La etiqueta visible se
         // resuelve siempre contra ordenes_compra.po_numero.
         poInterno: m.po_id || null,
-        po: obtenerPOComercial(m) || poComercialPorId[String(m.po_id)] || '',
+        po: obtenerPOComercial(m) ||
+            poComercialPorId[String(m.po_id)] ||
+            obtenerPOComercialDesdeTexto(m.concepto, poComercialUnicoPorNumero) ||
+            '',
         cuenta: obtenerCuentaContable(m),
         montoOriginal: Number(m.monto),
         monto: Number(m.monto_manual != null ? m.monto_manual : m.monto),
@@ -566,6 +582,11 @@ function obtenerPOComercial(registro){
   ];
   const encontrado = candidatos.find(v => v != null && String(v).trim() && !esPENInterno(v));
   return encontrado ? String(encontrado).trim() : '';
+}
+
+function obtenerPOComercialDesdeTexto(texto, mapaPorNumero){
+  const match = String(texto || '').match(/\bPO\s*-?\s*(\d{3,5})\b/i);
+  return match ? (mapaPorNumero[match[1]] || '') : '';
 }
 
 function textoCuenta(valor){
