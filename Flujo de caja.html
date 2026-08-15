@@ -287,14 +287,6 @@
 
   <section class="panel">
     <div class="panel-head">
-      <div class="panel-title">Saldo acumulado — próximos 30 días</div>
-      <div class="panel-note">Se redibuja cada vez que mueves una fecha proyectada · lo vencido no se cuenta como pagado hoy</div>
-    </div>
-    <div class="chart-wrap"><canvas id="chart" height="90"></canvas></div>
-  </section>
-
-  <section class="panel">
-    <div class="panel-head">
       <div class="panel-title">Movimientos</div>
       <div class="panel-note" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
         <span><span class="badge exec">EJECUTADO</span> &nbsp;<span class="badge proj">PROYECTADO</span></span>
@@ -448,19 +440,26 @@ async function cargarDatos(){
 
     bancosBase = Object.fromEntries(bancosData.map(b => [b.nombre, Number(b.saldo_base) || 0]));
 
-    movimientos = movData.map(m => ({
-      id: m.id,
-      concepto: m.concepto,
-      proveedor: m.proveedor,
-      banco: m.banco,
-      po: m.po_id,
-      cuenta: m.cuenta_contable,
-      monto: Number(m.monto),
-      fecha: new Date((m.fecha_pago_manual || m.fecha) + 'T00:00:00'),
-      esFechaManual: !!m.fecha_pago_manual,
-      pagadoManual: m.pagado_manual_fecha || null,
-      estado: m.estado,
-    }));
+    movimientos = movData
+      .filter(m => !m.oculto)
+      .map(m => ({
+        id: m.id,
+        concepto: m.concepto,
+        proveedor: m.proveedor,
+        bancoOriginal: m.banco,
+        banco: m.banco_manual || m.banco,
+        esBancoManual: !!m.banco_manual,
+        po: m.po_id,
+        cuenta: m.cuenta_contable,
+        montoOriginal: Number(m.monto),
+        monto: Number(m.monto_manual != null ? m.monto_manual : m.monto),
+        esMontoManual: m.monto_manual != null,
+        fecha: new Date((m.fecha_pago_manual || m.fecha) + 'T00:00:00'),
+        esFechaManual: !!m.fecha_pago_manual,
+        pagadoManual: m.pagado_manual_fecha || null,
+        estado: m.estado,
+        origen: m.origen,
+      }));
 
     ordenesCompra = ocData.map(oc => ({
       id: oc.id,
@@ -603,13 +602,31 @@ function render(){
     tr.className = m.estado;
     const isProj = m.estado === 'proyectado';
 
+    const opcionesBanco = ['<option value="">Sin banco</option>']
+      .concat(Object.keys(bancosBase).sort().map(b =>
+        `<option value="${b.replace(/"/g,'&quot;')}" ${b===m.banco?'selected':''}>${b}</option>`
+      ));
+    if(m.banco && !bancosBase.hasOwnProperty(m.banco)){
+      opcionesBanco.push(`<option value="${m.banco.replace(/"/g,'&quot;')}" selected>${m.banco}</option>`);
+    }
+
     tr.innerHTML = `
       <td class="concepto" data-label="Concepto">${m.concepto || '—'}${esVencida ? ' <span class="badge" style="background:var(--bad-bg); color:var(--bad);">VENCIDA</span>' : ''}</td>
       <td data-label="Proveedor">${m.proveedor || '—'}</td>
-      <td style="font-size:12.5px;" data-label="Banco">${m.banco || '—'}</td>
+      <td style="font-size:12.5px;" data-label="Banco">
+        ${isProj
+          ? `<select class="nums" data-banco-id="${m.id}" style="font-size:12px; border:1px solid var(--projected); border-radius:6px; padding:4px 6px; background:#fff; max-width:150px;">${opcionesBanco.join('')}</select>`
+          : (m.banco || '—')}
+        ${m.esBancoManual?'<div style="font-size:10px; color:var(--projected);" title="Banco cambiado manualmente">✏️ cambiado</div>':''}
+      </td>
       <td data-label="P.O.">${m.po ? `<span class="badge ${isProj?'proj':'exec'}">${m.po}</span>` : `<span style="color:var(--muted); font-size:12px;">—</span>`}</td>
       <td style="color:var(--muted); font-size:12.5px;" data-label="Cuenta contable">${m.cuenta || '—'}</td>
-      <td class="nums ${m.monto>0?'amt-in':'amt-out'}" data-label="Monto">${m.monto>0?'+':''}${fmtMoney(m.monto)}</td>
+      <td class="nums ${m.monto>0?'amt-in':'amt-out'}" data-label="Monto">
+        ${isProj
+          ? `<input type="number" step="0.01" class="nums" data-monto-id="${m.id}" value="${m.monto}" style="width:100px; border:1px solid var(--projected); border-radius:6px; padding:4px 6px; font-size:12.5px;">`
+          : `${m.monto>0?'+':''}${fmtMoney(m.monto)}`}
+        ${m.esMontoManual?'<div style="font-size:10px; color:var(--projected);" title="Monto editado manualmente">✏️ editado</div>':''}
+      </td>
       <td data-label="Fecha">
         ${isProj?'<div style="font-size:9.5px; color:var(--projected); text-transform:uppercase; letter-spacing:.03em; margin-bottom:3px; font-weight:600;">Fecha de pago (editable)</div>':''}
         <input type="date" class="nums" value="${fmtDate(m.fecha)}" data-id="${m.id}" ${isProj?'style="border-color:var(--projected);"':'disabled'}>
@@ -646,8 +663,9 @@ function render(){
   kpiFinal.textContent = fmtMoney(running);
   kpiFinal.className = 'kpi-val nums ' + (running < saldoActual ? '' : 'good');
 
-  try{ drawChart(chartPoints); }
-  catch(err){ console.warn('No se pudo dibujar el gráfico:', err); }
+  // Gráfico de Saldo acumulado desactivado a pedido de la usuaria (dejaba de aportar con tantos pasivos proyectados)
+  // try{ drawChart(chartPoints); }
+  // catch(err){ console.warn('No se pudo dibujar el gráfico:', err); }
 
   renderBancos();
   attachHandlers();
@@ -721,6 +739,16 @@ async function guardarFechaManual(id, nuevaFecha){
   if(error) console.error('No se pudo guardar la fecha:', error.message);
 }
 
+async function guardarMontoManual(id, nuevoMonto){
+  const { error } = await sb.from('movimientos').update({ monto_manual: nuevoMonto }).eq('id', id);
+  if(error) console.error('No se pudo guardar el monto:', error.message);
+}
+
+async function guardarBancoManual(id, nuevoBanco){
+  const { error } = await sb.from('movimientos').update({ banco_manual: nuevoBanco || null }).eq('id', id);
+  if(error) console.error('No se pudo guardar el banco:', error.message);
+}
+
 async function marcarPagadoManual(id){
   const hoy = fmtDate(new Date());
   const { error } = await sb.from('movimientos').update({ pagado_manual_fecha: hoy }).eq('id', id);
@@ -747,6 +775,31 @@ function attachHandlers(){
         m.fecha = new Date(e.target.value + 'T00:00:00');
         m.esFechaManual = true;
         guardarFechaManual(id, m.fecha);
+        render();
+      }
+    });
+  });
+  document.querySelectorAll('input[data-monto-id]').forEach(inp=>{
+    inp.addEventListener('change', e=>{
+      const id = parseInt(e.target.dataset.montoId);
+      const m = movimientos.find(x=>x.id===id);
+      const nuevoMonto = parseFloat(e.target.value);
+      if(m && !isNaN(nuevoMonto)){
+        m.monto = nuevoMonto;
+        m.esMontoManual = true;
+        guardarMontoManual(id, nuevoMonto);
+        render();
+      }
+    });
+  });
+  document.querySelectorAll('select[data-banco-id]').forEach(sel=>{
+    sel.addEventListener('change', e=>{
+      const id = parseInt(e.target.dataset.bancoId);
+      const m = movimientos.find(x=>x.id===id);
+      if(m){
+        m.banco = e.target.value;
+        m.esBancoManual = true;
+        guardarBancoManual(id, e.target.value);
         render();
       }
     });
