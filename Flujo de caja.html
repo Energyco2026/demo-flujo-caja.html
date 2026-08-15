@@ -72,10 +72,11 @@
   .kpi-val.bad{color:var(--bad);}
 
   section.panel{
-    background:var(--panel); border:1px solid var(--line); border-radius:10px; margin-bottom:22px; overflow:hidden;
+    background:var(--panel); border:1px solid var(--line); border-radius:10px; margin-bottom:22px; overflow:visible;
   }
   .panel-head{
     padding:16px 20px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;
+    position:sticky; top:0; z-index:20; background:var(--panel); border-radius:10px 10px 0 0;
   }
   .panel-title{font-family:'Space Grotesk',sans-serif; font-size:15.5px; font-weight:600;}
   .panel-note{font-size:12.5px; color:var(--muted);}
@@ -85,6 +86,7 @@
   thead th{
     text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted);
     padding:10px 20px; border-bottom:1px solid var(--line); background:#FAFBFC; font-weight:600;
+    position:sticky; top:var(--movimientos-header-height, 0px); z-index:15;
   }
   tbody td{padding:11px 20px; border-bottom:1px solid var(--line); vertical-align:middle;}
   thead th:nth-child(4), tbody td:nth-child(4){width:50px; padding-left:12px; padding-right:12px;}
@@ -286,8 +288,8 @@
     <div class="oc-grid" id="bancosGrid" style="padding:16px 20px;"></div>
   </section>
 
-  <section class="panel">
-    <div class="panel-head">
+  <section class="panel" id="panelMovimientos">
+    <div class="panel-head" id="panelHeadMovimientos">
       <div class="panel-title">Movimientos</div>
       <div class="panel-note" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
         <span><span class="badge exec">EJECUTADO</span> &nbsp;<span class="badge proj">PROYECTADO</span></span>
@@ -469,6 +471,7 @@ async function cargarDatos(){
       id: oc.id,
       proveedor: oc.proveedor,
       analitica: oc.cuenta_analitica || 'Sin cuenta analítica',
+      poNumero: oc.po_numero || null,
       total: Number(oc.total),
     }));
 
@@ -681,7 +684,18 @@ function render(){
 
   renderBancos();
   attachHandlers();
+  ajustarAlturaEncabezadoSticky();
 }
+
+function ajustarAlturaEncabezadoSticky(){
+  const panel = document.getElementById('panelMovimientos');
+  const head = document.getElementById('panelHeadMovimientos');
+  if(panel && head){
+    panel.style.setProperty('--movimientos-header-height', head.offsetHeight + 'px');
+  }
+}
+window.addEventListener('resize', ajustarAlturaEncabezadoSticky);
+
 
 const EXCLUIR_DE_SALDO_BANCO = /VISA|DINERS|MASTERCARD|TARJETA|ANTICIPO|CAJA CHICA|CAJA GENERAL|^CASH$/i;
 
@@ -847,7 +861,9 @@ function renderOC(){
   }
 
   lista.forEach(oc=>{
-    const pagosOC = movimientos.filter(m => m.po === oc.id && m.estado === 'ejecutado');
+    const pagosOC = movimientos.filter(m =>
+      (m.po === oc.id || (oc.poNumero && m.po === oc.poNumero)) && m.estado === 'ejecutado'
+    );
     const pagado = pagosOC.reduce((s,p)=>s+Math.abs(p.monto),0);
     const saldo = Math.max(oc.total - pagado, 0);
     const pct = oc.total ? Math.min((pagado/oc.total)*100, 100) : 0;
@@ -870,7 +886,7 @@ function renderOC(){
     card.innerHTML = `
       <div>
         <div class="oc-top">
-          <span class="oc-name">${oc.id}</span>
+          <span class="oc-name">${oc.id}${oc.poNumero ? ` <span style="color:var(--focus); font-weight:600;">· ${oc.poNumero}</span>` : ''}</span>
           <span class="oc-status ${cerrada?'cerrada':'abierta'}">${cerrada?'Cerrada':'Abierta'}</span>
         </div>
         <div class="oc-prov">${oc.proveedor || '—'}</div>
@@ -887,12 +903,25 @@ function renderOC(){
       </div>
       <div>
         <div class="oc-saldo nums">${cerrada?'Saldo pendiente: $0.00':'Saldo pendiente: '+fmtMoney(saldo)}</div>
+        <div class="oc-anticipo-wrap" style="margin-top:10px; display:flex; flex-direction:column; gap:6px;">
+          <div style="font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; font-weight:600;">Registrar anticipo</div>
+          <input type="number" step="0.01" min="0" placeholder="Valor" class="nums" data-anticipo-monto="${oc.id}" style="font-size:12.5px; border:1px solid var(--line); border-radius:6px; padding:6px 8px; width:100%;">
+          <select data-anticipo-banco="${oc.id}" style="font-size:12.5px; border:1px solid var(--line); border-radius:6px; padding:6px 8px; width:100%;">
+            <option value="">Banco...</option>
+            ${Object.keys(bancosBase).sort().map(b=>`<option value="${b.replace(/"/g,'&quot;')}">${b}</option>`).join('')}
+          </select>
+          <button type="button" data-anticipo-registrar="${oc.id}" class="btn-marcar-pagado" style="width:100%;">Registrar → va a CxP</button>
+        </div>
       </div>
       <div class="oc-actions"></div>
       <div class="oc-detail">
         <div class="oc-detail-inner">${detailRows}</div>
       </div>
     `;
+
+    const wrapAnticipo = card.querySelector('.oc-anticipo-wrap');
+    wrapAnticipo.addEventListener('click', e => e.stopPropagation());
+    wrapAnticipo.querySelector('button[data-anticipo-registrar]').addEventListener('click', ()=> registrarAnticipo(oc));
 
     card.addEventListener('click', ()=>{
       if(ocAbiertas.has(oc.id)) ocAbiertas.delete(oc.id); else ocAbiertas.add(oc.id);
@@ -901,6 +930,60 @@ function renderOC(){
 
     grid.appendChild(card);
   });
+}
+
+async function registrarAnticipo(oc){
+  const inp = document.querySelector(`input[data-anticipo-monto="${oc.id}"]`);
+  const sel = document.querySelector(`select[data-anticipo-banco="${oc.id}"]`);
+  const monto = parseFloat(inp.value);
+  const banco = sel.value;
+  if(!monto || monto <= 0){ alert('Ingresa un valor de anticipo válido.'); return; }
+  if(!banco){ alert('Elige el banco desde el que se va a pagar.'); return; }
+
+  const odooIdSintetico = Date.now(); // único, fuera del rango de IDs reales de Odoo
+  const filaNueva = {
+    concepto: `Anticipo ${oc.id}${oc.poNumero ? ' (' + oc.poNumero + ')' : ''}`,
+    proveedor: oc.proveedor,
+    banco: banco,
+    po_id: oc.id,
+    cuenta_contable: 'Anticipo a Proveedores',
+    monto: -Math.abs(monto),
+    fecha: fmtDate(new Date()),
+    estado: 'proyectado',
+    origen: 'manual',
+    odoo_id: odooIdSintetico,
+  };
+
+  const { data, error } = await sb.from('movimientos').insert(filaNueva).select().single();
+  if(error){
+    console.error('No se pudo registrar el anticipo:', error.message);
+    alert('No se pudo guardar el anticipo: ' + error.message);
+    return;
+  }
+
+  movimientos.push({
+    id: data.id,
+    concepto: data.concepto,
+    proveedor: data.proveedor,
+    bancoOriginal: data.banco,
+    banco: data.banco,
+    esBancoManual: false,
+    po: data.po_id,
+    cuenta: data.cuenta_contable,
+    montoOriginal: Number(data.monto),
+    monto: Number(data.monto),
+    esMontoManual: false,
+    fecha: new Date(data.fecha + 'T00:00:00'),
+    esFechaManual: false,
+    pagadoManual: null,
+    estado: data.estado,
+    origen: data.origen,
+  });
+
+  inp.value = '';
+  sel.value = '';
+  render();
+  renderOC();
 }
 
 document.getElementById('estadoConexion').addEventListener('click', cargarDatos);
