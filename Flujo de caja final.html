@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root{
     --ink:#1C2321;
@@ -324,7 +325,7 @@
           <input type="checkbox" id="filtroOcultarVencidas" checked style="cursor:pointer;">
           Ocultar vencidas
         </label>
-        <button type="button" id="btnExportarCSV" class="btn-refrescar">⬇ Exportar</button>
+        <button type="button" id="btnExportarCSV" class="btn-refrescar">⬇ Descargar Excel</button>
       </div>
     </div>
     <div class="table-scroll"><table>
@@ -1093,47 +1094,42 @@ document.getElementById('mesLimpiar').addEventListener('click', ()=>{
   render();
 });
 
-// ---------- Exportar a CSV lo que se está viendo en la tabla (respeta todos los filtros activos) ----------
-function csvEscape(valor){
-  const texto = valor === null || valor === undefined ? '' : String(valor);
-  if(/[",\n]/.test(texto)) return '"' + texto.replace(/"/g, '""') + '"';
-  return texto;
-}
-
-function exportarCSV(){
+// ---------- Exportar a Excel lo que se está viendo (respeta todos los filtros activos) ----------
+function exportarExcel(){
   const filas = [...filasVisiblesParaExportar].sort((a,b)=>{
     // Ordenado por banco primero (para girar banco por banco), luego por fecha
     const bA = a.banco || '', bB = b.banco || '';
     if(bA !== bB) return bA.localeCompare(bB);
     return a.fecha - b.fecha;
   });
-  const encabezado = ['Banco','Fecha','Concepto','Proveedor','P.O.','Cuenta contable','Monto','Estado'];
-  const lineas = [encabezado.join(',')];
-  filas.forEach(m=>{
-    lineas.push([
-      csvEscape(m.banco || 'Sin banco'),
-      csvEscape(fmtDate(m.fecha)),
-      csvEscape(m.concepto),
-      csvEscape(m.proveedor),
-      csvEscape(m.po || ''),
-      csvEscape(m.cuenta || ''),
-      csvEscape(m.monto.toFixed(2)),
-      csvEscape(m.estado),
-    ].join(','));
+  if(typeof XLSX === 'undefined'){
+    alert('No se pudo cargar el generador de Excel. Revisa la conexión a internet y vuelve a intentarlo.');
+    return;
+  }
+
+  const datos = filas.map(m => ({
+    Banco: m.banco || 'Sin banco',
+    Fecha: fmtDate(m.fecha),
+    Concepto: m.concepto || '',
+    Proveedor: m.proveedor || '',
+    'P.O.': m.po || '',
+    'Cuenta contable': m.cuenta || '',
+    Monto: Number(m.monto.toFixed(2)),
+    Estado: m.estado || ''
+  }));
+  const hoja = XLSX.utils.json_to_sheet(datos, {
+    header: ['Banco','Fecha','Concepto','Proveedor','P.O.','Cuenta contable','Monto','Estado']
   });
-  const csv = '\uFEFF' + lineas.join('\r\n'); // BOM para que Excel lea bien los acentos
-  const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `pagos_${fmtDate(new Date())}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  hoja['!cols'] = [
+    {wch:24},{wch:13},{wch:42},{wch:34},{wch:18},{wch:34},{wch:15},{wch:14}
+  ];
+  hoja['!autofilter'] = {ref: hoja['!ref'] || 'A1:H1'};
+  const libro = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(libro, hoja, 'Movimientos');
+  XLSX.writeFile(libro, `flujo_caja_${fmtDate(new Date())}.xlsx`);
 }
 
-document.getElementById('btnExportarCSV').addEventListener('click', exportarCSV);
+document.getElementById('btnExportarCSV').addEventListener('click', exportarExcel);
 </script>
 </body>
 </html>
