@@ -917,14 +917,26 @@ function renderOC(){
   const filtroPOSel = document.getElementById('filtroOCPO');
   const valorPrevio = filtroSel.value;
   const poPrevia = filtroPOSel.value;
-  const proveedores = [...new Set(ordenesCompra.map(o=>o.proveedor).filter(Boolean))].sort();
   const numerosPO = [...new Set(ordenesCompra.map(o=>o.poNumero).filter(Boolean))].sort();
-  poblarSelect(filtroSel, proveedores, renderOC);
   poblarSelect(filtroPOSel, numerosPO, renderOC);
-  if(valorPrevio) filtroSel.value = valorPrevio;
-  if(poPrevia) filtroPOSel.value = poPrevia;
-  const filtroActivo = filtroSel.value || 'Todas';
+  if(poPrevia && (poPrevia === 'Todas' || numerosPO.includes(poPrevia))){
+    filtroPOSel.value = poPrevia;
+  }
   const filtroPOActivo = filtroPOSel.value || 'Todas';
+
+  // El proveedor depende de la P.O. seleccionada: si esa P.O. tiene dos
+  // proveedores, el desplegable muestra únicamente esos dos.
+  const proveedores = [...new Set(
+    ordenesCompra
+      .filter(o => filtroPOActivo === 'Todas' || o.poNumero === filtroPOActivo)
+      .map(o => o.proveedor)
+      .filter(Boolean)
+  )].sort();
+  poblarSelect(filtroSel, proveedores, renderOC);
+  if(valorPrevio && (valorPrevio === 'Todas' || proveedores.includes(valorPrevio))){
+    filtroSel.value = valorPrevio;
+  }
+  const filtroActivo = filtroSel.value || 'Todas';
 
   const grid = document.getElementById('ocGrid');
   grid.innerHTML = '';
