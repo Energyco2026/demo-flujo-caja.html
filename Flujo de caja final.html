@@ -222,6 +222,17 @@
     padding:20px; background:var(--bad-bg); color:var(--bad); border-radius:8px; margin:20px 24px;
     font-size:13px; line-height:1.6;
   }
+  .view-tabs{max-width:1600px; margin:16px auto 0; padding:0 24px; display:flex; gap:8px;}
+  .view-tab{border:1px solid var(--line); background:#fff; color:var(--muted); border-radius:8px; padding:9px 15px; font-family:'Inter',sans-serif; font-weight:600; cursor:pointer;}
+  .view-tab.active{background:var(--navy); color:#fff; border-color:var(--navy);}
+  .indice-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; margin-bottom:20px;}
+  .indice-card{background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px;}
+  .indice-label{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em;}
+  .indice-value{font:600 22px 'JetBrains Mono',monospace; margin-top:7px;}
+  .indice-help{font-size:11px; color:var(--muted); margin-top:5px; line-height:1.4;}
+  .analysis-grid{display:grid; grid-template-columns:1fr 1fr; gap:18px;}
+  @media(max-width:850px){.analysis-grid{grid-template-columns:1fr;}}
+  .mini-table th,.mini-table td{padding:10px 14px;}
   .btn-refrescar{
     font-size:11.5px; font-family:'Inter',sans-serif; font-weight:600; border:1px solid var(--line);
     color:var(--ink); background:#fff; border-radius:6px; padding:6px 12px; cursor:pointer;
@@ -263,7 +274,12 @@
   </div>
 </header>
 
-<main>
+<div class="view-tabs">
+  <button type="button" class="view-tab active" data-view="flujo">Flujo de caja</button>
+  <button type="button" class="view-tab" data-view="indices">Rotación CxC / CxP</button>
+</div>
+
+<main id="vistaFlujo">
 
   <div id="errorBox"></div>
 
@@ -357,6 +373,32 @@
     <div class="oc-scroll"><div class="oc-grid" id="ocGrid"></div></div>
   </section>
 
+</main>
+
+<main id="vistaIndices" style="display:none;">
+  <div class="indice-grid">
+    <div class="indice-card"><div class="indice-label">CxC pendiente</div><div class="indice-value nums" id="idxCxcPendiente">—</div><div class="indice-help">Facturas por cobrar aún abiertas.</div></div>
+    <div class="indice-card"><div class="indice-label">CxP pendiente</div><div class="indice-value nums" id="idxCxpPendiente">—</div><div class="indice-help">Obligaciones abiertas con proveedores.</div></div>
+    <div class="indice-card"><div class="indice-label">Días promedio de cobro</div><div class="indice-value nums" id="idxDiasCobro">—</div><div class="indice-help">Fecha de cobro menos fecha original de factura.</div></div>
+    <div class="indice-card"><div class="indice-label">Días promedio de pago</div><div class="indice-value nums" id="idxDiasPago">—</div><div class="indice-help">Fecha de pago menos fecha original de factura.</div></div>
+    <div class="indice-card"><div class="indice-label">Rotación operativa CxC</div><div class="indice-value nums" id="idxRotCxc">—</div><div class="indice-help">365 ÷ días promedio de cobro.</div></div>
+    <div class="indice-card"><div class="indice-label">Rotación operativa CxP</div><div class="indice-value nums" id="idxRotCxp">—</div><div class="indice-help">365 ÷ días promedio de pago.</div></div>
+    <div class="indice-card"><div class="indice-label">Relación CxP / CxC</div><div class="indice-value nums" id="idxRelacion">—</div><div class="indice-help">Apalancamiento de proveedores frente a cartera por cobrar.</div></div>
+  </div>
+
+  <div class="analysis-grid">
+    <section class="panel">
+      <div class="panel-head"><div class="panel-title">Antigüedad de cartera</div><div class="panel-note">Según fecha original de factura</div></div>
+      <table class="mini-table"><thead><tr><th>Rango</th><th>CxC</th><th>CxP</th></tr></thead><tbody id="agingRows"></tbody></table>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><div class="panel-title">Mayor exposición por tercero</div><div class="panel-note">Saldos abiertos</div></div>
+      <table class="mini-table"><thead><tr><th>Cliente / proveedor</th><th>Tipo</th><th>Saldo</th></tr></thead><tbody id="exposicionRows"></tbody></table>
+    </section>
+  </div>
+  <div class="estado-error" style="background:#FFF8E8; color:#6B5420;">
+    Rotación operativa basada en días reales. Para la rotación contable formal se incorporarán ventas y compras a crédito y saldos promedio mensuales.
+  </div>
 </main>
 
 <footer class="note">
@@ -764,6 +806,7 @@ function render(){
   // catch(err){ console.warn('No se pudo dibujar el gráfico:', err); }
 
   renderBancos();
+  renderIndices();
   attachHandlers();
 }
 
@@ -791,6 +834,69 @@ function renderBancos(){
   if(nombresBanco.length === 0){
     grid.innerHTML = '<div class="oc-detail-empty">Sin bancos cargados todavía.</div>';
   }
+}
+
+function promedio(valores){
+  return valores.length ? valores.reduce((a,b)=>a+b,0) / valores.length : null;
+}
+
+function diasEntre(inicio, fin){
+  return Math.max(0, Math.round((fin - inicio) / 86400000));
+}
+
+function renderIndices(){
+  const esCxc = m => /Cuentas por Cobrar/i.test(m.cuenta || '');
+  const esCxp = m => /Cuentas por Pagar/i.test(m.cuenta || '');
+  const abiertas = movimientos.filter(m => m.estado === 'proyectado');
+  const cxcPendiente = abiertas.filter(esCxc).reduce((s,m)=>s+Math.abs(m.monto),0);
+  const cxpPendiente = abiertas.filter(esCxp).reduce((s,m)=>s+Math.abs(m.monto),0);
+  const ejecutadasConFecha = movimientos.filter(m =>
+    m.estado === 'ejecutado' && m.fechaFactura && m.fecha
+  );
+  const diasCobro = ejecutadasConFecha.filter(esCxc).map(m=>diasEntre(m.fechaFactura,m.fecha));
+  const diasPago = ejecutadasConFecha.filter(esCxp).map(m=>diasEntre(m.fechaFactura,m.fecha));
+  const promCobro = promedio(diasCobro);
+  const promPago = promedio(diasPago);
+
+  document.getElementById('idxCxcPendiente').textContent = fmtMoney(cxcPendiente);
+  document.getElementById('idxCxpPendiente').textContent = fmtMoney(cxpPendiente);
+  document.getElementById('idxDiasCobro').textContent = promCobro == null ? '—' : promCobro.toFixed(1) + ' días';
+  document.getElementById('idxDiasPago').textContent = promPago == null ? '—' : promPago.toFixed(1) + ' días';
+  document.getElementById('idxRotCxc').textContent = promCobro > 0 ? (365/promCobro).toFixed(2) + ' veces' : '—';
+  document.getElementById('idxRotCxp').textContent = promPago > 0 ? (365/promPago).toFixed(2) + ' veces' : '—';
+  document.getElementById('idxRelacion').textContent = cxcPendiente > 0 ? (cxpPendiente/cxcPendiente).toFixed(2) + '×' : '—';
+
+  const rangos = [
+    {label:'0–30 días', min:0, max:30},
+    {label:'31–60 días', min:31, max:60},
+    {label:'61–90 días', min:61, max:90},
+    {label:'Más de 90 días', min:91, max:Infinity}
+  ];
+  const agingRows = document.getElementById('agingRows');
+  agingRows.innerHTML = rangos.map(r=>{
+    const enRango = m => {
+      const edad = m.fechaFactura ? diasEntre(m.fechaFactura, HOY) : 0;
+      return edad >= r.min && edad <= r.max;
+    };
+    const cxc = abiertas.filter(m=>esCxc(m)&&enRango(m)).reduce((s,m)=>s+Math.abs(m.monto),0);
+    const cxp = abiertas.filter(m=>esCxp(m)&&enRango(m)).reduce((s,m)=>s+Math.abs(m.monto),0);
+    return `<tr><td>${r.label}</td><td class="nums amt-in">${fmtMoney(cxc)}</td><td class="nums amt-out">${fmtMoney(cxp)}</td></tr>`;
+  }).join('');
+
+  const exposicion = new Map();
+  abiertas.forEach(m=>{
+    const tipo = esCxc(m) ? 'CxC' : esCxp(m) ? 'CxP' : null;
+    if(!tipo) return;
+    const clave = `${tipo}|${m.proveedor || 'Sin tercero'}`;
+    exposicion.set(clave, (exposicion.get(clave)||0) + Math.abs(m.monto));
+  });
+  const top = [...exposicion.entries()].map(([clave,saldo])=>{
+    const [tipo, tercero] = clave.split('|');
+    return {tipo, tercero, saldo};
+  }).sort((a,b)=>b.saldo-a.saldo).slice(0,10);
+  document.getElementById('exposicionRows').innerHTML = top.length ? top.map(x=>
+    `<tr><td>${escapeHTML(x.tercero)}</td><td><span class="badge ${x.tipo==='CxC'?'exec':'proj'}">${x.tipo}</span></td><td class="nums">${fmtMoney(x.saldo)}</td></tr>`
+  ).join('') : '<tr><td colspan="3" class="oc-detail-empty">Sin saldos abiertos.</td></tr>';
 }
 
 function fmtDateCorta(d){
@@ -1155,6 +1261,16 @@ function exportarExcel(){
 }
 
 document.getElementById('btnExportarCSV').addEventListener('click', exportarExcel);
+
+document.querySelectorAll('.view-tab').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const vista = btn.dataset.view;
+    document.querySelectorAll('.view-tab').forEach(b=>b.classList.toggle('active', b===btn));
+    document.getElementById('vistaFlujo').style.display = vista === 'flujo' ? '' : 'none';
+    document.getElementById('vistaIndices').style.display = vista === 'indices' ? '' : 'none';
+    if(vista === 'indices') renderIndices();
+  });
+});
 </script>
 </body>
 </html>
