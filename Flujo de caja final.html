@@ -559,6 +559,8 @@ async function cargarDatos(){
       proveedor: oc.proveedor,
       analitica: oc.cuenta_analitica || 'Sin cuenta analítica',
       total: Number(oc.total),
+      estadoOdoo: oc.estado_odoo || '',
+      fechaOrden: oc.fecha_orden || null,
     }));
 
     estado.textContent = `Conectado · ${movimientos.length} movimientos`;
@@ -1048,8 +1050,10 @@ function renderOC(){
 
   // Cada pago se vincula por la llave técnica exacta de la OC. No se agrupa
   // por po_numero porque varias órdenes pueden compartir un mismo código o STOCK.
+  const estadosNoOperativos = new Set(['draft','sent','cancel']);
+  const ordenesOperativas = ordenesCompra.filter(oc => !estadosNoOperativos.has(oc.estadoOdoo));
   const resumenPorOC = new Map();
-  ordenesCompra.forEach(oc=>{
+  ordenesOperativas.forEach(oc=>{
     const pagos = movimientos.filter(m =>
       m.estado === 'ejecutado' &&
       m.poInterno != null &&
@@ -1062,7 +1066,7 @@ function renderOC(){
       saldo: Math.max(oc.total - pagado, 0)
     });
   });
-  const ordenesAbiertas = ordenesCompra.filter(oc =>
+  const ordenesAbiertas = ordenesOperativas.filter(oc =>
     resumenPorOC.get(String(oc.id)).saldo > 0.01
   );
 
