@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root{
     --ink:#1C2321;
@@ -94,6 +95,11 @@
   thead th:last-child, tbody td:last-child{padding-right:28px;}
   tbody tr:last-child td{border-bottom:none;}
   tbody tr.executed{background:var(--executed); color:var(--executed-ink);}
+  tbody tr.fila-hoy{background:var(--good-bg);}
+  tbody tr.fila-hoy td.concepto::after{
+    content:"HOY"; margin-left:8px; font-size:9.5px; font-weight:700; letter-spacing:.04em;
+    color:var(--good); background:#fff; border:1px solid var(--good); border-radius:20px; padding:1px 7px;
+  }
   tbody tr.executed td.concepto::before{
     content:"🔒"; margin-right:6px; font-size:10.5px; opacity:.6;
   }
@@ -314,7 +320,7 @@
           <input type="checkbox" id="filtroOcultarVencidas" checked style="cursor:pointer;">
           Ocultar vencidas
         </label>
-        <button type="button" id="btnExportarCSV" class="btn-refrescar">⬇ Exportar</button>
+        <button type="button" id="btnExportarCSV" class="btn-refrescar">⬇ Exportar a Excel</button>
       </div>
     </div>
     <table>
@@ -337,9 +343,15 @@
   <section class="panel">
     <div class="panel-head">
       <div class="panel-title">Saldo por Orden de Compra</div>
-      <div class="panel-note" style="display:flex; align-items:center; gap:8px;">
-        Filtrar por proveedor:
-        <select id="filtroAnalitica"></select>
+      <div class="panel-note" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <span style="display:flex; align-items:center; gap:8px;">
+          Filtrar por P.O.:
+          <select id="filtroOcPO"></select>
+        </span>
+        <span style="display:flex; align-items:center; gap:8px;">
+          Filtrar por proveedor:
+          <select id="filtroAnalitica"></select>
+        </span>
       </div>
     </div>
     <div class="oc-grid" id="ocGrid"></div>
@@ -613,8 +625,9 @@ function render(){
 
     filasVisiblesParaExportar.push(m);
 
+    const esHoy = fmtDate(m.fecha) === fmtDate(HOY);
     const tr = document.createElement('tr');
-    tr.className = m.estado;
+    tr.className = m.estado + (esHoy ? ' fila-hoy' : '');
     const isProj = m.estado === 'proyectado';
 
     const opcionesBanco = ['<option value="">Sin banco</option>']
@@ -850,10 +863,20 @@ function renderOC(){
   if(valorPrevio) filtroSel.value = valorPrevio;
   const filtroActivo = filtroSel.value || 'Todas';
 
+  const filtroPOSel = document.getElementById('filtroOcPO');
+  const valorPrevioPO = filtroPOSel.value;
+  const posDisponibles = [...new Set(ordenesCompra.map(o => o.poNumero || o.id).filter(Boolean))].sort();
+  poblarSelect(filtroPOSel, posDisponibles, renderOC);
+  if(valorPrevioPO) filtroPOSel.value = valorPrevioPO;
+  const filtroPOActivo = filtroPOSel.value || 'Todas';
+
   const grid = document.getElementById('ocGrid');
   grid.innerHTML = '';
 
-  const lista = ordenesCompra.filter(oc => filtroActivo === 'Todas' || oc.proveedor === filtroActivo);
+  const lista = ordenesCompra.filter(oc =>
+    (filtroActivo === 'Todas' || oc.proveedor === filtroActivo) &&
+    (filtroPOActivo === 'Todas' || (oc.poNumero || oc.id) === filtroPOActivo)
+  );
 
   if(lista.length === 0){
     grid.innerHTML = '<div class="oc-detail-empty">No hay órdenes de compra para este filtro.</div>';
@@ -1016,47 +1039,36 @@ document.getElementById('mesLimpiar').addEventListener('click', ()=>{
   render();
 });
 
-// ---------- Exportar a CSV lo que se está viendo en la tabla (respeta todos los filtros activos) ----------
-function csvEscape(valor){
-  const texto = valor === null || valor === undefined ? '' : String(valor);
-  if(/[",\n]/.test(texto)) return '"' + texto.replace(/"/g, '""') + '"';
-  return texto;
-}
-
-function exportarCSV(){
+// ---------- Exportar a Excel (.xlsx) lo que se está viendo en la tabla (respeta todos los filtros activos) ----------
+function exportarExcel(){
   const filas = [...filasVisiblesParaExportar].sort((a,b)=>{
     // Ordenado por banco primero (para girar banco por banco), luego por fecha
     const bA = a.banco || '', bB = b.banco || '';
     if(bA !== bB) return bA.localeCompare(bB);
     return a.fecha - b.fecha;
   });
-  const encabezado = ['Banco','Fecha','Concepto','Proveedor','P.O.','Cuenta contable','Monto','Estado'];
-  const lineas = [encabezado.join(',')];
-  filas.forEach(m=>{
-    lineas.push([
-      csvEscape(m.banco || 'Sin banco'),
-      csvEscape(fmtDate(m.fecha)),
-      csvEscape(m.concepto),
-      csvEscape(m.proveedor),
-      csvEscape(m.po || ''),
-      csvEscape(m.cuenta || ''),
-      csvEscape(m.monto.toFixed(2)),
-      csvEscape(m.estado),
-    ].join(','));
-  });
-  const csv = '\uFEFF' + lineas.join('\r\n'); // BOM para que Excel lea bien los acentos
-  const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `pagos_${fmtDate(new Date())}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+
+  const datos = filas.map(m => ({
+    'Banco': m.banco || 'Sin banco',
+    'Fecha': fmtDate(m.fecha),
+    'Concepto': m.concepto || '',
+    'Proveedor': m.proveedor || '',
+    'P.O.': m.po || '',
+    'Cuenta contable': m.cuenta || '',
+    'Monto': Number(m.monto.toFixed(2)),
+    'Estado': m.estado,
+  }));
+
+  const hoja = XLSX.utils.json_to_sheet(datos);
+  hoja['!cols'] = [
+    {wch:28}, {wch:12}, {wch:38}, {wch:26}, {wch:10}, {wch:26}, {wch:13}, {wch:12},
+  ];
+  const libro = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(libro, hoja, 'Pagos');
+  XLSX.writeFile(libro, `pagos_${fmtDate(new Date())}.xlsx`);
 }
 
-document.getElementById('btnExportarCSV').addEventListener('click', exportarCSV);
+document.getElementById('btnExportarCSV').addEventListener('click', exportarExcel);
 </script>
 </body>
 </html>
