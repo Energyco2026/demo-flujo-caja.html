@@ -73,21 +73,25 @@
   .kpi-val.bad{color:var(--bad);}
 
   section.panel{
-    background:var(--panel); border:1px solid var(--line); border-radius:10px; margin-bottom:22px; overflow:visible;
+    background:var(--panel); border:1px solid var(--line); border-radius:10px; margin-bottom:22px; overflow:hidden;
   }
   .panel-head{
     padding:16px 20px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;
-    position:sticky; top:0; z-index:20; background:var(--panel); border-radius:10px 10px 0 0;
+    background:var(--panel);
   }
+  .sticky-panel-head{position:sticky; top:0; z-index:12; background:var(--panel); box-shadow:0 1px 0 var(--line);}
   .panel-title{font-family:'Space Grotesk',sans-serif; font-size:15.5px; font-weight:600;}
   .panel-note{font-size:12.5px; color:var(--muted);}
   .chart-wrap{padding:18px 20px 8px;}
+
+  .table-scroll{max-height:70vh; overflow:auto; overscroll-behavior:contain;}
+  .table-scroll thead th{position:sticky; top:0; z-index:8; box-shadow:0 1px 0 var(--line);}
+  .oc-scroll{max-height:70vh; overflow:auto; overscroll-behavior:contain;}
 
   table{width:100%; border-collapse:collapse; font-size:13.5px;}
   thead th{
     text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted);
     padding:10px 20px; border-bottom:1px solid var(--line); background:#FAFBFC; font-weight:600;
-    position:sticky; top:var(--movimientos-header-height, 0px); z-index:15;
   }
   tbody td{padding:11px 20px; border-bottom:1px solid var(--line); vertical-align:middle;}
   thead th:nth-child(4), tbody td:nth-child(4){width:50px; padding-left:12px; padding-right:12px;}
@@ -95,14 +99,17 @@
   thead th:last-child, tbody td:last-child{padding-right:28px;}
   tbody tr:last-child td{border-bottom:none;}
   tbody tr.executed{background:var(--executed); color:var(--executed-ink);}
-  tbody tr.fila-hoy{background:var(--good-bg);}
-  tbody tr.fila-hoy td.concepto::after{
-    content:"HOY"; margin-left:8px; font-size:9.5px; font-weight:700; letter-spacing:.04em;
-    color:var(--good); background:#fff; border:1px solid var(--good); border-radius:20px; padding:1px 7px;
-  }
   tbody tr.executed td.concepto::before{
     content:"🔒"; margin-right:6px; font-size:10.5px; opacity:.6;
   }
+  .oc-advance-form{display:grid; grid-template-columns:minmax(120px,1fr) minmax(150px,1.25fr) auto; gap:7px; align-items:end; width:100%;}
+  .oc-advance-form label{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em;}
+  .oc-advance-form input,.oc-advance-form select{width:100%; margin-top:3px; border:1px solid var(--line); border-radius:6px; padding:7px 8px; background:#fff; font-family:'Inter',sans-serif; font-size:12px;}
+  .oc-advance-form button{border:0; border-radius:6px; padding:8px 11px; background:var(--navy); color:#fff; font-weight:600; cursor:pointer; white-space:nowrap;}
+  .oc-advance-form button:disabled{opacity:.55; cursor:wait;}
+  .po-real{display:inline-block; padding:4px 9px; border-radius:6px; background:#EEF3FF; color:#24458D; font-family:'JetBrains Mono',monospace; font-size:13px; font-weight:700;}
+  .po-stock{display:inline-block; padding:4px 9px; border-radius:6px; background:#F1F0EC; color:#6B655A; font-family:'JetBrains Mono',monospace; font-size:13px; font-weight:700;}
+  @media(max-width:760px){.oc-advance-form{grid-template-columns:1fr;}}
   .badge{
     display:inline-block; font-size:10.5px; padding:3px 8px; border-radius:20px; font-weight:600; letter-spacing:.02em;
   }
@@ -295,7 +302,7 @@
   </section>
 
   <section class="panel" id="panelMovimientos">
-    <div class="panel-head" id="panelHeadMovimientos">
+    <div class="panel-head sticky-panel-head" id="panelHeadMovimientos">
       <div class="panel-title">Movimientos</div>
       <div class="panel-note" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
         <span><span class="badge exec">EJECUTADO</span> &nbsp;<span class="badge proj">PROYECTADO</span></span>
@@ -323,7 +330,7 @@
         <button type="button" id="btnExportarCSV" class="btn-refrescar">⬇ Exportar a Excel</button>
       </div>
     </div>
-    <table>
+    <div class="table-scroll"><table>
       <thead>
         <tr>
           <th>Concepto</th>
@@ -337,11 +344,11 @@
         </tr>
       </thead>
       <tbody id="rows"></tbody>
-    </table>
+    </table></div>
   </section>
 
   <section class="panel">
-    <div class="panel-head">
+    <div class="panel-head sticky-panel-head">
       <div class="panel-title">Saldo por Orden de Compra</div>
       <div class="panel-note" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
         <span style="display:flex; align-items:center; gap:8px;">
@@ -354,7 +361,7 @@
         </span>
       </div>
     </div>
-    <div class="oc-grid" id="ocGrid"></div>
+    <div class="oc-scroll"><div class="oc-grid" id="ocGrid"></div></div>
   </section>
 
 </main>
@@ -625,16 +632,15 @@ function render(){
 
     filasVisiblesParaExportar.push(m);
 
-    const esHoy = fmtDate(m.fecha) === fmtDate(HOY);
     const tr = document.createElement('tr');
-    tr.className = m.estado + (esHoy ? ' fila-hoy' : '');
+    tr.className = m.estado;
     const isProj = m.estado === 'proyectado';
 
     const opcionesBanco = ['<option value="">Sin banco</option>']
-      .concat(Object.keys(bancosBase).sort().map(b =>
+      .concat(bancosReales().map(b =>
         `<option value="${b.replace(/"/g,'&quot;')}" ${b===m.banco?'selected':''}>${b}</option>`
       ));
-    if(m.banco && !bancosBase.hasOwnProperty(m.banco)){
+    if(m.banco && !bancosReales().includes(m.banco)){
       opcionesBanco.push(`<option value="${m.banco.replace(/"/g,'&quot;')}" selected>${m.banco}</option>`);
     }
 
@@ -697,25 +703,19 @@ function render(){
 
   renderBancos();
   attachHandlers();
-  ajustarAlturaEncabezadoSticky();
 }
 
-function ajustarAlturaEncabezadoSticky(){
-  const panel = document.getElementById('panelMovimientos');
-  const head = document.getElementById('panelHeadMovimientos');
-  if(panel && head){
-    panel.style.setProperty('--movimientos-header-height', head.offsetHeight + 'px');
-  }
+
+const EXCLUIR_DE_BANCOS = /VISA|DINERS|MASTERCARD|TARJETA|ANTICIPO|CAJA CHICA|CAJA GENERAL|^CASH$/i;
+
+function bancosReales(){
+  return Object.keys(bancosBase).filter(b => !EXCLUIR_DE_BANCOS.test(b)).sort();
 }
-window.addEventListener('resize', ajustarAlturaEncabezadoSticky);
-
-
-const EXCLUIR_DE_SALDO_BANCO = /VISA|DINERS|MASTERCARD|TARJETA|ANTICIPO|CAJA CHICA|CAJA GENERAL|^CASH$/i;
 
 function renderBancos(){
   const grid = document.getElementById('bancosGrid');
   grid.innerHTML = '';
-  const nombresBanco = Object.keys(bancosBase).filter(b => !EXCLUIR_DE_SALDO_BANCO.test(b));
+  const nombresBanco = bancosReales();
   nombresBanco.forEach(banco=>{
     const saldo = bancosBase[banco];
     let proyectado30 = 0;
@@ -855,6 +855,11 @@ function attachHandlers(){
   });
 }
 
+// Las OC sin cuenta analítica normalmente son compras de stock interno, no de un proyecto/cliente
+function etiquetaPO(oc){
+  return oc.poNumero || 'STOCK';
+}
+
 function renderOC(){
   const filtroSel = document.getElementById('filtroAnalitica');
   const valorPrevio = filtroSel.value;
@@ -865,7 +870,7 @@ function renderOC(){
 
   const filtroPOSel = document.getElementById('filtroOcPO');
   const valorPrevioPO = filtroPOSel.value;
-  const posDisponibles = [...new Set(ordenesCompra.map(o => o.poNumero || o.id).filter(Boolean))].sort();
+  const posDisponibles = [...new Set(ordenesCompra.map(o => etiquetaPO(o)))].sort();
   poblarSelect(filtroPOSel, posDisponibles, renderOC);
   if(valorPrevioPO) filtroPOSel.value = valorPrevioPO;
   const filtroPOActivo = filtroPOSel.value || 'Todas';
@@ -875,7 +880,7 @@ function renderOC(){
 
   const lista = ordenesCompra.filter(oc =>
     (filtroActivo === 'Todas' || oc.proveedor === filtroActivo) &&
-    (filtroPOActivo === 'Todas' || (oc.poNumero || oc.id) === filtroPOActivo)
+    (filtroPOActivo === 'Todas' || etiquetaPO(oc) === filtroPOActivo)
   );
 
   if(lista.length === 0){
@@ -909,7 +914,7 @@ function renderOC(){
     card.innerHTML = `
       <div>
         <div class="oc-top">
-          <span class="oc-name">${oc.id}${oc.poNumero ? ` <span style="color:var(--focus); font-weight:600;">· ${oc.poNumero}</span>` : ''}</span>
+          <span class="oc-name">${oc.id} ${oc.poNumero ? `<span class="po-real" title="Número P.O. comercial">P.O. ${oc.poNumero}</span>` : `<span class="po-stock" title="Sin cuenta analítica — compra de stock">STOCK</span>`}</span>
           <span class="oc-status ${cerrada?'cerrada':'abierta'}">${cerrada?'Cerrada':'Abierta'}</span>
         </div>
         <div class="oc-prov">${oc.proveedor || '—'}</div>
@@ -926,14 +931,17 @@ function renderOC(){
       </div>
       <div>
         <div class="oc-saldo nums">${cerrada?'Saldo pendiente: $0.00':'Saldo pendiente: '+fmtMoney(saldo)}</div>
-        <div class="oc-anticipo-wrap" style="margin-top:10px; display:flex; flex-direction:column; gap:6px;">
-          <div style="font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; font-weight:600;">Registrar anticipo</div>
-          <input type="number" step="0.01" min="0" placeholder="Valor" class="nums" data-anticipo-monto="${oc.id}" style="font-size:12.5px; border:1px solid var(--line); border-radius:6px; padding:6px 8px; width:100%;">
-          <select data-anticipo-banco="${oc.id}" style="font-size:12.5px; border:1px solid var(--line); border-radius:6px; padding:6px 8px; width:100%;">
-            <option value="">Banco...</option>
-            ${Object.keys(bancosBase).sort().map(b=>`<option value="${b.replace(/"/g,'&quot;')}">${b}</option>`).join('')}
-          </select>
-          <button type="button" data-anticipo-registrar="${oc.id}" class="btn-marcar-pagado" style="width:100%;">Registrar → va a CxP</button>
+        <div class="oc-advance-form" data-advance-form="${oc.id}" style="margin-top:10px;">
+          <label>Valor del anticipo
+            <input type="number" step="0.01" min="0" placeholder="0.00" class="nums" data-anticipo-monto="${oc.id}">
+          </label>
+          <label>Banco de pago
+            <select data-anticipo-banco="${oc.id}">
+              <option value="">Selecciona un banco</option>
+              ${bancosReales().map(b=>`<option value="${b.replace(/"/g,'&quot;')}">${b}</option>`).join('')}
+            </select>
+          </label>
+          <button type="button" data-anticipo-registrar="${oc.id}">Registrar anticipo</button>
         </div>
       </div>
       <div class="oc-actions"></div>
@@ -942,7 +950,7 @@ function renderOC(){
       </div>
     `;
 
-    const wrapAnticipo = card.querySelector('.oc-anticipo-wrap');
+    const wrapAnticipo = card.querySelector('.oc-advance-form');
     wrapAnticipo.addEventListener('click', e => e.stopPropagation());
     wrapAnticipo.querySelector('button[data-anticipo-registrar]').addEventListener('click', ()=> registrarAnticipo(oc));
 
