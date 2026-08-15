@@ -337,7 +337,8 @@
           <th>P.O.</th>
           <th>Cuenta contable</th>
           <th>Monto</th>
-          <th>Fecha</th>
+          <th>Fecha factura</th>
+          <th>Fecha pago</th>
           <th>Saldo acumulado</th>
         </tr>
       </thead>
@@ -468,7 +469,7 @@ async function cargarDatos(){
         !m.oculto &&
         m.fecha &&
         m.fecha >= FECHA_MINIMA &&
-        !(m.origen === 'account.payment' && PATRON_BANCO_TARJETA.test(m.banco_manual || m.banco || ''))
+        !PATRON_BANCO_TARJETA.test(m.banco_manual || m.banco || '')
       )
       .map(m => ({
         id: m.id,
@@ -485,6 +486,7 @@ async function cargarDatos(){
         montoOriginal: Number(m.monto),
         monto: Number(m.monto_manual != null ? m.monto_manual : m.monto),
         esMontoManual: m.monto_manual != null,
+        fechaFactura: m.fecha_factura ? new Date(m.fecha_factura + 'T00:00:00') : null,
         fecha: new Date((m.fecha_pago_manual || m.fecha) + 'T00:00:00'),
         esFechaManual: !!m.fecha_pago_manual,
         pagadoManual: m.pagado_manual_fecha || null,
@@ -718,7 +720,10 @@ function render(){
           : `${m.monto>0?'+':''}${fmtMoney(m.monto)}`}
         ${m.esMontoManual?'<div style="font-size:10px; color:var(--projected);" title="Monto editado manualmente">✏️ editado</div>':''}
       </td>
-      <td data-label="Fecha">
+      <td class="nums" data-label="Fecha factura">
+        ${m.fechaFactura ? fmtDate(m.fechaFactura) : '<span style="color:var(--muted)">—</span>'}
+      </td>
+      <td data-label="Fecha pago">
         ${isProj?'<div style="font-size:9.5px; color:var(--projected); text-transform:uppercase; letter-spacing:.03em; margin-bottom:3px; font-weight:600;">Fecha de pago (editable)</div>':''}
         <input type="date" class="nums" value="${fmtDate(m.fecha)}" data-id="${m.id}" ${isProj?'style="border-color:var(--projected);"':'disabled'}>
         ${m.esFechaManual?'<span style="font-size:10px; color:var(--projected);" title="Fecha movida manualmente">✏️ guardada</span>':''}
@@ -733,7 +738,7 @@ function render(){
   });
 
   if(rowsEl.children.length === 0){
-    rowsEl.innerHTML = `<tr><td colspan="8" style="color:var(--muted); font-style:italic; text-align:center; padding:24px;">Sin movimientos para este filtro.</td></tr>`;
+    rowsEl.innerHTML = `<tr><td colspan="9" style="color:var(--muted); font-style:italic; text-align:center; padding:24px;">Sin movimientos para este filtro.</td></tr>`;
   }
 
   document.getElementById('kpiActual').textContent = fmtMoney(saldoActual);
@@ -1116,21 +1121,22 @@ function exportarExcel(){
 
   const datos = filas.map(m => ({
     Banco: m.banco || 'Sin banco',
-    Fecha: fmtDate(m.fecha),
     Concepto: m.concepto || '',
     Proveedor: m.proveedor || '',
     'P.O.': m.po || '',
     'Cuenta contable': m.cuenta || '',
     Monto: Number(m.monto.toFixed(2)),
+    'Fecha factura': m.fechaFactura ? fmtDate(m.fechaFactura) : '',
+    'Fecha pago': fmtDate(m.fecha),
     Estado: m.estado || ''
   }));
   const hoja = XLSX.utils.json_to_sheet(datos, {
-    header: ['Banco','Fecha','Concepto','Proveedor','P.O.','Cuenta contable','Monto','Estado']
+    header: ['Banco','Fecha factura','Fecha pago','Concepto','Proveedor','P.O.','Cuenta contable','Monto','Estado']
   });
   hoja['!cols'] = [
-    {wch:24},{wch:13},{wch:42},{wch:34},{wch:18},{wch:34},{wch:15},{wch:14}
+    {wch:24},{wch:15},{wch:15},{wch:42},{wch:34},{wch:18},{wch:34},{wch:15},{wch:14}
   ];
-  hoja['!autofilter'] = {ref: hoja['!ref'] || 'A1:H1'};
+  hoja['!autofilter'] = {ref: hoja['!ref'] || 'A1:I1'};
   const libro = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(libro, hoja, 'Movimientos');
   XLSX.writeFile(libro, `flujo_caja_${fmtDate(new Date())}.xlsx`);
