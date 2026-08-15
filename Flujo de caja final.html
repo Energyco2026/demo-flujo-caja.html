@@ -1074,11 +1074,12 @@ function abrirDetalleAntiguedad(tipo, min, max, sinFecha=false){
   document.getElementById('agingDetailSummary').textContent = `${detalle.length} movimiento${detalle.length===1?'':'s'} · Total ${fmtMoney(total)}`;
   document.getElementById('agingDetailRows').innerHTML = detalle.length ? detalle.map(m=>{
     const edad = m.fechaFactura ? diasEntre(m.fechaFactura, HOY) : null;
+    const poVisible = m.po || obtenerPOComercialDesdeTexto(m.concepto, {});
     return `<tr>
       <td>${escapeHTML(m.concepto || '—')}</td>
       <td>${escapeHTML(m.proveedor || '—')}</td>
       <td>${escapeHTML(m.banco || 'Sin banco')}</td>
-      <td>${escapeHTML(m.po || '—')}</td>
+      <td>${escapeHTML(poVisible || '—')}</td>
       <td class="nums">${m.fechaFactura ? fmtDate(m.fechaFactura) : 'Sin fecha'}</td>
       <td class="nums">${m.fecha ? fmtDate(m.fecha) : '—'}</td>
       <td class="nums">${edad == null ? '—' : edad}</td>
