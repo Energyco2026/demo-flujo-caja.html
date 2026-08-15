@@ -517,6 +517,7 @@ function fmtMoney(n){
 }
 
 let movimientos = [];
+let movimientosCartera = [];
 let ordenesCompra = [];
 let presupuestosProyecto = [];
 let asignacionesPresupuesto = [];
@@ -618,11 +619,10 @@ async function cargarDatos(){
         .map(([numero, codigos]) => [numero, [...codigos][0]])
     );
 
-    movimientos = movData
+    movimientosCartera = movData
       .filter(m =>
         !m.oculto &&
         m.fecha &&
-        m.fecha >= FECHA_MINIMA &&
         !PATRON_BANCO_TARJETA.test(m.banco_manual || m.banco || '')
       )
       .map(m => ({
@@ -650,6 +650,9 @@ async function cargarDatos(){
         estado: m.estado,
         origen: m.origen,
       }));
+    // La pestaña principal conserva su alcance desde 2025. La pestaña de
+    // cartera usa el histórico completo cargado desde Odoo.
+    movimientos = movimientosCartera.filter(m => fmtDate(m.fecha) >= FECHA_MINIMA);
 
     ordenesCompra = ocData.map(oc => ({
       id: oc.id,
@@ -693,8 +696,17 @@ function obtenerPOComercial(registro){
 }
 
 function obtenerPOComercialDesdeTexto(texto, mapaPorNumero){
-  const match = String(texto || '').match(/\bPO\s*-?\s*(\d{3,5})\b/i);
-  return match ? (mapaPorNumero[match[1]] || '') : '';
+  const match = String(texto || '').match(
+    /\bPO\s*-?\s*(\d{3,5}(?:\s*[A-Z]{1,4})?(?:\s*-\s*[A-Z0-9]+){0,3})\b/i
+  );
+  if(!match) return '';
+  const capturado = match[1].replace(/\s*-\s*/g,'-').replace(/\s+/g,'').toUpperCase();
+  const numero = (capturado.match(/^\d{3,5}/) || [])[0];
+  // Si el texto solo trae "PO 1727", se completa con el código comercial
+  // único de la dimensión. Si ya trae "1202ER-24", se conserva tal cual.
+  return (/^\d{3,5}$/.test(capturado) && mapaPorNumero[numero])
+    ? mapaPorNumero[numero]
+    : capturado;
 }
 
 function textoCuenta(valor){
@@ -980,12 +992,12 @@ function renderIndices(){
   // La rotación de cartera se calcula solo con facturas abiertas de Odoo.
   // Préstamos, anticipos y demás proyecciones manuales no son facturas y no
   // deben caer artificialmente en el rango de 0–30 días.
-  const abiertas = movimientos.filter(m =>
+  const abiertas = movimientosCartera.filter(m =>
     m.estado === 'proyectado' && m.origen === 'account.move' && Math.abs(m.monto) > 0.005
   );
   const cxcPendiente = abiertas.filter(esCxc).reduce((s,m)=>s+Math.abs(m.monto),0);
   const cxpPendiente = abiertas.filter(esCxp).reduce((s,m)=>s+Math.abs(m.monto),0);
-  const ejecutadasConFecha = movimientos.filter(m =>
+  const ejecutadasConFecha = movimientosCartera.filter(m =>
     m.estado === 'ejecutado' && m.fechaFactura && m.fecha
   );
   const diasCobro = ejecutadasConFecha.filter(esCxc).map(m=>diasEntre(m.fechaFactura,m.fecha));
@@ -1046,7 +1058,7 @@ function abrirDetalleAntiguedad(tipo, min, max, sinFecha=false){
     ? m => /Cuentas por Cobrar/i.test(m.cuenta || '')
     : m => /Cuentas por Pagar/i.test(m.cuenta || '');
   const rangoLabel = sinFecha ? 'Sin fecha original' : max === Infinity ? 'Más de 90 días' : `${min}–${max} días`;
-  const detalle = movimientos.filter(m=>{
+  const detalle = movimientosCartera.filter(m=>{
     if(m.estado !== 'proyectado' || m.origen !== 'account.move' || Math.abs(m.monto) <= 0.005 || !esTipo(m)) return false;
     if(sinFecha) return !m.fechaFactura;
     if(!m.fechaFactura) return false;
