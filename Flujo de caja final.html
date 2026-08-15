@@ -848,7 +848,10 @@ function render(){
   const fHasta = inpHasta.value ? new Date(inpHasta.value + 'T23:59:59') : null;
 
   const sorted = [...movimientos].sort((a,b)=> a.fecha - b.fecha);
-  const saldoActual = Object.values(bancosBase).reduce((a,b)=>a+b, 0);
+  // El saldo bancario real solo incluye cuentas bancarias válidas.
+  // Se excluyen tarjetas, cajas, efectivo, anticipos y saldos auxiliares.
+  const saldoActual = bancosDePagoValidos()
+    .reduce((total, banco) => total + (Number(bancosBase[banco]) || 0), 0);
   let running = saldoActual;
   const rowsEl = document.getElementById('rows');
   rowsEl.innerHTML = '';
