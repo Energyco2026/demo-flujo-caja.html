@@ -239,6 +239,15 @@
     color:var(--ink); background:#fff; border-radius:6px; padding:6px 12px; cursor:pointer;
   }
   .btn-refrescar:hover{border-color:var(--focus); color:var(--focus);}
+  .budget-summary{display:grid; grid-template-columns:repeat(4,minmax(180px,1fr)); gap:12px; margin-bottom:18px;}
+  @media(max-width:900px){.budget-summary{grid-template-columns:repeat(2,1fr);}}
+  .budget-form{display:grid; grid-template-columns:1.2fr 1.2fr .7fr auto; gap:9px; align-items:end; padding:16px 20px;}
+  .budget-form label{font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em;}
+  .budget-form select,.budget-form input{display:block; width:100%; margin-top:4px; border:1px solid var(--line); border-radius:6px; padding:8px; background:#fff;}
+  .budget-form button{border:0; border-radius:6px; padding:9px 14px; background:var(--navy); color:#fff; font-weight:600; cursor:pointer;}
+  .budget-over{color:var(--bad); font-weight:700;}
+  .budget-ok{color:var(--good); font-weight:700;}
+  @media(max-width:760px){.budget-form{grid-template-columns:1fr;}}
 
   footer.note{
     max-width:100%; margin:0; padding:0 32px 40px; font-size:12.5px; color:var(--muted); line-height:1.6;
@@ -278,6 +287,7 @@
 <div class="view-tabs">
   <button type="button" class="view-tab active" data-view="flujo">Flujo de caja</button>
   <button type="button" class="view-tab" data-view="indices">Rotación CxC / CxP</button>
+  <button type="button" class="view-tab" data-view="presupuesto">Presupuesto por Proyecto</button>
 </div>
 
 <main id="vistaFlujo">
@@ -402,6 +412,41 @@
   </div>
 </main>
 
+<main id="vistaPresupuesto" style="display:none;">
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <div class="panel-title">Presupuesto por Proyecto</div>
+        <div class="panel-note">Presupuesto inicial − OC comprometidas = disponible</div>
+      </div>
+      <label class="panel-note">Proyecto: <select id="filtroProyectoPresupuesto"></select></label>
+    </div>
+  </section>
+  <div class="budget-summary">
+    <div class="indice-card"><div class="indice-label">Presupuesto inicial</div><div class="indice-value nums" id="budgetInicial">—</div></div>
+    <div class="indice-card"><div class="indice-label">Comprometido en OC</div><div class="indice-value nums" id="budgetComprometido">—</div></div>
+    <div class="indice-card"><div class="indice-label">Disponible</div><div class="indice-value nums" id="budgetDisponible">—</div></div>
+    <div class="indice-card"><div class="indice-label">Avance comprometido</div><div class="indice-value nums" id="budgetPorcentaje">—</div></div>
+  </div>
+  <section class="panel">
+    <div class="panel-head"><div class="panel-title">Asignar una OC a un rubro</div><div class="panel-note">Solo se hace una vez; después el saldo se actualiza automáticamente.</div></div>
+    <div class="budget-form">
+      <label>Orden de compra<select id="budgetOC"></select></label>
+      <label>Rubro presupuestario<select id="budgetRubro"></select></label>
+      <label>Monto comprometido<input id="budgetMonto" type="number" min="0" step="0.01" placeholder="0.00"></label>
+      <button type="button" id="budgetAsignar">Asignar OC</button>
+      <div id="budgetMensaje" class="oc-form-msg"></div>
+    </div>
+  </section>
+  <section class="panel">
+    <div class="panel-head"><div class="panel-title">Detalle por rubro</div><div class="panel-note" id="budgetProyectoNombre"></div></div>
+    <div class="table-scroll"><table>
+      <thead><tr><th>Rubro</th><th>Presupuesto</th><th>Comprometido</th><th>Disponible</th><th>Avance</th></tr></thead>
+      <tbody id="budgetRows"></tbody>
+    </table></div>
+  </section>
+</main>
+
 <footer class="note">
   Datos en vivo desde <b>Supabase</b>, alimentados directo desde Odoo (sin Excel de por medio): la capa gris viene de pagos ya registrados (<code class="nums">account.payment</code>), y la capa naranja de facturas pendientes de pago (<code class="nums">account.move</code>). Al mover una fecha proyectada, se guarda automáticamente.
   <br><br>
@@ -442,6 +487,8 @@ function fmtMoney(n){
 
 let movimientos = [];
 let ordenesCompra = [];
+let presupuestosProyecto = [];
+let asignacionesPresupuesto = [];
 let bancosBase = {};
 let HOY = new Date();
 HOY.setHours(0,0,0,0); // medianoche de hoy, para comparar fechas sin la hora actual de por medio
@@ -513,10 +560,12 @@ async function cargarDatos(){
   errorBox.innerHTML = '';
   estado.textContent = 'Cargando datos…';
   try{
-    const [bancosData, movData, ocData] = await Promise.all([
+    const [bancosData, movData, ocData, presupuestoData, asignacionData] = await Promise.all([
       fetchTabla('bancos'),
       fetchTabla('movimientos', q => q.order('fecha', {ascending: true})),
       fetchTabla('ordenes_compra'),
+      fetchTabla('presupuesto_vs_comprometido'),
+      fetchTabla('oc_rubro_asignaciones'),
     ]);
 
     bancosBase = Object.fromEntries(bancosData.map(b => [b.nombre, Number(b.saldo_base) || 0]));
@@ -580,10 +629,18 @@ async function cargarDatos(){
       estadoOdoo: oc.estado_odoo || '',
       fechaOrden: oc.fecha_orden || null,
     }));
+    presupuestosProyecto = presupuestoData.map(p=>({
+      id: Number(p.id), proyecto: String(p.proyecto), proyectoNombre: p.proyecto_nombre || '',
+      rubro: p.rubro, presupuesto: Number(p.presupuesto) || 0,
+      comprometido: Number(p.comprometido) || 0, disponible: Number(p.disponible) || 0,
+      porcentaje: Number(p.porcentaje_comprometido) || 0,
+    }));
+    asignacionesPresupuesto = asignacionData;
 
     estado.textContent = `Conectado · ${movimientos.length} movimientos`;
     render();
     renderOC();
+    prepararPresupuestos();
   } catch(err){
     console.error(err);
     estado.textContent = 'Error de conexión — clic para reintentar';
@@ -939,6 +996,97 @@ function renderIndices(){
   document.getElementById('exposicionRows').innerHTML = top.length ? top.map(x=>
     `<tr><td>${escapeHTML(x.tercero)}</td><td><span class="badge ${x.tipo==='CxC'?'exec':'proj'}">${x.tipo}</span></td><td class="nums">${fmtMoney(x.saldo)}</td></tr>`
   ).join('') : '<tr><td colspan="3" class="oc-detail-empty">Sin saldos abiertos.</td></tr>';
+}
+
+function numeroProyecto(valor){
+  const m = String(valor || '').match(/\d{4}/);
+  return m ? m[0] : '';
+}
+
+function prepararPresupuestos(){
+  const filtro = document.getElementById('filtroProyectoPresupuesto');
+  const proyectos = [...new Set(presupuestosProyecto.map(p=>p.proyecto))]
+    .sort((a,b)=>Number(a)-Number(b));
+  const actual = filtro.value;
+  filtro.innerHTML = proyectos.map(p=>`<option value="${escapeHTML(p)}">PO ${escapeHTML(p)}</option>`).join('');
+  if(proyectos.includes(actual)) filtro.value = actual;
+  filtro.onchange = renderPresupuesto;
+  document.getElementById('budgetOC').onchange = completarMontoOC;
+  document.getElementById('budgetAsignar').onclick = asignarOCPresupuesto;
+  renderPresupuesto();
+}
+
+function completarMontoOC(){
+  const ocId = document.getElementById('budgetOC').value;
+  const oc = ordenesCompra.find(x=>String(x.id)===ocId);
+  if(!oc) return;
+  const yaAsignado = asignacionesPresupuesto
+    .filter(a=>String(a.oc_id)===ocId)
+    .reduce((s,a)=>s + Number(a.monto_comprometido || 0), 0);
+  document.getElementById('budgetMonto').value = Math.max(0, oc.total - yaAsignado).toFixed(2);
+}
+
+function renderPresupuesto(){
+  const proyecto = document.getElementById('filtroProyectoPresupuesto').value;
+  const filas = presupuestosProyecto.filter(p=>p.proyecto===proyecto);
+  const inicial = filas.reduce((s,p)=>s+p.presupuesto,0);
+  const comprometido = filas.reduce((s,p)=>s+p.comprometido,0);
+  const disponible = inicial-comprometido;
+  document.getElementById('budgetInicial').textContent = fmtMoney(inicial);
+  document.getElementById('budgetComprometido').textContent = fmtMoney(comprometido);
+  const disponibleEl = document.getElementById('budgetDisponible');
+  disponibleEl.textContent = fmtMoney(disponible);
+  disponibleEl.className = 'indice-value nums ' + (disponible < 0 ? 'budget-over' : 'budget-ok');
+  document.getElementById('budgetPorcentaje').textContent = inicial ? (comprometido*100/inicial).toFixed(1)+'%' : '—';
+  document.getElementById('budgetProyectoNombre').textContent = filas[0]?.proyectoNombre || '';
+  document.getElementById('budgetRows').innerHTML = filas.length ? filas
+    .sort((a,b)=>a.rubro.localeCompare(b.rubro,'es'))
+    .map(p=>`<tr>
+      <td>${escapeHTML(p.rubro)}</td><td class="nums">${fmtMoney(p.presupuesto)}</td>
+      <td class="nums">${fmtMoney(p.comprometido)}</td>
+      <td class="nums ${p.disponible<0?'budget-over':'budget-ok'}">${fmtMoney(p.disponible)}</td>
+      <td class="nums">${p.porcentaje.toFixed(1)}%</td>
+    </tr>`).join('') : '<tr><td colspan="5" class="oc-detail-empty">Sin presupuesto cargado.</td></tr>';
+
+  document.getElementById('budgetRubro').innerHTML = filas.map(p=>
+    `<option value="${p.id}">${escapeHTML(p.rubro)} · disponible ${fmtMoney(p.disponible)}</option>`
+  ).join('');
+  const ocs = ordenesCompra.filter(oc=>
+    numeroProyecto(oc.poNumero)===proyecto || numeroProyecto(oc.analitica)===proyecto
+  );
+  document.getElementById('budgetOC').innerHTML = ocs.length ? ocs.map(oc=>
+    `<option value="${escapeHTML(String(oc.id))}">${escapeHTML(oc.poNumero)} · ${escapeHTML(oc.proveedor || '')} · ${fmtMoney(oc.total)}</option>`
+  ).join('') : '<option value="">No hay OC vinculadas a este proyecto</option>';
+  completarMontoOC();
+}
+
+async function asignarOCPresupuesto(){
+  const ocId = document.getElementById('budgetOC').value;
+  const rubroId = Number(document.getElementById('budgetRubro').value);
+  const monto = Number(document.getElementById('budgetMonto').value);
+  const mensaje = document.getElementById('budgetMensaje');
+  if(!ocId || !rubroId || !Number.isFinite(monto) || monto <= 0){
+    mensaje.style.color = 'var(--bad)'; mensaje.textContent = 'Selecciona la OC, el rubro y un monto mayor que cero.'; return;
+  }
+  const oc = ordenesCompra.find(x=>String(x.id)===ocId);
+  const asignadoOtros = asignacionesPresupuesto
+    .filter(a=>String(a.oc_id)===ocId && Number(a.presupuesto_rubro_id)!==rubroId)
+    .reduce((s,a)=>s+Number(a.monto_comprometido||0),0);
+  if(oc && asignadoOtros + monto > oc.total + 0.01){
+    mensaje.style.color = 'var(--bad)'; mensaje.textContent = `La distribución supera el total de la OC (${fmtMoney(oc.total)}).`; return;
+  }
+  const boton = document.getElementById('budgetAsignar');
+  boton.disabled = true; mensaje.textContent = 'Guardando…';
+  const { error } = await sb.from('oc_rubro_asignaciones').upsert({
+    presupuesto_rubro_id:rubroId, oc_id:ocId, monto_comprometido:monto, actualizado_en:new Date().toISOString()
+  }, {onConflict:'presupuesto_rubro_id,oc_id'});
+  boton.disabled = false;
+  if(error){ mensaje.style.color='var(--bad)'; mensaje.textContent='No se pudo guardar: '+error.message; return; }
+  const [p,a] = await Promise.all([fetchTabla('presupuesto_vs_comprometido'),fetchTabla('oc_rubro_asignaciones')]);
+  presupuestosProyecto = p.map(x=>({id:Number(x.id),proyecto:String(x.proyecto),proyectoNombre:x.proyecto_nombre||'',rubro:x.rubro,presupuesto:Number(x.presupuesto)||0,comprometido:Number(x.comprometido)||0,disponible:Number(x.disponible)||0,porcentaje:Number(x.porcentaje_comprometido)||0}));
+  asignacionesPresupuesto = a;
+  mensaje.style.color='var(--good)'; mensaje.textContent='OC asignada. El presupuesto disponible ya fue actualizado.';
+  renderPresupuesto();
 }
 
 function fmtDateCorta(d){
@@ -1336,7 +1484,9 @@ document.querySelectorAll('.view-tab').forEach(btn=>{
     document.querySelectorAll('.view-tab').forEach(b=>b.classList.toggle('active', b===btn));
     document.getElementById('vistaFlujo').style.display = vista === 'flujo' ? '' : 'none';
     document.getElementById('vistaIndices').style.display = vista === 'indices' ? '' : 'none';
+    document.getElementById('vistaPresupuesto').style.display = vista === 'presupuesto' ? '' : 'none';
     if(vista === 'indices') renderIndices();
+    if(vista === 'presupuesto') renderPresupuesto();
   });
 });
 </script>
