@@ -183,6 +183,7 @@
   .oc-advance-form button{border:0; border-radius:6px; padding:8px 11px; background:var(--navy); color:#fff; font-weight:600; cursor:pointer; white-space:nowrap;}
   .oc-advance-form button:disabled{opacity:.55; cursor:wait;}
   .po-real{display:inline-block; padding:4px 9px; border-radius:6px; background:#EEF3FF; color:#24458D; font-family:'JetBrains Mono',monospace; font-size:13px; font-weight:700;}
+  .oc-internal{display:inline-block; margin-top:5px; padding:3px 7px; border:1px solid var(--line); border-radius:5px; color:var(--muted); background:#FAFBFC; font:600 10.5px 'JetBrains Mono',monospace;}
   .oc-form-msg{grid-column:1/-1; font-size:11px; min-height:14px;}
   @media(max-width:760px){.oc-advance-form{grid-template-columns:1fr;}}
   .oc-saldo{font-size:14px; font-weight:600;}
@@ -1107,6 +1108,8 @@ function renderOC(){
           <span class="oc-status ${cerrada?'cerrada':'abierta'}">${cerrada?'Cerrada':'Abierta'}</span>
         </div>
         <div class="oc-prov">${oc.proveedor || '—'}</div>
+        <div class="oc-internal" title="Identificador único de la orden en Odoo">N.º OC Odoo: ${escapeHTML(String(oc.id))}</div>
+        <br>
         <span class="oc-analitica">${oc.analitica}</span>
         <div class="oc-amounts nums">
           <span>Total ${fmtMoney(oc.total)}</span>
