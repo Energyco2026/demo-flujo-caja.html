@@ -303,6 +303,7 @@
           </div>
         </span>
         <span style="display:flex; align-items:center; gap:6px;">P.O.: <select id="filtroPO"></select></span>
+        <span style="display:flex; align-items:center; gap:6px;">Banco: <select id="filtroBanco"></select></span>
         <span style="display:flex; align-items:center; gap:6px;">Proveedor: <select id="filtroProveedor"></select></span>
         <span style="display:flex; align-items:center; gap:6px;">Cuenta contable: <select id="filtroCuenta"></select></span>
         <span style="display:flex; align-items:center; gap:6px;">Desde: <input type="date" id="filtroFechaDesde"></span>
@@ -311,6 +312,7 @@
           <input type="checkbox" id="filtroOcultarVencidas" checked style="cursor:pointer;">
           Ocultar vencidas
         </label>
+        <button type="button" id="btnExportarCSV" class="btn-refrescar">⬇ Exportar</button>
       </div>
     </div>
     <table>
@@ -380,6 +382,7 @@ let bancosBase = {};
 let HOY = new Date();
 HOY.setHours(0,0,0,0); // medianoche de hoy, para comparar fechas sin la hora actual de por medio
 let ocAbiertas = new Set();
+let filasVisiblesParaExportar = [];
 let chart;
 
 // ---------- Login ----------
@@ -546,6 +549,7 @@ function poblarSelect(sel, valores, onChange){
 
 function render(){
   const selPO = document.getElementById('filtroPO');
+  const selBanco = document.getElementById('filtroBanco');
   const selProv = document.getElementById('filtroProveedor');
   const selCuenta = document.getElementById('filtroCuenta');
   const inpDesde = document.getElementById('filtroFechaDesde');
@@ -555,16 +559,19 @@ function render(){
   inpHasta.onchange = render;
   chkOcultarVencidas.onchange = render;
 
-  const valPO = selPO.value, valProv = selProv.value, valCuenta = selCuenta.value;
+  const valPO = selPO.value, valBanco = selBanco.value, valProv = selProv.value, valCuenta = selCuenta.value;
   poblarFiltroMes(movimientos);
   poblarSelect(selPO, [...new Set(movimientos.map(m => m.po || 'Sin P.O.'))].sort(), render);
+  poblarSelect(selBanco, [...new Set(movimientos.map(m => m.banco).filter(Boolean))].sort(), render);
   poblarSelect(selProv, [...new Set(movimientos.map(m => m.proveedor).filter(Boolean))].sort(), render);
   poblarSelect(selCuenta, [...new Set(movimientos.map(m => m.cuenta).filter(Boolean))].sort(), render);
   if(valPO) selPO.value = valPO;
+  if(valBanco) selBanco.value = valBanco;
   if(valProv) selProv.value = valProv;
   if(valCuenta) selCuenta.value = valCuenta;
 
   const fPO = selPO.value || 'Todas';
+  const fBanco = selBanco.value || 'Todas';
   const fProv = selProv.value || 'Todas';
   const fCuenta = selCuenta.value || 'Todas';
   const fDesde = inpDesde.value ? new Date(inpDesde.value + 'T00:00:00') : null;
@@ -575,6 +582,7 @@ function render(){
   let running = saldoActual;
   const rowsEl = document.getElementById('rows');
   rowsEl.innerHTML = '';
+  filasVisiblesParaExportar = []; // se llena abajo, solo con lo que pasa todos los filtros
 
   let entradas30 = 0, salidas30 = 0;
   const chartPoints = [{x: fmtDate(HOY), y: saldoActual}];
@@ -593,11 +601,14 @@ function render(){
     const poLabel = m.po || 'Sin P.O.';
     if(!mesesSeleccionados.has(claveMes(m.fecha))) return;
     if(fPO !== 'Todas' && poLabel !== fPO) return;
+    if(fBanco !== 'Todas' && m.banco !== fBanco) return;
     if(fProv !== 'Todas' && m.proveedor !== fProv) return;
     if(fCuenta !== 'Todas' && m.cuenta !== fCuenta) return;
     if(fDesde && m.fecha < fDesde) return;
     if(fHasta && m.fecha > fHasta) return;
     if(chkOcultarVencidas.checked && esVencida) return;
+
+    filasVisiblesParaExportar.push(m);
 
     const tr = document.createElement('tr');
     tr.className = m.estado;
@@ -672,7 +683,7 @@ function render(){
   attachHandlers();
 }
 
-const EXCLUIR_DE_SALDO_BANCO = /VISA|DINERS|MASTERCARD|TARJETA|ANTICIPO/i;
+const EXCLUIR_DE_SALDO_BANCO = /VISA|DINERS|MASTERCARD|TARJETA|ANTICIPO|CAJA CHICA|CAJA GENERAL|^CASH$/i;
 
 function renderBancos(){
   const grid = document.getElementById('bancosGrid');
@@ -921,6 +932,48 @@ document.getElementById('mesLimpiar').addEventListener('click', ()=>{
   actualizarBotonMes(checks.length);
   render();
 });
+
+// ---------- Exportar a CSV lo que se está viendo en la tabla (respeta todos los filtros activos) ----------
+function csvEscape(valor){
+  const texto = valor === null || valor === undefined ? '' : String(valor);
+  if(/[",\n]/.test(texto)) return '"' + texto.replace(/"/g, '""') + '"';
+  return texto;
+}
+
+function exportarCSV(){
+  const filas = [...filasVisiblesParaExportar].sort((a,b)=>{
+    // Ordenado por banco primero (para girar banco por banco), luego por fecha
+    const bA = a.banco || '', bB = b.banco || '';
+    if(bA !== bB) return bA.localeCompare(bB);
+    return a.fecha - b.fecha;
+  });
+  const encabezado = ['Banco','Fecha','Concepto','Proveedor','P.O.','Cuenta contable','Monto','Estado'];
+  const lineas = [encabezado.join(',')];
+  filas.forEach(m=>{
+    lineas.push([
+      csvEscape(m.banco || 'Sin banco'),
+      csvEscape(fmtDate(m.fecha)),
+      csvEscape(m.concepto),
+      csvEscape(m.proveedor),
+      csvEscape(m.po || ''),
+      csvEscape(m.cuenta || ''),
+      csvEscape(m.monto.toFixed(2)),
+      csvEscape(m.estado),
+    ].join(','));
+  });
+  const csv = '\uFEFF' + lineas.join('\r\n'); // BOM para que Excel lea bien los acentos
+  const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `pagos_${fmtDate(new Date())}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById('btnExportarCSV').addEventListener('click', exportarCSV);
 </script>
 </body>
 </html>
