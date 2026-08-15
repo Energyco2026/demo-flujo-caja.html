@@ -425,6 +425,11 @@ const SUPABASE_URL = "https://wiqnfnlnsdnkxgshchjg.supabase.co";
 const SUPABASE_KEY = "sb_publishable_Rk88NYc5jpdJiTQgUKViZA_0VvpbRpE";
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const CORREOS_AUTORIZADOS = new Set([
+  'ccisneros@energycontrolsa.com',
+  'jagarciauribe@energycontrolsa.com',
+  'smaya@energycontrolsa.com'
+]);
 const FECHA_MINIMA = '2025-01-01';
 const PATRON_BANCO_TARJETA = /\b(VISA|DINERS|MASTERCARD|AMEX|AMERICAN\s+EXPRESS)\b/i;
 
@@ -446,13 +451,24 @@ let chart;
 
 // ---------- Login ----------
 async function intentarLogin(){
-  const email = document.getElementById('loginEmail').value.trim();
+  const email = document.getElementById('loginEmail').value.trim().toLowerCase();
   const password = document.getElementById('loginPassword').value;
   const errorEl = document.getElementById('loginError');
   errorEl.style.display = 'none';
-  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if(!CORREOS_AUTORIZADOS.has(email)){
+    errorEl.textContent = 'Este correo no está autorizado para entrar al dashboard.';
+    errorEl.style.display = 'block';
+    return;
+  }
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
   if(error){
     errorEl.textContent = 'No se pudo iniciar sesión: ' + error.message;
+    errorEl.style.display = 'block';
+    return;
+  }
+  if(!data.user || !CORREOS_AUTORIZADOS.has((data.user.email || '').toLowerCase())){
+    await sb.auth.signOut();
+    errorEl.textContent = 'Este usuario no está autorizado para entrar al dashboard.';
     errorEl.style.display = 'block';
     return;
   }
@@ -470,7 +486,9 @@ document.getElementById('loginPassword').addEventListener('keydown', e=>{ if(e.k
 
 // Si ya había una sesión activa (recargaste la página), entra directo
 sb.auth.getSession().then(({data})=>{
-  if(data.session) mostrarDashboard();
+  const email = (data.session?.user?.email || '').toLowerCase();
+  if(data.session && CORREOS_AUTORIZADOS.has(email)) mostrarDashboard();
+  else if(data.session) sb.auth.signOut();
 });
 
 async function fetchTabla(nombre, query=""){
