@@ -109,6 +109,25 @@
   .amt-out{color:var(--bad); font-weight:600;}
   .balance{font-weight:600;}
   .balance.neg{color:var(--bad);}
+  .aging-link{
+    border:0; background:transparent; padding:3px 0; color:inherit; cursor:pointer;
+    font:inherit; font-weight:600; text-decoration:underline; text-decoration-style:dotted;
+    text-underline-offset:4px;
+  }
+  .aging-link:hover,.aging-link:focus-visible{color:var(--navy); text-decoration-style:solid; outline:none;}
+  .detail-overlay{
+    position:fixed; inset:0; z-index:1000; background:rgba(22,35,58,.48); display:none;
+    align-items:center; justify-content:center; padding:24px;
+  }
+  .detail-overlay.open{display:flex;}
+  .detail-dialog{
+    width:min(1120px,96vw); max-height:86vh; overflow:hidden; background:#fff;
+    border-radius:12px; box-shadow:0 24px 70px rgba(18,31,51,.25); display:flex; flex-direction:column;
+  }
+  .detail-dialog-head{display:flex; justify-content:space-between; gap:20px; align-items:center; padding:16px 20px; border-bottom:1px solid var(--line);}
+  .detail-close{border:1px solid var(--line); background:#fff; border-radius:7px; padding:7px 11px; cursor:pointer; font-weight:600;}
+  .detail-scroll{overflow:auto;}
+  .detail-scroll thead th{position:sticky; top:0; z-index:2;}
 
   input[type=date]{
     font-family:'JetBrains Mono',monospace; font-size:12.5px; border:1px solid var(--line);
@@ -411,6 +430,18 @@
     Rotación operativa basada en días reales. Para la rotación contable formal se incorporarán ventas y compras a crédito y saldos promedio mensuales.
   </div>
 </main>
+
+<div class="detail-overlay" id="agingDetailOverlay" role="dialog" aria-modal="true" aria-labelledby="agingDetailTitle">
+  <div class="detail-dialog">
+    <div class="detail-dialog-head">
+      <div><div class="panel-title" id="agingDetailTitle">Detalle de antigüedad</div><div class="panel-note" id="agingDetailSummary"></div></div>
+      <button type="button" class="detail-close" id="agingDetailClose">Cerrar</button>
+    </div>
+    <div class="detail-scroll">
+      <table><thead><tr><th>Concepto</th><th>Cliente / proveedor</th><th>Banco</th><th>P.O.</th><th>Fecha factura</th><th>Fecha prevista</th><th>Días</th><th>Saldo</th></tr></thead><tbody id="agingDetailRows"></tbody></table>
+    </div>
+  </div>
+</div>
 
 <main id="vistaPresupuesto" style="display:none;">
   <section class="panel">
@@ -946,7 +977,12 @@ function diasEntre(inicio, fin){
 function renderIndices(){
   const esCxc = m => /Cuentas por Cobrar/i.test(m.cuenta || '');
   const esCxp = m => /Cuentas por Pagar/i.test(m.cuenta || '');
-  const abiertas = movimientos.filter(m => m.estado === 'proyectado');
+  // La rotación de cartera se calcula solo con facturas abiertas de Odoo.
+  // Préstamos, anticipos y demás proyecciones manuales no son facturas y no
+  // deben caer artificialmente en el rango de 0–30 días.
+  const abiertas = movimientos.filter(m =>
+    m.estado === 'proyectado' && m.origen === 'account.move' && Math.abs(m.monto) > 0.005
+  );
   const cxcPendiente = abiertas.filter(esCxc).reduce((s,m)=>s+Math.abs(m.monto),0);
   const cxpPendiente = abiertas.filter(esCxp).reduce((s,m)=>s+Math.abs(m.monto),0);
   const ejecutadasConFecha = movimientos.filter(m =>
@@ -969,18 +1005,25 @@ function renderIndices(){
     {label:'0–30 días', min:0, max:30},
     {label:'31–60 días', min:31, max:60},
     {label:'61–90 días', min:61, max:90},
-    {label:'Más de 90 días', min:91, max:Infinity}
+    {label:'Más de 90 días', min:91, max:Infinity},
+    {label:'Sin fecha original', sinFecha:true}
   ];
   const agingRows = document.getElementById('agingRows');
   agingRows.innerHTML = rangos.map(r=>{
     const enRango = m => {
-      const edad = m.fechaFactura ? diasEntre(m.fechaFactura, HOY) : 0;
+      if(r.sinFecha) return !m.fechaFactura;
+      if(!m.fechaFactura) return false;
+      const edad = diasEntre(m.fechaFactura, HOY);
       return edad >= r.min && edad <= r.max;
     };
     const cxc = abiertas.filter(m=>esCxc(m)&&enRango(m)).reduce((s,m)=>s+Math.abs(m.monto),0);
     const cxp = abiertas.filter(m=>esCxp(m)&&enRango(m)).reduce((s,m)=>s+Math.abs(m.monto),0);
-    return `<tr><td>${r.label}</td><td class="nums amt-in">${fmtMoney(cxc)}</td><td class="nums amt-out">${fmtMoney(cxp)}</td></tr>`;
+    const attrs = r.sinFecha ? 'data-sin-fecha="1"' : `data-min="${r.min}" data-max="${r.max}"`;
+    return `<tr><td>${r.label}</td><td class="nums amt-in"><button type="button" class="aging-link" data-tipo="CxC" ${attrs}>${fmtMoney(cxc)}</button></td><td class="nums amt-out"><button type="button" class="aging-link" data-tipo="CxP" ${attrs}>${fmtMoney(cxp)}</button></td></tr>`;
   }).join('');
+  agingRows.querySelectorAll('.aging-link').forEach(btn=>btn.addEventListener('click',()=>{
+    abrirDetalleAntiguedad(btn.dataset.tipo, Number(btn.dataset.min), Number(btn.dataset.max), btn.dataset.sinFecha === '1');
+  }));
 
   const exposicion = new Map();
   abiertas.forEach(m=>{
@@ -997,6 +1040,46 @@ function renderIndices(){
     `<tr><td>${escapeHTML(x.tercero)}</td><td><span class="badge ${x.tipo==='CxC'?'exec':'proj'}">${x.tipo}</span></td><td class="nums">${fmtMoney(x.saldo)}</td></tr>`
   ).join('') : '<tr><td colspan="3" class="oc-detail-empty">Sin saldos abiertos.</td></tr>';
 }
+
+function abrirDetalleAntiguedad(tipo, min, max, sinFecha=false){
+  const esTipo = tipo === 'CxC'
+    ? m => /Cuentas por Cobrar/i.test(m.cuenta || '')
+    : m => /Cuentas por Pagar/i.test(m.cuenta || '');
+  const rangoLabel = sinFecha ? 'Sin fecha original' : max === Infinity ? 'Más de 90 días' : `${min}–${max} días`;
+  const detalle = movimientos.filter(m=>{
+    if(m.estado !== 'proyectado' || m.origen !== 'account.move' || Math.abs(m.monto) <= 0.005 || !esTipo(m)) return false;
+    if(sinFecha) return !m.fechaFactura;
+    if(!m.fechaFactura) return false;
+    const edad = diasEntre(m.fechaFactura, HOY);
+    return edad >= min && edad <= max;
+  }).sort((a,b)=>{
+    const fa = a.fechaFactura ? a.fechaFactura.getTime() : 0;
+    const fb = b.fechaFactura ? b.fechaFactura.getTime() : 0;
+    return fa-fb || Math.abs(b.monto)-Math.abs(a.monto);
+  });
+  const total = detalle.reduce((s,m)=>s+Math.abs(m.monto),0);
+  document.getElementById('agingDetailTitle').textContent = `Detalle ${tipo} · ${rangoLabel}`;
+  document.getElementById('agingDetailSummary').textContent = `${detalle.length} movimiento${detalle.length===1?'':'s'} · Total ${fmtMoney(total)}`;
+  document.getElementById('agingDetailRows').innerHTML = detalle.length ? detalle.map(m=>{
+    const edad = m.fechaFactura ? diasEntre(m.fechaFactura, HOY) : null;
+    return `<tr>
+      <td>${escapeHTML(m.concepto || '—')}</td>
+      <td>${escapeHTML(m.proveedor || '—')}</td>
+      <td>${escapeHTML(m.banco || 'Sin banco')}</td>
+      <td>${escapeHTML(m.po || '—')}</td>
+      <td class="nums">${m.fechaFactura ? fmtDate(m.fechaFactura) : 'Sin fecha'}</td>
+      <td class="nums">${m.fecha ? fmtDate(m.fecha) : '—'}</td>
+      <td class="nums">${edad == null ? '—' : edad}</td>
+      <td class="nums ${tipo==='CxC'?'amt-in':'amt-out'}">${fmtMoney(Math.abs(m.monto))}</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="8" class="oc-detail-empty">No existen movimientos en este rango.</td></tr>';
+  document.getElementById('agingDetailOverlay').classList.add('open');
+}
+
+function cerrarDetalleAntiguedad(){ document.getElementById('agingDetailOverlay').classList.remove('open'); }
+document.getElementById('agingDetailClose').addEventListener('click', cerrarDetalleAntiguedad);
+document.getElementById('agingDetailOverlay').addEventListener('click', e=>{ if(e.target.id==='agingDetailOverlay') cerrarDetalleAntiguedad(); });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') cerrarDetalleAntiguedad(); });
 
 function numeroProyecto(valor){
   const m = String(valor || '').match(/\d{4}/);
