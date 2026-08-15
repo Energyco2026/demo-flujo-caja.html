@@ -382,6 +382,7 @@ const SUPABASE_KEY = "sb_publishable_Rk88NYc5jpdJiTQgUKViZA_0VvpbRpE";
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const FECHA_MINIMA = '2025-01-01';
+const PATRON_BANCO_TARJETA = /\b(VISA|DINERS|MASTERCARD|AMEX|AMERICAN\s+EXPRESS)\b/i;
 
 function addDays(date, n){ const d = new Date(date); d.setDate(d.getDate()+n); return d; }
 function fmtDate(d){ return d.toISOString().slice(0,10); }
@@ -463,7 +464,12 @@ async function cargarDatos(){
     );
 
     movimientos = movData
-      .filter(m => !m.oculto && m.fecha && m.fecha >= FECHA_MINIMA)
+      .filter(m =>
+        !m.oculto &&
+        m.fecha &&
+        m.fecha >= FECHA_MINIMA &&
+        !(m.origen === 'account.payment' && PATRON_BANCO_TARJETA.test(m.banco_manual || m.banco || ''))
+      )
       .map(m => ({
         id: m.id,
         concepto: m.concepto,
