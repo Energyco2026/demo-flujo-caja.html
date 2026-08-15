@@ -950,7 +950,7 @@ function renderOC(){
     card.innerHTML = `
       <div>
         <div class="oc-top">
-          <span class="oc-name">${oc.poNumero ? `<span class="po-real" title="Número P.O. comercial">P.O. ${escapeHTML(oc.poNumero)}</span>` : '<span style="color:var(--bad)">Sin P.O. comercial</span>'}</span>
+          <span class="oc-name">${oc.poNumero ? `<span class="po-real" title="${oc.poNumero==='STOCK'?'Compra para stock':'Número P.O. comercial'}">${oc.poNumero==='STOCK'?'STOCK':'P.O. '+escapeHTML(oc.poNumero)}</span>` : '<span style="color:var(--bad)">Sin P.O. comercial</span>'}</span>
           <span class="oc-status ${cerrada?'cerrada':'abierta'}">${cerrada?'Cerrada':'Abierta'}</span>
         </div>
         <div class="oc-prov">${oc.proveedor || '—'}</div>
