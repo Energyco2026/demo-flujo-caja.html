@@ -1023,7 +1023,28 @@ function renderOC(){
   const filtroPOSel = document.getElementById('filtroOCPO');
   const valorPrevio = filtroSel.value;
   const poPrevia = filtroPOSel.value;
-  const numerosPO = [...new Set(ordenesCompra.map(o=>o.poNumero).filter(Boolean))].sort();
+
+  // Cada pago se vincula por la llave técnica exacta de la OC. No se agrupa
+  // por po_numero porque varias órdenes pueden compartir un mismo código o STOCK.
+  const resumenPorOC = new Map();
+  ordenesCompra.forEach(oc=>{
+    const pagos = movimientos.filter(m =>
+      m.estado === 'ejecutado' &&
+      m.poInterno != null &&
+      String(m.poInterno) === String(oc.id)
+    );
+    const pagado = pagos.reduce((s,p)=>s+Math.abs(p.monto),0);
+    resumenPorOC.set(String(oc.id), {
+      pagos,
+      pagado,
+      saldo: Math.max(oc.total - pagado, 0)
+    });
+  });
+  const ordenesAbiertas = ordenesCompra.filter(oc =>
+    resumenPorOC.get(String(oc.id)).saldo > 0.01
+  );
+
+  const numerosPO = [...new Set(ordenesAbiertas.map(o=>o.poNumero).filter(Boolean))].sort();
   poblarSelect(filtroPOSel, numerosPO, renderOC);
   if(poPrevia && (poPrevia === 'Todas' || numerosPO.includes(poPrevia))){
     filtroPOSel.value = poPrevia;
@@ -1033,7 +1054,7 @@ function renderOC(){
   // El proveedor depende de la P.O. seleccionada: si esa P.O. tiene dos
   // proveedores, el desplegable muestra únicamente esos dos.
   const proveedores = [...new Set(
-    ordenesCompra
+    ordenesAbiertas
       .filter(o => filtroPOActivo === 'Todas' || o.poNumero === filtroPOActivo)
       .map(o => o.proveedor)
       .filter(Boolean)
@@ -1047,7 +1068,7 @@ function renderOC(){
   const grid = document.getElementById('ocGrid');
   grid.innerHTML = '';
 
-  const lista = ordenesCompra.filter(oc =>
+  const lista = ordenesAbiertas.filter(oc =>
     (filtroActivo === 'Todas' || oc.proveedor === filtroActivo) &&
     (filtroPOActivo === 'Todas' || oc.poNumero === filtroPOActivo)
   );
@@ -1058,9 +1079,10 @@ function renderOC(){
   }
 
   lista.forEach(oc=>{
-    const pagosOC = movimientos.filter(m => oc.poNumero && m.po === oc.poNumero && m.estado === 'ejecutado');
-    const pagado = pagosOC.reduce((s,p)=>s+Math.abs(p.monto),0);
-    const saldo = Math.max(oc.total - pagado, 0);
+    const resumen = resumenPorOC.get(String(oc.id));
+    const pagosOC = resumen.pagos;
+    const pagado = resumen.pagado;
+    const saldo = resumen.saldo;
     const pct = oc.total ? Math.min((pagado/oc.total)*100, 100) : 0;
     const cerrada = saldo <= 0.01;
     const isOpen = ocAbiertas.has(oc.id);
