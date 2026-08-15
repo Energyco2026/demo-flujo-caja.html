@@ -1051,10 +1051,14 @@ function renderIndices(){
     const clave = `${tipo}|${m.proveedor || 'Sin tercero'}`;
     exposicion.set(clave, (exposicion.get(clave)||0) + Math.abs(m.monto));
   });
-  const top = [...exposicion.entries()].map(([clave,saldo])=>{
+  const exposiciones = [...exposicion.entries()].map(([clave,saldo])=>{
     const [tipo, tercero] = clave.split('|');
     return {tipo, tercero, saldo};
-  }).sort((a,b)=>a.tipo.localeCompare(b.tipo) || b.saldo-a.saldo);
+  });
+  const top = [
+    ...exposiciones.filter(x=>x.tipo==='CxC').sort((a,b)=>b.saldo-a.saldo).slice(0,5),
+    ...exposiciones.filter(x=>x.tipo==='CxP').sort((a,b)=>b.saldo-a.saldo).slice(0,5)
+  ];
   document.getElementById('exposicionRows').innerHTML = top.length ? top.map(x=>
     `<tr><td>${escapeHTML(x.tercero)}</td><td><span class="badge ${x.tipo==='CxC'?'exec':'proj'}">${x.tipo}</span></td><td class="nums">${fmtMoney(x.saldo)}</td></tr>`
   ).join('') : '<tr><td colspan="3" class="oc-detail-empty">Sin saldos abiertos.</td></tr>';
