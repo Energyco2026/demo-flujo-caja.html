@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Flujo de Caja — Demo</title>
+<title>Flujo de Caja — ENERGYCONTROL</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
@@ -416,6 +416,12 @@
     <div class="indice-card"><div class="indice-label">Rotación operativa CxC</div><div class="indice-value nums" id="idxRotCxc">—</div><div class="indice-help">365 ÷ días promedio de cobro.</div></div>
     <div class="indice-card"><div class="indice-label">Rotación operativa CxP</div><div class="indice-value nums" id="idxRotCxp">—</div><div class="indice-help">365 ÷ días promedio de pago.</div></div>
     <div class="indice-card"><div class="indice-label">Relación CxP / CxC</div><div class="indice-value nums" id="idxRelacion">—</div><div class="indice-help">Apalancamiento de proveedores frente a cartera por cobrar.</div></div>
+    <div class="indice-card"><div class="indice-label" id="idxVentasLabel">Ventas netas del año</div><div class="indice-value nums good" id="idxVentasNetas">—</div><div class="indice-help">Facturas de clientes menos notas de crédito.</div></div>
+    <div class="indice-card"><div class="indice-label" id="idxComprasLabel">Compras netas del año</div><div class="indice-value nums bad" id="idxComprasNetas">—</div><div class="indice-help">Facturas de proveedores menos notas de crédito.</div></div>
+    <div class="indice-card"><div class="indice-label">Rotación contable CxC (YTD)</div><div class="indice-value nums" id="idxRotContableCxc">—</div><div class="indice-help">Ventas netas acumuladas ÷ cartera actual, sin reconocimiento de ingresos.</div></div>
+    <div class="indice-card"><div class="indice-label">Días contables CxC</div><div class="indice-value nums" id="idxDiasContableCxc">—</div><div class="indice-help">Días transcurridos del período ÷ rotación contable.</div></div>
+    <div class="indice-card"><div class="indice-label">Rotación contable CxP (YTD)</div><div class="indice-value nums" id="idxRotContableCxp">—</div><div class="indice-help">Compras netas acumuladas ÷ obligaciones actuales.</div></div>
+    <div class="indice-card"><div class="indice-label">Días contables CxP</div><div class="indice-value nums" id="idxDiasContableCxp">—</div><div class="indice-help">Días transcurridos del período ÷ rotación contable.</div></div>
   </div>
 
   <div class="analysis-grid">
@@ -428,8 +434,18 @@
       <div class="exposure-scroll"><table class="mini-table"><thead><tr><th>Cliente / proveedor</th><th>Tipo</th><th>Saldo</th></tr></thead><tbody id="exposicionRows"></tbody></table></div>
     </section>
   </div>
+  <section class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Facturación neta para rotación</div>
+      <div class="panel-note">Documentos publicados en Odoo; las notas de crédito se restan</div>
+    </div>
+    <div class="table-scroll"><table class="mini-table">
+      <thead><tr><th>Año</th><th>Ventas facturadas</th><th>NC clientes</th><th>Ventas netas</th><th>Compras facturadas</th><th>NC proveedores</th><th>Compras netas</th></tr></thead>
+      <tbody id="facturacionRotacionRows"></tbody>
+    </table></div>
+  </section>
   <div class="estado-error" style="background:#FFF8E8; color:#6B5420;">
-    Rotación operativa basada en días reales. Para la rotación contable formal se incorporarán ventas y compras a crédito y saldos promedio mensuales.
+    La rotación operativa usa los días reales de cobro y pago. La rotación contable YTD usa la facturación acumulada y el saldo abierto actual; se presenta separada porque no utiliza todavía un saldo promedio mensual.
   </div>
 </main>
 
@@ -508,7 +524,9 @@ const CORREOS_AUTORIZADOS = new Set([
   'jagarciauribe@energycontrolsa.com',
   'smaya@energycontrolsa.com'
 ]);
-const FECHA_MINIMA = '2025-01-01';
+// El flujo operativo inicia en 2026. Los registros de 2025 no se muestran
+// porque ese año no cuenta con una carga completa de Odoo.
+const FECHA_MINIMA = '2026-01-01';
 const PATRON_BANCO_TARJETA = /\b(VISA|DINERS|MASTERCARD|AMEX|AMERICAN\s+EXPRESS)\b/i;
 
 function addDays(date, n){ const d = new Date(date); d.setDate(d.getDate()+n); return d; }
@@ -520,6 +538,7 @@ function fmtMoney(n){
 
 let movimientos = [];
 let movimientosCartera = [];
+let facturacionRotacion = [];
 let ordenesCompra = [];
 let presupuestosProyecto = [];
 let asignacionesPresupuesto = [];
@@ -597,12 +616,13 @@ async function cargarDatos(){
   errorBox.innerHTML = '';
   estado.textContent = 'Cargando datos…';
   try{
-    const [bancosData, movData, ocData, presupuestoData, asignacionData] = await Promise.all([
+    const [bancosData, movData, ocData, presupuestoData, asignacionData, facturacionData] = await Promise.all([
       fetchTabla('bancos'),
       fetchTabla('movimientos', q => q.order('fecha', {ascending: true})),
       fetchTabla('ordenes_compra'),
       fetchTabla('presupuesto_vs_comprometido'),
       fetchTabla('oc_rubro_asignaciones'),
+      fetchTabla('facturacion_rotacion', q => q.order('fecha', {ascending: true})),
     ]);
 
     bancosBase = Object.fromEntries(bancosData.map(b => [b.nombre, Number(b.saldo_base) || 0]));
@@ -654,9 +674,12 @@ async function cargarDatos(){
         pagadoManual: m.pagado_manual_fecha || null,
         estado: m.estado,
         origen: m.origen,
-      }));
-    // La pestaña principal conserva su alcance desde 2025. La pestaña de
-    // cartera usa el histórico completo cargado desde Odoo.
+      }))
+      // Las facturas con saldo cero no representan una cuenta pendiente y
+      // se excluyen tanto del flujo como de los indicadores de cartera.
+      .filter(m => Math.abs(m.monto) > 0.005);
+    // La pestaña principal muestra solamente movimientos desde 2026. La
+    // pestaña de cartera mantiene el histórico disponible, sin saldos cero.
     movimientos = movimientosCartera.filter(m => fmtDate(m.fecha) >= FECHA_MINIMA);
 
     ordenesCompra = ocData.map(oc => ({
@@ -675,6 +698,17 @@ async function cargarDatos(){
       porcentaje: Number(p.porcentaje_comprometido) || 0,
     }));
     asignacionesPresupuesto = asignacionData;
+    facturacionRotacion = facturacionData.map(f => ({
+      odooId: Number(f.odoo_id),
+      fecha: f.fecha,
+      anio: Number(f.anio),
+      mes: Number(f.mes),
+      categoria: f.categoria,
+      tipo: f.tipo,
+      moveType: f.move_type,
+      total: Number(f.total) || 0,
+      estado: f.estado,
+    }));
 
     estado.textContent = `Conectado · ${movimientos.length} movimientos`;
     render();
@@ -1016,6 +1050,9 @@ function renderIndices(){
   );
   const cxcPendiente = abiertas.filter(esCxc).reduce((s,m)=>s+Math.abs(m.monto),0);
   const cxpPendiente = abiertas.filter(esCxp).reduce((s,m)=>s+Math.abs(m.monto),0);
+  const cxcContable = abiertas
+    .filter(m=>esCxc(m) && !esReconocimientoIngresos(m))
+    .reduce((s,m)=>s+Math.abs(m.monto),0);
   const ejecutadasConFecha = movimientosCartera.filter(m =>
     m.estado === 'ejecutado' && m.fechaFactura && m.fecha
   );
@@ -1031,6 +1068,29 @@ function renderIndices(){
   document.getElementById('idxRotCxc').textContent = promCobro > 0 ? (365/promCobro).toFixed(2) + ' veces' : '—';
   document.getElementById('idxRotCxp').textContent = promPago > 0 ? (365/promPago).toFixed(2) + ' veces' : '—';
   document.getElementById('idxRelacion').textContent = cxcPendiente > 0 ? (cxpPendiente/cxcPendiente).toFixed(2) + '×' : '—';
+
+  const publicadas = facturacionRotacion.filter(f=>f.estado === 'posted');
+  const aniosDisponibles = [...new Set(publicadas.map(f=>f.anio))].sort((a,b)=>b-a);
+  const anioActual = aniosDisponibles.includes(HOY.getFullYear()) ? HOY.getFullYear() : aniosDisponibles[0];
+  const facturacionAnio = publicadas.filter(f=>f.anio === anioActual);
+  const ventasNetas = facturacionAnio.filter(f=>f.categoria === 'cxc').reduce((s,f)=>s+f.total,0);
+  const comprasNetas = facturacionAnio.filter(f=>f.categoria === 'cxp').reduce((s,f)=>s+f.total,0);
+  const fechasAnio = facturacionAnio.map(f=>new Date(f.fecha + 'T00:00:00')).filter(d=>!Number.isNaN(d.getTime()));
+  const ultimaFecha = fechasAnio.length ? new Date(Math.max(...fechasAnio.map(d=>d.getTime()))) : HOY;
+  const inicioAnio = anioActual ? new Date(`${anioActual}-01-01T00:00:00`) : null;
+  const diasPeriodo = inicioAnio ? Math.max(1, diasEntre(inicioAnio, ultimaFecha) + 1) : null;
+  const rotContableCxc = cxcContable > 0 ? ventasNetas / cxcContable : null;
+  const rotContableCxp = cxpPendiente > 0 ? comprasNetas / cxpPendiente : null;
+
+  document.getElementById('idxVentasLabel').textContent = `Ventas netas ${anioActual || ''}`.trim();
+  document.getElementById('idxComprasLabel').textContent = `Compras netas ${anioActual || ''}`.trim();
+  document.getElementById('idxVentasNetas').textContent = anioActual ? fmtMoney(ventasNetas) : '—';
+  document.getElementById('idxComprasNetas').textContent = anioActual ? fmtMoney(comprasNetas) : '—';
+  document.getElementById('idxRotContableCxc').textContent = rotContableCxc > 0 ? rotContableCxc.toFixed(2) + ' veces' : '—';
+  document.getElementById('idxDiasContableCxc').textContent = rotContableCxc > 0 && diasPeriodo ? (diasPeriodo/rotContableCxc).toFixed(1) + ' días' : '—';
+  document.getElementById('idxRotContableCxp').textContent = rotContableCxp > 0 ? rotContableCxp.toFixed(2) + ' veces' : '—';
+  document.getElementById('idxDiasContableCxp').textContent = rotContableCxp > 0 && diasPeriodo ? (diasPeriodo/rotContableCxp).toFixed(1) + ' días' : '—';
+  renderFacturacionRotacion(publicadas);
 
   const rangos = [
     {label:'0–30 días', min:0, max:30},
@@ -1075,6 +1135,29 @@ function renderIndices(){
   document.getElementById('exposicionRows').innerHTML = top.length ? top.map(x=>
     `<tr><td>${escapeHTML(x.tercero)}</td><td><span class="badge ${x.tipo==='CxC'?'exec':'proj'}">${x.tipo}</span></td><td class="nums">${fmtMoney(x.saldo)}</td></tr>`
   ).join('') : '<tr><td colspan="3" class="oc-detail-empty">Sin saldos abiertos.</td></tr>';
+}
+
+function renderFacturacionRotacion(publicadas){
+  const anios = [...new Set(publicadas.map(f=>f.anio))].sort((a,b)=>b-a);
+  const filas = anios.map(anio=>{
+    const docs = publicadas.filter(f=>f.anio===anio);
+    const ventas = docs.filter(f=>f.moveType==='out_invoice').reduce((s,f)=>s+f.total,0);
+    const ncClientes = Math.abs(docs.filter(f=>f.moveType==='out_refund').reduce((s,f)=>s+f.total,0));
+    const compras = docs.filter(f=>f.moveType==='in_invoice').reduce((s,f)=>s+f.total,0);
+    const ncProveedores = Math.abs(docs.filter(f=>f.moveType==='in_refund').reduce((s,f)=>s+f.total,0));
+    return `<tr>
+      <td class="nums">${anio}</td>
+      <td class="nums">${fmtMoney(ventas)}</td>
+      <td class="nums amt-out">-${fmtMoney(ncClientes)}</td>
+      <td class="nums amt-in">${fmtMoney(ventas-ncClientes)}</td>
+      <td class="nums">${fmtMoney(compras)}</td>
+      <td class="nums amt-out">-${fmtMoney(ncProveedores)}</td>
+      <td class="nums amt-out">${fmtMoney(compras-ncProveedores)}</td>
+    </tr>`;
+  });
+  document.getElementById('facturacionRotacionRows').innerHTML = filas.length
+    ? filas.join('')
+    : '<tr><td colspan="7" class="oc-detail-empty">Sin facturación cargada.</td></tr>';
 }
 
 function abrirDetalleAntiguedad(tipo, min, max, reconocimiento=false){
