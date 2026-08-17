@@ -369,10 +369,13 @@
         <span style="display:flex; align-items:center; gap:6px;">Cuenta contable: <select id="filtroCuenta"></select></span>
         <span style="display:flex; align-items:center; gap:6px;">Desde: <input type="date" id="filtroFechaDesde"></span>
         <span style="display:flex; align-items:center; gap:6px;">Hasta: <input type="date" id="filtroFechaHasta"></span>
-        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12.5px;">
-          <input type="checkbox" id="filtroOcultarVencidas" style="cursor:pointer;">
-          Ocultar obligaciones vencidas
-        </label>
+        <span style="display:flex; align-items:center; gap:6px;">Vencimiento:
+          <select id="filtroVencimiento" style="font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px; background:#fff; color:var(--ink); cursor:pointer;">
+            <option value="todas">Todas</option>
+            <option value="solo_vencidas">Solo vencidas</option>
+            <option value="sin_vencidas">Sin vencidas</option>
+          </select>
+        </span>
         <button type="button" id="btnExportarCSV" class="btn-refrescar">⬇ Descargar Excel</button>
       </div>
     </div>
@@ -578,9 +581,8 @@ async function intentarLogin(){
 function mostrarDashboard(){
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('dashboard').style.display = 'block';
-  // Las CxP vencidas siguen siendo obligaciones pendientes y deben verse por
-  // defecto en el flujo. El usuario puede ocultarlas voluntariamente.
-  document.getElementById('filtroOcultarVencidas').checked = false;
+  // Por defecto se muestran todas; el usuario puede aislar las vencidas o excluirlas.
+  document.getElementById('filtroVencimiento').value = 'todas';
   cargarDatos();
 }
 
@@ -858,10 +860,10 @@ function render(){
   const selCuenta = document.getElementById('filtroCuenta');
   const inpDesde = document.getElementById('filtroFechaDesde');
   const inpHasta = document.getElementById('filtroFechaHasta');
-  const chkOcultarVencidas = document.getElementById('filtroOcultarVencidas');
+  const selVencimiento = document.getElementById('filtroVencimiento');
   inpDesde.onchange = render;
   inpHasta.onchange = render;
-  chkOcultarVencidas.onchange = render;
+  selVencimiento.onchange = render;
 
   const valPO = selPO.value, valBanco = selBanco.value, valProv = selProv.value, valCuenta = selCuenta.value;
   poblarFiltroMes(movimientos);
@@ -913,7 +915,9 @@ function render(){
     if(fCuenta !== 'Todas' && m.cuenta !== fCuenta) return;
     if(fDesde && m.fecha < fDesde) return;
     if(fHasta && m.fecha > fHasta) return;
-    if(chkOcultarVencidas.checked && esVencida) return;
+    const filtroVencimiento = selVencimiento.value || 'todas';
+    if(filtroVencimiento === 'solo_vencidas' && !esVencida) return;
+    if(filtroVencimiento === 'sin_vencidas' && esVencida) return;
 
     filasVisiblesParaExportar.push(m);
 
