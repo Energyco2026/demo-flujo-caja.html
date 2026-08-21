@@ -365,8 +365,8 @@
         </span>
         <span style="display:flex; align-items:center; gap:6px;">P.O.: <select id="filtroPO"></select></span>
         <span style="display:flex; align-items:center; gap:6px;">Banco: <select id="filtroBanco"></select></span>
-        <span style="display:flex; align-items:center; gap:6px;">Proveedor: <select id="filtroProveedor"></select></span>
-        <span style="display:flex; align-items:center; gap:6px;">Cuenta contable: <select id="filtroCuenta"></select></span>
+        <span style="display:flex; align-items:center; gap:6px;">Proveedor: <input type="text" id="filtroProveedor" list="listaProveedores" placeholder="Todas (escribe para filtrar)" style="min-width:220px; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px;"><datalist id="listaProveedores"></datalist></span>
+        <span style="display:flex; align-items:center; gap:6px;">Cuenta contable: <input type="text" id="filtroCuenta" list="listaCuentas" placeholder="Todas (escribe para filtrar)" style="min-width:220px; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px;"><datalist id="listaCuentas"></datalist></span>
         <span style="display:flex; align-items:center; gap:6px;">Desde: <input type="date" id="filtroFechaDesde"></span>
         <span style="display:flex; align-items:center; gap:6px;">Hasta: <input type="date" id="filtroFechaHasta"></span>
         <span style="display:flex; align-items:center; gap:6px;">Vencimiento:
@@ -872,6 +872,25 @@ function poblarSelect(sel, valores, onChange){
   sel.onchange = onChange;
 }
 
+function poblarDatalist(datalistEl, valores){
+  datalistEl.innerHTML = '';
+  valores.forEach(v=>{
+    const opt = document.createElement('option');
+    opt.value = v;
+    datalistEl.appendChild(opt);
+  });
+}
+
+// Compara ignorando mayúsculas/minúsculas y tildes, por coincidencia parcial
+// (para los campos de texto Proveedor y Cuenta contable).
+function normalizarTexto(valor){
+  return String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+function coincideFiltroTexto(valor, filtro){
+  if(!filtro) return true;
+  return normalizarTexto(valor).includes(normalizarTexto(filtro));
+}
+
 function render(){
   const selPO = document.getElementById('filtroPO');
   const selBanco = document.getElementById('filtroBanco');
@@ -884,21 +903,24 @@ function render(){
   inpHasta.onchange = render;
   selVencimiento.onchange = render;
 
-  const valPO = selPO.value, valBanco = selBanco.value, valProv = selProv.value, valCuenta = selCuenta.value;
+  const valPO = selPO.value, valBanco = selBanco.value;
   poblarFiltroMes(movimientos);
   poblarSelect(selPO, [...new Set(movimientos.map(m => m.po || 'Sin P.O.'))].sort(), render);
   poblarSelect(selBanco, [...new Set(movimientos.map(m => m.banco).filter(Boolean))].sort(), render);
-  poblarSelect(selProv, [...new Set(movimientos.map(m => m.proveedor).filter(Boolean))].sort(), render);
-  poblarSelect(selCuenta, [...new Set(movimientos.map(m => m.cuenta).filter(Boolean))].sort(), render);
+  // Proveedor y Cuenta contable son campos de texto: se deja lo que la
+  // usuaria escribió tal cual (no se pisa el valor) y el datalist solo
+  // ofrece sugerencias al escribir, no obliga a elegir el texto exacto.
+  poblarDatalist(document.getElementById('listaProveedores'), [...new Set(movimientos.map(m => m.proveedor).filter(Boolean))].sort());
+  poblarDatalist(document.getElementById('listaCuentas'), [...new Set(movimientos.map(m => m.cuenta).filter(Boolean))].sort());
+  selProv.oninput = render;
+  selCuenta.oninput = render;
   if(valPO) selPO.value = valPO;
   if(valBanco) selBanco.value = valBanco;
-  if(valProv) selProv.value = valProv;
-  if(valCuenta) selCuenta.value = valCuenta;
 
   const fPO = selPO.value || 'Todas';
   const fBanco = selBanco.value || 'Todas';
-  const fProv = selProv.value || 'Todas';
-  const fCuenta = selCuenta.value || 'Todas';
+  const fProv = selProv.value.trim();
+  const fCuenta = selCuenta.value.trim();
   const fDesde = inpDesde.value ? new Date(inpDesde.value + 'T00:00:00') : null;
   const fHasta = inpHasta.value ? new Date(inpHasta.value + 'T23:59:59') : null;
 
@@ -930,8 +952,8 @@ function render(){
     if(!mesesSeleccionados.has(claveMes(m.fecha))) return;
     if(fPO !== 'Todas' && poLabel !== fPO) return;
     if(fBanco !== 'Todas' && m.banco !== fBanco) return;
-    if(fProv !== 'Todas' && m.proveedor !== fProv) return;
-    if(fCuenta !== 'Todas' && m.cuenta !== fCuenta) return;
+    if(!coincideFiltroTexto(m.proveedor, fProv)) return;
+    if(!coincideFiltroTexto(m.cuenta, fCuenta)) return;
     if(fDesde && m.fecha < fDesde) return;
     if(fHasta && m.fecha > fHasta) return;
     const filtroVencimiento = selVencimiento.value || 'todas';
