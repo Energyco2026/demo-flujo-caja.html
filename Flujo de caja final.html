@@ -227,6 +227,22 @@
   .oc-detail-prov{color:var(--ink); font-weight:500;}
   .oc-detail-concepto{color:var(--muted); font-size:11.5px; margin-top:1px;}
   .oc-detail-empty{font-size:12px; color:var(--muted); padding:6px 0; font-style:italic;}
+    .oc-cuotas{grid-column:1/-1; margin-top:10px; border-top:1px solid var(--line); padding-top:10px;}
+  .oc-cuotas-title{font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin-bottom:8px;}
+  .oc-cuota-row{border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-bottom:8px; display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center;}
+  .oc-cuota-row.revisar{background:#FFF7ED; border-color:#FDBA74;}
+  .oc-cuota-info{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+  .oc-cuota-pct{font-weight:700; font-size:13px; color:var(--navy); min-width:38px;}
+  .oc-cuota-monto{font-weight:600; font-size:13px;}
+  .oc-cuota-desc{flex:1; min-width:160px; border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-family:'Inter',sans-serif; font-size:12px;}
+  .oc-cuota-badge{font-size:10.5px; font-weight:700; padding:3px 8px; border-radius:20px; background:#FED7AA; color:#9A3412; text-transform:uppercase;}
+  .oc-cuota-texto{font-size:12px; color:var(--ink); font-style:italic;}
+  .oc-cuota-actions{display:flex; align-items:center; gap:7px;}
+  .oc-cuota-actions input[type="date"]{border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-family:'Inter',sans-serif; font-size:12px;}
+  .oc-cuota-actions button{border:0; border-radius:6px; padding:7px 11px; background:var(--navy); color:#fff; font-weight:600; cursor:pointer; white-space:nowrap; font-size:12px;}
+  .oc-cuota-actions button:disabled{opacity:.55; cursor:wait;}
+  .oc-cuota-msg{grid-column:1/-1; font-size:11px; min-height:14px;}
+  @media(max-width:760px){.oc-cuota-row{grid-template-columns:1fr;}}
   .oc-analitica{
     display:inline-block; font-size:10.5px; color:var(--focus); background:#EAF0FC; border-radius:5px;
     padding:2px 7px; margin-top:6px; font-weight:600;
@@ -558,6 +574,7 @@ let movimientos = [];
 let movimientosCartera = [];
 let facturacionRotacion = [];
 let ordenesCompra = [];
+let cuotasFormaPago = [];
 let presupuestosProyecto = [];
 let asignacionesPresupuesto = [];
 let bancosBase = {};
@@ -633,13 +650,14 @@ async function cargarDatos(){
   errorBox.innerHTML = '';
   estado.textContent = 'Cargando datos…';
   try{
-    const [bancosData, movData, ocData, presupuestoData, asignacionData, facturacionData] = await Promise.all([
+    const [bancosData, movData, ocData, presupuestoData, asignacionData, facturacionData, cuotasData] = await Promise.all([
       fetchTabla('bancos'),
       fetchTabla('movimientos', q => q.order('fecha', {ascending: true})),
       fetchTabla('ordenes_compra'),
       fetchTabla('presupuesto_vs_comprometido'),
       fetchTabla('oc_rubro_asignaciones'),
       fetchTabla('facturacion_rotacion', q => q.order('fecha', {ascending: true})),
+      fetchTabla('oc_forma_pago_sugerida'),
     ]);
 
     bancosBase = Object.fromEntries(bancosData.map(b => [b.nombre, Number(b.saldo_base) || 0]));
@@ -708,7 +726,17 @@ async function cargarDatos(){
       estadoOdoo: oc.estado_odoo || '',
       fechaOrden: oc.fecha_orden || null,
     }));
-    presupuestosProyecto = presupuestoData.map(p=>({
+    cuotasFormaPago = cuotasData.map(c => ({
+      id: c.id,
+      poId: c.po_id,
+      cuotaNumero: c.cuota_numero,
+      pct: c.pct,
+      monto: c.monto,
+      descripcion: c.descripcion,
+      textoOriginal: c.texto_original,
+      estado: c.estado,
+    }));
+        presupuestosProyecto = presupuestoData.map(p=>({
       id: Number(p.id), proyecto: String(p.proyecto), proyectoNombre: p.proyecto_nombre || '',
       rubro: p.rubro,
       presupuestoInicial: Number(p.presupuesto_inicial) || 0,
@@ -1048,28 +1076,174 @@ function bancosDePagoValidos(){
     .sort();
 }
 
-function renderBancos(){
-  const grid = document.getElementById('bancosGrid');
-  grid.innerHTML = '';
-  const nombresBanco = bancosDePagoValidos();
-  nombresBanco.forEach(banco=>{
-    const saldo = bancosBase[banco];
-    let proyectado30 = 0;
-    movimientos.filter(m=>m.banco===banco && m.estado==='proyectado').forEach(m=>{
-      if(m.fecha > HOY && m.fecha <= addDays(HOY,30)) proyectado30 += m.monto;
+function renderOC(){
+  const filtroSel = document.getElementById('filtroAnalitica');
+  const filtroPOSel = document.getElementById('filtroOCPO');
+  const valorPrevio = filtroSel.value;
+  const poPrevia = filtroPOSel.value;
+
+  const estadosNoOperativos = new Set(['draft','sent','cancel']);
+  const ordenesOperativas = ordenesCompra.filter(oc => !estadosNoOperativos.has(oc.estadoOdoo));
+  const resumenPorOC = new Map();
+  ordenesOperativas.forEach(oc=>{
+    const pagos = movimientos.filter(m =>
+      m.estado === 'ejecutado' &&
+      m.poInterno != null &&
+      String(m.poInterno) === String(oc.id)
+    );
+    const pagado = pagos.reduce((s,p)=>s+Math.abs(p.monto),0);
+    resumenPorOC.set(String(oc.id), {
+      pagos,
+      pagado,
+      saldo: Math.max(oc.total - pagado, 0)
     });
-    const card = document.createElement('div');
-    card.className = 'banco-card';
-    card.innerHTML = `
-      <div class="banco-name">${banco}</div>
-      <div class="banco-saldo nums ${saldo<0?'amt-out':''}">${fmtMoney(saldo)}</div>
-      <div class="banco-proj nums">${proyectado30>=0?'+':''}${fmtMoney(proyectado30)} proyectado (30d)</div>
-    `;
-    grid.appendChild(card);
   });
-  if(nombresBanco.length === 0){
-    grid.innerHTML = '<div class="oc-detail-empty">Sin bancos cargados todavía.</div>';
+  const ordenesAbiertas = ordenesOperativas.filter(oc =>
+    resumenPorOC.get(String(oc.id)).saldo > 0.01
+  );
+
+  const numerosPO = [...new Set(ordenesAbiertas.map(o=>o.poNumero).filter(Boolean))].sort();
+  poblarSelect(filtroPOSel, numerosPO, renderOC);
+  if(poPrevia && (poPrevia === 'Todas' || numerosPO.includes(poPrevia))){
+    filtroPOSel.value = poPrevia;
   }
+  const filtroPOActivo = filtroPOSel.value || 'Todas';
+
+  const proveedores = [...new Set(
+    ordenesAbiertas
+      .filter(o => filtroPOActivo === 'Todas' || o.poNumero === filtroPOActivo)
+      .map(o => o.proveedor)
+      .filter(Boolean)
+  )].sort();
+  poblarSelect(filtroSel, proveedores, renderOC);
+  if(valorPrevio && (valorPrevio === 'Todas' || proveedores.includes(valorPrevio))){
+    filtroSel.value = valorPrevio;
+  }
+  const filtroActivo = filtroSel.value || 'Todas';
+
+  const grid = document.getElementById('ocGrid');
+  grid.innerHTML = '';
+
+  const lista = ordenesAbiertas.filter(oc =>
+    (filtroActivo === 'Todas' || oc.proveedor === filtroActivo) &&
+    (filtroPOActivo === 'Todas' || oc.poNumero === filtroPOActivo)
+  );
+
+  if(lista.length === 0){
+    grid.innerHTML = '<div class="oc-detail-empty">No hay órdenes de compra para este filtro.</div>';
+    return;
+  }
+
+  lista.forEach(oc=>{
+    const resumen = resumenPorOC.get(String(oc.id));
+    const pagosOC = resumen.pagos;
+    const pagado = resumen.pagado;
+    const saldo = resumen.saldo;
+    const pct = oc.total ? Math.min((pagado/oc.total)*100, 100) : 0;
+    const cerrada = saldo <= 0.01;
+    const isOpen = ocAbiertas.has(oc.id);
+
+    const detailRows = pagosOC.length
+      ? pagosOC.map(p=>`
+          <div class="oc-detail-row">
+            <div>
+              <div class="oc-detail-prov">${p.proveedor || oc.proveedor}</div>
+              <div class="oc-detail-concepto">${p.concepto} · ${fmtDate(p.fecha)}</div>
+            </div>
+            <div class="nums">${fmtMoney(Math.abs(p.monto))}</div>
+          </div>`).join('')
+      : `<div class="oc-detail-empty">Sin pagos ejecutados todavía para esta OC.</div>`;
+
+    const cuotasOC = cuotasFormaPago.filter(c => c.poId === oc.id && c.estado !== 'confirmada');
+    const cuotasHtml = cuotasOC.length ? `
+      <div class="oc-cuotas">
+        <div class="oc-cuotas-title">Forma de pago sugerida (leída de la nota de la OC)</div>
+        ${cuotasOC.map(c => c.estado === 'revisar_manual' ? `
+          <div class="oc-cuota-row revisar">
+            <div class="oc-cuota-info">
+              <span class="oc-cuota-badge">Revisar manual</span>
+              <div class="oc-cuota-texto">${escapeHTML(c.textoOriginal || 'Sin texto reconocible.')}</div>
+            </div>
+          </div>
+        ` : `
+          <div class="oc-cuota-row" data-cuota-id="${c.id}">
+            <div class="oc-cuota-info">
+              <span class="oc-cuota-pct">${c.pct}%</span>
+              <span class="oc-cuota-monto nums">${fmtMoney(c.monto)}</span>
+              <input type="text" class="oc-cuota-desc" data-cuota-desc value="${escapeHTML(c.descripcion || '')}">
+            </div>
+            <div class="oc-cuota-actions">
+              <input type="date" data-cuota-fecha>
+              <button type="button" data-confirmar-cuota>Confirmar</button>
+            </div>
+            <div class="oc-cuota-msg" data-cuota-msg></div>
+          </div>
+        `).join('')}
+      </div>
+    ` : '';
+
+    const card = document.createElement('div');
+    card.className = 'oc-card' + (isOpen ? ' open' : '');
+    card.innerHTML = `
+      <div>
+        <div class="oc-top">
+          <span class="oc-name">${oc.poNumero ? `<span class="po-real" title="${oc.poNumero==='STOCK'?'Compra para stock':'Número P.O. comercial'}">${oc.poNumero==='STOCK'?'STOCK':'P.O. '+escapeHTML(oc.poNumero)}</span>` : '<span style="color:var(--bad)">Sin P.O. comercial</span>'}</span>
+          <span class="oc-status ${cerrada?'cerrada':'abierta'}">${cerrada?'Cerrada':'Abierta'}</span>
+        </div>
+        <div class="oc-prov">${oc.proveedor || '—'}</div>
+        <div class="oc-internal" title="Identificador único de la orden en Odoo">N.º OC Odoo: ${escapeHTML(String(oc.id))}</div>
+        <br>
+        <span class="oc-analitica">${oc.analitica}</span>
+        <div class="oc-amounts nums">
+          <span>Total ${fmtMoney(oc.total)}</span>
+          <span>Pagado ${fmtMoney(pagado)}</span>
+        </div>
+        <div class="oc-bar-track"><div class="oc-bar-fill ${cerrada?'':'mid'}" style="width:${pct}%"></div></div>
+        <div class="oc-toggle">
+          <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          ${pagosOC.length} pago${pagosOC.length===1?'':'s'} registrado${pagosOC.length===1?'':'s'} — ver desglose
+        </div>
+      </div>
+      <div>
+        <div class="oc-saldo nums">${cerrada?'Saldo pendiente: $0.00':'Saldo pendiente: '+fmtMoney(saldo)}</div>
+      </div>
+      <div class="oc-actions">
+        <div class="oc-advance-form" data-advance-form="${escapeHTML(String(oc.id))}">
+          <label>Valor del anticipo
+            <input type="number" min="0.01" step="0.01" data-advance-amount placeholder="0.00" ${oc.poNumero?'':'disabled'}>
+          </label>
+          <label>Banco de pago
+            <select data-advance-bank ${oc.poNumero?'':'disabled'}>${opcionesBancoAnticipo()}</select>
+          </label>
+          <button type="button" data-register-advance ${oc.poNumero?'':'disabled'}>Registrar anticipo</button>
+          <div class="oc-form-msg" data-advance-message>${oc.poNumero?'':'Esta OC no tiene po_numero comercial; no se registrará contra el PEN interno.'}</div>
+        </div>
+      </div>
+      <div class="oc-detail">
+        <div class="oc-detail-inner">${detailRows}</div>
+      </div>
+      ${cuotasHtml}
+    `;
+
+    card.addEventListener('click', e=>{
+      if(e.target.closest('.oc-advance-form')) return;
+      if(e.target.closest('.oc-cuotas')) return;
+      if(ocAbiertas.has(oc.id)) ocAbiertas.delete(oc.id); else ocAbiertas.add(oc.id);
+      renderOC();
+    });
+
+    grid.appendChild(card);
+    const botonAnticipo = card.querySelector('[data-register-advance]');
+    if(botonAnticipo) botonAnticipo.addEventListener('click', ()=>registrarAnticipo(oc, card));
+
+    card.querySelectorAll('[data-confirmar-cuota]').forEach(btn=>{
+      btn.addEventListener('click', e=>{
+        e.stopPropagation();
+        const fila = btn.closest('[data-cuota-id]');
+        confirmarCuotaFormaPago(Number(fila.dataset.cuotaId), oc, fila);
+      });
+    });
+  });
 }
 
 function promedio(valores){
@@ -1628,13 +1802,14 @@ function renderOC(){
           <div class="oc-form-msg" data-advance-message>${oc.poNumero?'':'Esta OC no tiene po_numero comercial; no se registrará contra el PEN interno.'}</div>
         </div>
       </div>
-      <div class="oc-detail">
+           <div class="oc-detail">
         <div class="oc-detail-inner">${detailRows}</div>
       </div>
+      ${cuotasHtml}
     `;
-
     card.addEventListener('click', e=>{
       if(e.target.closest('.oc-advance-form')) return;
+      if(e.target.closest('.oc-cuotas')) return;
       if(ocAbiertas.has(oc.id)) ocAbiertas.delete(oc.id); else ocAbiertas.add(oc.id);
       renderOC();
     });
@@ -1642,8 +1817,14 @@ function renderOC(){
     grid.appendChild(card);
     const botonAnticipo = card.querySelector('[data-register-advance]');
     if(botonAnticipo) botonAnticipo.addEventListener('click', ()=>registrarAnticipo(oc, card));
-  });
-}
+
+    card.querySelectorAll('[data-confirmar-cuota]').forEach(btn=>{
+      btn.addEventListener('click', e=>{
+        e.stopPropagation();
+        const fila = btn.closest('[data-cuota-id]');
+        confirmarCuotaFormaPago(Number(fila.dataset.cuotaId), oc, fila);
+      });
+     
 
 function escapeHTML(valor){
   return String(valor ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1710,7 +1891,65 @@ async function registrarAnticipo(oc, card){
   input.value = '';
   await cargarDatos();
 }
+async function confirmarCuotaFormaPago(cuotaId, oc, fila){
+  const descInput = fila.querySelector('[data-cuota-desc]');
+  const fechaInput = fila.querySelector('[data-cuota-fecha]');
+  const boton = fila.querySelector('[data-confirmar-cuota]');
+  const mensaje = fila.querySelector('[data-cuota-msg]');
+  const cuota = cuotasFormaPago.find(c => c.id === cuotaId);
 
+  if(!fechaInput.value){
+    mensaje.style.color = 'var(--bad)';
+    mensaje.textContent = 'Ingresa la fecha estimada de pago.';
+    return;
+  }
+  if(!cuota){
+    mensaje.style.color = 'var(--bad)';
+    mensaje.textContent = 'No se encontró la cuota. Recarga la página.';
+    return;
+  }
+
+  boton.disabled = true;
+  mensaje.style.color = 'var(--muted)';
+  mensaje.textContent = 'Confirmando…';
+
+  const descripcionFinal = descInput.value.trim() || cuota.descripcion || `Cuota ${cuota.pct}%`;
+
+  const insertMov = await sb.from('movimientos').insert({
+    concepto: `Forma de pago ${oc.poNumero ? 'P.O. '+oc.poNumero : oc.id} · ${descripcionFinal}`,
+    proveedor: oc.proveedor || null,
+    po_id: oc.id,
+    cuenta_contable: '2101 · Cuentas por Pagar',
+    monto: -Math.abs(Number(cuota.monto)),
+    fecha: fechaInput.value,
+    estado: 'proyectado',
+    origen: 'oc_forma_pago',
+    odoo_id: cuota.id,
+    oculto: false,
+  }).select().single();
+
+  if(insertMov.error){
+    mensaje.style.color = 'var(--bad)';
+    mensaje.textContent = `No se pudo guardar: ${insertMov.error.message}`;
+    boton.disabled = false;
+    return;
+  }
+
+  const updateSugerida = await sb.from('oc_forma_pago_sugerida')
+    .update({ estado: 'confirmada', fecha: fechaInput.value, descripcion: descripcionFinal })
+    .eq('id', cuotaId);
+
+  if(updateSugerida.error){
+    mensaje.style.color = 'var(--bad)';
+    mensaje.textContent = `Se guardó el movimiento, pero no se pudo marcar la cuota como confirmada: ${updateSugerida.error.message}`;
+    boton.disabled = false;
+    return;
+  }
+
+  mensaje.style.color = 'var(--good)';
+  mensaje.textContent = 'Cuota confirmada y agregada al flujo de caja.';
+  await cargarDatos();
+}
 document.getElementById('estadoConexion').addEventListener('click', cargarDatos);
 
 // ---------- Dropdown de filtro de Mes (checkboxes múltiples) ----------
