@@ -1619,7 +1619,7 @@ function renderOC(){
           </div>`).join('')
       : `<div class="oc-detail-empty">Sin pagos ejecutados todavía para esta OC.</div>`;
 
-    const cuotasOC = cuotasFormaPago.filter(c => c.poId === oc.id && c.estado !== 'confirmada');
+    const cuotasOC = cuotasFormaPago.filter(c => c.poId === oc.id && c.estado !== 'confirmada' && c.estado !== 'ya_pagada');
     const cuotasHtml = cuotasOC.length ? `
       <div class="oc-cuotas">
         <div class="oc-cuotas-title">Forma de pago sugerida (leída de la nota de la OC)</div>
