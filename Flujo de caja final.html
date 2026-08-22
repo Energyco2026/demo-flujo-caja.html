@@ -1075,12 +1075,8 @@ function bancosDePagoValidos(){
     .filter(b => !EXCLUIR_DE_SALDO_BANCO.test(b))
     .sort();
 }
+function escapeHTML(valor){
 
-function renderOC(){
-  const filtroSel = document.getElementById('filtroAnalitica');
-  const filtroPOSel = document.getElementById('filtroOCPO');
-  const valorPrevio = filtroSel.value;
-  const poPrevia = filtroPOSel.value;
 
   const estadosNoOperativos = new Set(['draft','sent','cancel']);
   const ordenesOperativas = ordenesCompra.filter(oc => !estadosNoOperativos.has(oc.estadoOdoo));
