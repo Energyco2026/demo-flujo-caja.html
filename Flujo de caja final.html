@@ -265,6 +265,8 @@
   .view-tab.active{background:var(--navy); color:#fff; border-color:var(--navy);}
   .indice-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; margin-bottom:20px;}
   .indice-card{background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px;}
+  .indice-clickable{cursor:pointer; transition:box-shadow .15s, border-color .15s;}
+  .indice-clickable:hover{box-shadow:0 2px 8px rgba(0,0,0,0.08); border-color:var(--projected);}
   .indice-label{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em;}
   .indice-value{font:600 22px 'JetBrains Mono',monospace; margin-top:7px;}
   .indice-help{font-size:11px; color:var(--muted); margin-top:5px; line-height:1.4;}
@@ -406,7 +408,7 @@
           <th>Monto</th>
           <th>Fecha factura</th>
           <th>Fecha pago</th>
-          <th>Saldo acumulado</th>
+          <th>Saldo proyectado (a esa fecha)</th>
         </tr>
       </thead>
       <tbody id="rows"></tbody>
@@ -435,8 +437,8 @@
     <div class="indice-card"><div class="indice-label">Rotación operativa CxC</div><div class="indice-value nums" id="idxRotCxc">—</div><div class="indice-help">365 ÷ días promedio de cobro.</div></div>
     <div class="indice-card"><div class="indice-label">Rotación operativa CxP</div><div class="indice-value nums" id="idxRotCxp">—</div><div class="indice-help">365 ÷ días promedio de pago.</div></div>
     <div class="indice-card"><div class="indice-label">Relación CxP / CxC</div><div class="indice-value nums" id="idxRelacion">—</div><div class="indice-help">Apalancamiento de proveedores frente a cartera por cobrar.</div></div>
-    <div class="indice-card"><div class="indice-label" id="idxVentasLabel">Ventas netas del año</div><div class="indice-value nums good" id="idxVentasNetas">—</div><div class="indice-help">Facturas de clientes menos notas de crédito.</div></div>
-    <div class="indice-card"><div class="indice-label" id="idxComprasLabel">Compras netas del año</div><div class="indice-value nums bad" id="idxComprasNetas">—</div><div class="indice-help">Facturas de proveedores menos notas de crédito.</div></div>
+    <div class="indice-card indice-clickable" id="idxVentasCard"><div class="indice-label" id="idxVentasLabel">Ventas netas del año</div><div class="indice-value nums good" id="idxVentasNetas">—</div><div class="indice-help">Facturas de clientes menos notas de crédito. Clic para ver el detalle.</div></div>
+    <div class="indice-card indice-clickable" id="idxComprasCard"><div class="indice-label" id="idxComprasLabel">Compras netas del año</div><div class="indice-value nums bad" id="idxComprasNetas">—</div><div class="indice-help">Facturas de proveedores menos notas de crédito. Clic para ver el detalle.</div></div>
     <div class="indice-card"><div class="indice-label">Rotación contable CxC (YTD)</div><div class="indice-value nums" id="idxRotContableCxc">—</div><div class="indice-help">Ventas netas acumuladas ÷ cartera actual, sin reconocimiento de ingresos.</div></div>
     <div class="indice-card"><div class="indice-label">Días contables CxC</div><div class="indice-value nums" id="idxDiasContableCxc">—</div><div class="indice-help">Días transcurridos del período ÷ rotación contable.</div></div>
     <div class="indice-card"><div class="indice-label">Rotación contable CxP (YTD)</div><div class="indice-value nums" id="idxRotContableCxp">—</div><div class="indice-help">Compras netas acumuladas ÷ obligaciones actuales.</div></div>
@@ -476,6 +478,18 @@
     </div>
     <div class="detail-scroll">
       <table><thead><tr><th>Concepto</th><th>Cliente / proveedor</th><th>Banco</th><th>P.O.</th><th>Fecha factura</th><th>Fecha prevista</th><th>Días</th><th>Saldo</th></tr></thead><tbody id="agingDetailRows"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<div class="detail-overlay" id="ventasDetailOverlay" role="dialog" aria-modal="true" aria-labelledby="ventasDetailTitle">
+  <div class="detail-dialog">
+    <div class="detail-dialog-head">
+      <div><div class="panel-title" id="ventasDetailTitle">Detalle de facturación</div><div class="panel-note" id="ventasDetailSummary"></div></div>
+      <button type="button" class="detail-close" id="ventasDetailClose">Cerrar</button>
+    </div>
+    <div class="detail-scroll">
+      <table><thead><tr><th>Fecha</th><th>Tipo de documento</th><th>Mes</th><th>Estado</th><th>Total</th></tr></thead><tbody id="ventasDetailRows"></tbody></table>
     </div>
   </div>
 </div>
@@ -573,6 +587,7 @@ function fmtMoney(n){
 let movimientos = [];
 let movimientosCartera = [];
 let facturacionRotacion = [];
+let anioActualRotacion = null;
 let ordenesCompra = [];
 let cuotasFormaPago = [];
 let presupuestosProyecto = [];
@@ -1032,7 +1047,7 @@ function render(){
           : `<button class="btn-marcar-pagado" data-marcar-id="${m.id}">Marcar pagado hoy</button>`
         ) : ''}
       </td>
-      <td class="nums balance ${running<0?'neg':''}" data-label="Saldo acumulado">${fmtMoney(running)}</td>
+      <td class="nums balance ${running<0?'neg':''}" data-label="Saldo proyectado (a esa fecha)">${fmtMoney(running)}</td>
     `;
     rowsEl.appendChild(tr);
   });
@@ -1145,6 +1160,7 @@ function renderIndices(){
   const publicadas = facturacionRotacion.filter(f=>f.estado === 'posted');
   const aniosDisponibles = [...new Set(publicadas.map(f=>f.anio))].sort((a,b)=>b-a);
   const anioActual = aniosDisponibles.includes(HOY.getFullYear()) ? HOY.getFullYear() : aniosDisponibles[0];
+  anioActualRotacion = anioActual;
   const facturacionAnio = publicadas.filter(f=>f.anio === anioActual);
   const ventasNetas = facturacionAnio.filter(f=>f.categoria === 'cxc').reduce((s,f)=>s+f.total,0);
   const comprasNetas = facturacionAnio.filter(f=>f.categoria === 'cxp').reduce((s,f)=>s+f.total,0);
@@ -1275,6 +1291,10 @@ function abrirDetalleAntiguedad(tipo, min, max, reconocimiento=false){
       m.fecha = new Date(inp.value + 'T00:00:00');
       m.esFechaManual = true;
       guardarFechaManual(id, m.fecha);
+      // El rango de antigüedad no cambia (se calcula con la fecha de factura,
+      // no con la fecha prevista) pero sí debe reflejarse de inmediato en la
+      // pestaña Flujo de caja, ya que es el mismo movimiento.
+      render();
     });
   });
   document.getElementById('agingDetailOverlay').classList.add('open');
@@ -1380,6 +1400,37 @@ function cerrarDetalleRubro(){ document.getElementById('rubroDetailOverlay').cla
 document.getElementById('rubroDetailClose').addEventListener('click', cerrarDetalleRubro);
 document.getElementById('rubroDetailOverlay').addEventListener('click', e=>{ if(e.target.id==='rubroDetailOverlay') cerrarDetalleRubro(); });
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') cerrarDetalleRubro(); });
+
+// Detalle de Ventas Netas / Compras Netas: reutiliza la misma tabla de
+// facturación ya cargada (facturacion_rotacion), sin volver a consultar Odoo.
+function abrirDetalleVentas(categoria){
+  if(!anioActualRotacion){ return; }
+  const etiqueta = categoria === 'cxc' ? 'Ventas' : 'Compras';
+  const detalle = facturacionRotacion
+    .filter(f => f.estado === 'posted' && f.anio === anioActualRotacion && f.categoria === categoria)
+    .sort((a,b) => new Date(a.fecha) - new Date(b.fecha));
+  const neto = detalle.reduce((s,f)=>s+f.total,0);
+  document.getElementById('ventasDetailTitle').textContent = `Detalle de ${etiqueta.toLowerCase()} netas · ${anioActualRotacion}`;
+  document.getElementById('ventasDetailSummary').textContent =
+    `${detalle.length} documento${detalle.length===1?'':'s'} · Neto ${fmtMoney(neto)}`;
+  document.getElementById('ventasDetailRows').innerHTML = detalle.length ? detalle.map(f=>{
+    const esNC = /credit/i.test(f.moveType || '') || /nota/i.test(f.tipo || '');
+    return `<tr>
+      <td class="nums">${f.fecha ? fmtDate(new Date(f.fecha + 'T00:00:00')) : '—'}</td>
+      <td>${escapeHTML(f.tipo || f.moveType || '—')}</td>
+      <td class="nums">${f.mes || '—'}</td>
+      <td>${escapeHTML(f.estado || '—')}</td>
+      <td class="nums ${esNC ? 'amt-out' : (categoria==='cxc'?'amt-in':'amt-out')}">${fmtMoney(f.total)}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="5" class="oc-detail-empty">No hay documentos ${etiqueta.toLowerCase()} para este año.</td></tr>`;
+  document.getElementById('ventasDetailOverlay').classList.add('open');
+}
+function cerrarDetalleVentas(){ document.getElementById('ventasDetailOverlay').classList.remove('open'); }
+document.getElementById('idxVentasCard').addEventListener('click', ()=>abrirDetalleVentas('cxc'));
+document.getElementById('idxComprasCard').addEventListener('click', ()=>abrirDetalleVentas('cxp'));
+document.getElementById('ventasDetailClose').addEventListener('click', cerrarDetalleVentas);
+document.getElementById('ventasDetailOverlay').addEventListener('click', e=>{ if(e.target.id==='ventasDetailOverlay') cerrarDetalleVentas(); });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') cerrarDetalleVentas(); });
 
 async function asignarOCPresupuesto(){
   const ocId = document.getElementById('budgetOC').value;
