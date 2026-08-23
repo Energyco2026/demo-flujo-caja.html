@@ -265,8 +265,8 @@
   .view-tab.active{background:var(--navy); color:#fff; border-color:var(--navy);}
   .indice-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; margin-bottom:20px;}
   .indice-card{background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px;}
-  .indice-clickable{cursor:pointer; transition:box-shadow .15s, border-color .15s;}
-  .indice-clickable:hover{box-shadow:0 2px 8px rgba(0,0,0,0.08); border-color:var(--projected);}
+  .clickable-cell{cursor:pointer; text-decoration:underline; text-decoration-style:dotted; text-underline-offset:3px;}
+  .clickable-cell:hover{background:#F5F6F8;}
   .indice-label{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em;}
   .indice-value{font:600 22px 'JetBrains Mono',monospace; margin-top:7px;}
   .indice-help{font-size:11px; color:var(--muted); margin-top:5px; line-height:1.4;}
@@ -437,8 +437,8 @@
     <div class="indice-card"><div class="indice-label">Rotación operativa CxC</div><div class="indice-value nums" id="idxRotCxc">—</div><div class="indice-help">365 ÷ días promedio de cobro.</div></div>
     <div class="indice-card"><div class="indice-label">Rotación operativa CxP</div><div class="indice-value nums" id="idxRotCxp">—</div><div class="indice-help">365 ÷ días promedio de pago.</div></div>
     <div class="indice-card"><div class="indice-label">Relación CxP / CxC</div><div class="indice-value nums" id="idxRelacion">—</div><div class="indice-help">Apalancamiento de proveedores frente a cartera por cobrar.</div></div>
-    <div class="indice-card indice-clickable" id="idxVentasCard"><div class="indice-label" id="idxVentasLabel">Ventas netas del año</div><div class="indice-value nums good" id="idxVentasNetas">—</div><div class="indice-help">Facturas de clientes menos notas de crédito. Clic para ver el detalle.</div></div>
-    <div class="indice-card indice-clickable" id="idxComprasCard"><div class="indice-label" id="idxComprasLabel">Compras netas del año</div><div class="indice-value nums bad" id="idxComprasNetas">—</div><div class="indice-help">Facturas de proveedores menos notas de crédito. Clic para ver el detalle.</div></div>
+    <div class="indice-card" id="idxVentasCard"><div class="indice-label" id="idxVentasLabel">Ventas netas del año</div><div class="indice-value nums good" id="idxVentasNetas">—</div><div class="indice-help">Facturas de clientes menos notas de crédito.</div></div>
+    <div class="indice-card" id="idxComprasCard"><div class="indice-label" id="idxComprasLabel">Compras netas del año</div><div class="indice-value nums bad" id="idxComprasNetas">—</div><div class="indice-help">Facturas de proveedores menos notas de crédito.</div></div>
     <div class="indice-card"><div class="indice-label">Rotación contable CxC (YTD)</div><div class="indice-value nums" id="idxRotContableCxc">—</div><div class="indice-help">Ventas netas acumuladas ÷ cartera actual, sin reconocimiento de ingresos.</div></div>
     <div class="indice-card"><div class="indice-label">Días contables CxC</div><div class="indice-value nums" id="idxDiasContableCxc">—</div><div class="indice-help">Días transcurridos del período ÷ rotación contable.</div></div>
     <div class="indice-card"><div class="indice-label">Rotación contable CxP (YTD)</div><div class="indice-value nums" id="idxRotContableCxp">—</div><div class="indice-help">Compras netas acumuladas ÷ obligaciones actuales.</div></div>
@@ -1244,15 +1244,18 @@ function renderFacturacionRotacion(publicadas){
       <td class="nums">${anio}</td>
       <td class="nums">${fmtMoney(ventas)}</td>
       <td class="nums amt-out">-${fmtMoney(ncClientes)}</td>
-      <td class="nums amt-in">${fmtMoney(ventas-ncClientes)}</td>
+      <td class="nums amt-in clickable-cell" data-detalle="cxc" data-anio="${anio}" title="Clic para ver el detalle">${fmtMoney(ventas-ncClientes)}</td>
       <td class="nums">${fmtMoney(compras)}</td>
       <td class="nums amt-out">-${fmtMoney(ncProveedores)}</td>
-      <td class="nums amt-out">${fmtMoney(compras-ncProveedores)}</td>
+      <td class="nums amt-out clickable-cell" data-detalle="cxp" data-anio="${anio}" title="Clic para ver el detalle">${fmtMoney(compras-ncProveedores)}</td>
     </tr>`;
   });
   document.getElementById('facturacionRotacionRows').innerHTML = filas.length
     ? filas.join('')
     : '<tr><td colspan="7" class="oc-detail-empty">Sin facturación cargada.</td></tr>';
+  document.querySelectorAll('#facturacionRotacionRows [data-detalle]').forEach(celda=>{
+    celda.addEventListener('click', ()=>abrirDetalleVentas(celda.dataset.detalle, Number(celda.dataset.anio)));
+  });
 }
 
 function abrirDetalleAntiguedad(tipo, min, max, reconocimiento=false){
@@ -1409,14 +1412,14 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape') cerrarDetalleRubr
 
 // Detalle de Ventas Netas / Compras Netas: reutiliza la misma tabla de
 // facturación ya cargada (facturacion_rotacion), sin volver a consultar Odoo.
-function abrirDetalleVentas(categoria){
-  if(!anioActualRotacion){ return; }
+function abrirDetalleVentas(categoria, anio){
+  if(!anio){ return; }
   const etiqueta = categoria === 'cxc' ? 'Ventas' : 'Compras';
   const detalle = facturacionRotacion
-    .filter(f => f.estado === 'posted' && f.anio === anioActualRotacion && f.categoria === categoria)
+    .filter(f => f.estado === 'posted' && f.anio === anio && f.categoria === categoria)
     .sort((a,b) => new Date(a.fecha) - new Date(b.fecha));
   const neto = detalle.reduce((s,f)=>s+f.total,0);
-  document.getElementById('ventasDetailTitle').textContent = `Detalle de ${etiqueta.toLowerCase()} netas · ${anioActualRotacion}`;
+  document.getElementById('ventasDetailTitle').textContent = `Detalle de ${etiqueta.toLowerCase()} netas · ${anio}`;
   document.getElementById('ventasDetailSummary').textContent =
     `${detalle.length} documento${detalle.length===1?'':'s'} · Neto ${fmtMoney(neto)}`;
   document.getElementById('ventasDetailRows').innerHTML = detalle.length ? detalle.map(f=>{
@@ -1435,8 +1438,6 @@ function abrirDetalleVentas(categoria){
   document.getElementById('ventasDetailOverlay').classList.add('open');
 }
 function cerrarDetalleVentas(){ document.getElementById('ventasDetailOverlay').classList.remove('open'); }
-document.getElementById('idxVentasCard').addEventListener('click', ()=>abrirDetalleVentas('cxc'));
-document.getElementById('idxComprasCard').addEventListener('click', ()=>abrirDetalleVentas('cxp'));
 document.getElementById('ventasDetailClose').addEventListener('click', cerrarDetalleVentas);
 document.getElementById('ventasDetailOverlay').addEventListener('click', e=>{ if(e.target.id==='ventasDetailOverlay') cerrarDetalleVentas(); });
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') cerrarDetalleVentas(); });
