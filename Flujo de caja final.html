@@ -265,6 +265,8 @@
   .view-tab.active{background:var(--navy); color:#fff; border-color:var(--navy);}
   .indice-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; margin-bottom:20px;}
   .indice-card{background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px;}
+  .toggle-estado{cursor:pointer; user-select:none; transition:opacity .15s;}
+  .toggle-estado.badge-off{opacity:.3;}
   .clickable-cell{cursor:pointer; text-decoration:underline; text-decoration-style:dotted; text-underline-offset:3px;}
   .clickable-cell:hover{background:#F5F6F8;}
   .indice-label{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em;}
@@ -369,7 +371,7 @@
     <div class="panel-head sticky-panel-head">
       <div class="panel-title">Movimientos</div>
       <div class="panel-note" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-        <span><span class="badge exec">EJECUTADO</span> &nbsp;<span class="badge proj">PROYECTADO</span></span>
+        <span><span class="badge exec toggle-estado" id="badgeExec" title="Clic para mostrar u ocultar">EJECUTADO</span> &nbsp;<span class="badge proj toggle-estado" id="badgeProy" title="Clic para mostrar u ocultar">PROYECTADO</span></span>
         <span style="display:flex; align-items:center; gap:6px; position:relative;">
           Mes:
           <button type="button" id="btnFiltroMes" style="font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px; background:#fff; color:var(--ink); cursor:pointer; min-width:150px; text-align:left;">Todos los meses</button>
@@ -383,6 +385,7 @@
         </span>
         <span style="display:flex; align-items:center; gap:6px;">P.O.: <select id="filtroPO"></select></span>
         <span style="display:flex; align-items:center; gap:6px;">Banco: <select id="filtroBanco"></select></span>
+        <span style="display:flex; align-items:center; gap:6px;">Concepto: <input type="text" id="filtroConcepto" placeholder="Todos (escribe para filtrar)" style="min-width:200px; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px;"></span>
         <span style="display:flex; align-items:center; gap:6px;">Proveedor: <input type="text" id="filtroProveedor" list="listaProveedores" placeholder="Todas (escribe para filtrar)" style="min-width:220px; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px;"><datalist id="listaProveedores"></datalist></span>
         <span style="display:flex; align-items:center; gap:6px;">Cuenta contable: <input type="text" id="filtroCuenta" list="listaCuentas" placeholder="Todas (escribe para filtrar)" style="min-width:220px; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px;"><datalist id="listaCuentas"></datalist></span>
         <span style="display:flex; align-items:center; gap:6px;">Desde: <input type="date" id="filtroFechaDesde"></span>
@@ -940,9 +943,13 @@ function coincideFiltroTexto(valor, filtro){
   return normalizarTexto(valor).includes(normalizarTexto(filtro));
 }
 
+let mostrarEjecutados = true;
+let mostrarProyectados = true;
+
 function render(){
   const selPO = document.getElementById('filtroPO');
   const selBanco = document.getElementById('filtroBanco');
+  const selConcepto = document.getElementById('filtroConcepto');
   const selProv = document.getElementById('filtroProveedor');
   const selCuenta = document.getElementById('filtroCuenta');
   const inpDesde = document.getElementById('filtroFechaDesde');
@@ -951,6 +958,13 @@ function render(){
   inpDesde.onchange = render;
   inpHasta.onchange = render;
   selVencimiento.onchange = render;
+
+  const badgeExec = document.getElementById('badgeExec');
+  const badgeProy = document.getElementById('badgeProy');
+  badgeExec.classList.toggle('badge-off', !mostrarEjecutados);
+  badgeProy.classList.toggle('badge-off', !mostrarProyectados);
+  badgeExec.onclick = ()=>{ mostrarEjecutados = !mostrarEjecutados; render(); };
+  badgeProy.onclick = ()=>{ mostrarProyectados = !mostrarProyectados; render(); };
 
   const valPO = selPO.value, valBanco = selBanco.value;
   poblarFiltroMes(movimientos);
@@ -961,6 +975,7 @@ function render(){
   // ofrece sugerencias al escribir, no obliga a elegir el texto exacto.
   poblarDatalist(document.getElementById('listaProveedores'), [...new Set(movimientos.map(m => m.proveedor).filter(Boolean))].sort());
   poblarDatalist(document.getElementById('listaCuentas'), [...new Set(movimientos.map(m => m.cuenta).filter(Boolean))].sort());
+  selConcepto.oninput = render;
   selProv.oninput = render;
   selCuenta.oninput = render;
   if(valPO) selPO.value = valPO;
@@ -968,6 +983,7 @@ function render(){
 
   const fPO = selPO.value || 'Todas';
   const fBanco = selBanco.value || 'Todas';
+  const fConcepto = selConcepto.value.trim();
   const fProv = selProv.value.trim();
   const fCuenta = selCuenta.value.trim();
   const fDesde = inpDesde.value ? new Date(inpDesde.value + 'T00:00:00') : null;
@@ -999,8 +1015,11 @@ function render(){
 
     const poLabel = m.po || 'Sin P.O.';
     if(!mesesSeleccionados.has(claveMes(m.fecha))) return;
+    if(!mostrarEjecutados && m.estado === 'ejecutado') return;
+    if(!mostrarProyectados && m.estado === 'proyectado') return;
     if(fPO !== 'Todas' && poLabel !== fPO) return;
     if(fBanco !== 'Todas' && m.banco !== fBanco) return;
+    if(!coincideFiltroTexto(m.concepto, fConcepto)) return;
     if(!coincideFiltroTexto(m.proveedor, fProv)) return;
     if(!coincideFiltroTexto(m.cuenta, fCuenta)) return;
     if(fDesde && m.fecha < fDesde) return;
