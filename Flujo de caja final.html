@@ -489,7 +489,7 @@
       <button type="button" class="detail-close" id="ventasDetailClose">Cerrar</button>
     </div>
     <div class="detail-scroll">
-      <table><thead><tr><th>Fecha</th><th>Tipo de documento</th><th>Mes</th><th>Estado</th><th>Total</th></tr></thead><tbody id="ventasDetailRows"></tbody></table>
+      <table><thead><tr><th>Fecha</th><th>Número</th><th>Cliente / Proveedor</th><th>Tipo</th><th>Subtotal</th><th>Impuesto</th><th>Total</th></tr></thead><tbody id="ventasDetailRows"></tbody></table>
     </div>
   </div>
 </div>
@@ -764,12 +764,18 @@ async function cargarDatos(){
     asignacionesPresupuesto = asignacionData;
     facturacionRotacion = facturacionData.map(f => ({
       odooId: Number(f.odoo_id),
+      numero: f.numero || null,
+      referencia: f.referencia || null,
+      tercero: f.tercero || null,
+      moneda: f.moneda || null,
       fecha: f.fecha,
       anio: Number(f.anio),
       mes: Number(f.mes),
       categoria: f.categoria,
       tipo: f.tipo,
       moveType: f.move_type,
+      subtotal: Number(f.subtotal) || 0,
+      impuesto: Number(f.impuesto) || 0,
       total: Number(f.total) || 0,
       estado: f.estado,
     }));
@@ -1414,15 +1420,18 @@ function abrirDetalleVentas(categoria){
   document.getElementById('ventasDetailSummary').textContent =
     `${detalle.length} documento${detalle.length===1?'':'s'} · Neto ${fmtMoney(neto)}`;
   document.getElementById('ventasDetailRows').innerHTML = detalle.length ? detalle.map(f=>{
-    const esNC = /credit/i.test(f.moveType || '') || /nota/i.test(f.tipo || '');
+    const esNC = f.tipo === 'nota_credito';
+    const colorMonto = categoria==='cxc' ? (esNC ? 'amt-out' : 'amt-in') : (esNC ? 'amt-in' : 'amt-out');
     return `<tr>
       <td class="nums">${f.fecha ? fmtDate(new Date(f.fecha + 'T00:00:00')) : '—'}</td>
-      <td>${escapeHTML(f.tipo || f.moveType || '—')}</td>
-      <td class="nums">${f.mes || '—'}</td>
-      <td>${escapeHTML(f.estado || '—')}</td>
-      <td class="nums ${esNC ? 'amt-out' : (categoria==='cxc'?'amt-in':'amt-out')}">${fmtMoney(f.total)}</td>
+      <td>${escapeHTML(f.numero || f.referencia || '—')}</td>
+      <td>${escapeHTML(f.tercero || '—')}</td>
+      <td>${esNC ? 'Nota de crédito' : 'Factura'}</td>
+      <td class="nums">${fmtMoney(f.subtotal)}</td>
+      <td class="nums">${fmtMoney(f.impuesto)}</td>
+      <td class="nums ${colorMonto}">${fmtMoney(f.total)}</td>
     </tr>`;
-  }).join('') : `<tr><td colspan="5" class="oc-detail-empty">No hay documentos ${etiqueta.toLowerCase()} para este año.</td></tr>`;
+  }).join('') : `<tr><td colspan="7" class="oc-detail-empty">No hay documentos ${etiqueta.toLowerCase()} para este año.</td></tr>`;
   document.getElementById('ventasDetailOverlay').classList.add('open');
 }
 function cerrarDetalleVentas(){ document.getElementById('ventasDetailOverlay').classList.remove('open'); }
