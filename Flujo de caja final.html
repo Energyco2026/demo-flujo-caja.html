@@ -1,4 +1,4 @@
-  <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -399,6 +399,13 @@
             <option value="todas">Todas</option>
             <option value="solo_vencidas">Solo vencidas</option>
             <option value="sin_vencidas">Sin vencidas</option>
+          </select>
+        </span>
+        <span style="display:flex; align-items:center; gap:6px;">Tipo:
+          <select id="filtroTipoMovimiento" style="font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px; background:#fff; color:var(--ink); cursor:pointer;">
+            <option value="todas">Todas</option>
+            <option value="ingresos">Solo ingresos</option>
+            <option value="egresos">Solo egresos</option>
           </select>
         </span>
         <button type="button" id="btnExportarCSV" class="btn-refrescar">⬇ Descargar Excel</button>
@@ -1010,9 +1017,11 @@ function render(){
   const inpDesde = document.getElementById('filtroFechaDesde');
   const inpHasta = document.getElementById('filtroFechaHasta');
   const selVencimiento = document.getElementById('filtroVencimiento');
+  const selTipoMov = document.getElementById('filtroTipoMovimiento');
   inpDesde.onchange = render;
   inpHasta.onchange = render;
   selVencimiento.onchange = render;
+  selTipoMov.onchange = render;
 
   const badgeExec = document.getElementById('badgeExec');
   const badgeProy = document.getElementById('badgeProy');
@@ -1082,6 +1091,9 @@ function render(){
     const filtroVencimiento = selVencimiento.value || 'todas';
     if(filtroVencimiento === 'solo_vencidas' && !esVencida) return;
     if(filtroVencimiento === 'sin_vencidas' && esVencida) return;
+    const filtroTipo = selTipoMov.value || 'todas';
+    if(filtroTipo === 'ingresos' && m.monto <= 0) return;
+    if(filtroTipo === 'egresos' && m.monto >= 0) return;
 
     filasVisiblesParaExportar.push(m);
 
@@ -1207,6 +1219,18 @@ function diasEntre(inicio, fin){
 
 function esReconocimientoIngresos(m){
   return /\b001-003-000009\d{3}\b/i.test(String(m.concepto || ''));
+}
+
+// Busca en el texto de la forma de pago si menciona una frecuencia reconocible.
+// Devuelve el número de días del intervalo, o null si no encuentra un patrón claro.
+function detectarFrecuenciaDias(texto){
+  const t = normalizarTexto(texto || '');
+  if(/quincenal/.test(t)) return 15;
+  if(/semanal/.test(t)) return 7;
+  if(/mensual/.test(t)) return 30;
+  const matchCada = t.match(/cada\s+(\d{1,3})\s*d[i]?as?/);
+  if(matchCada) return Number(matchCada[1]);
+  return null;
 }
 
 function renderIndices(){
@@ -1771,6 +1795,13 @@ function renderOC(){
       : `<div class="oc-detail-empty">Sin pagos ejecutados todavía para esta OC.</div>`;
 
     const cuotasOC = cuotasFormaPago.filter(c => c.poId === oc.id && c.estado !== 'confirmada' && c.estado !== 'ya_pagada');
+    // La frecuencia se busca en el texto completo de todas las cuotas de esta OC
+    // (incluidas las marcadas "revisar manual"), por si la nota general la menciona ahí.
+    const textoCompletoOC = cuotasFormaPago
+      .filter(c => c.poId === oc.id)
+      .map(c => `${c.descripcion || ''} ${c.textoOriginal || ''}`)
+      .join(' ');
+    const frecuenciaDiasOC = detectarFrecuenciaDias(textoCompletoOC);
     const cuotasHtml = cuotasOC.length ? `
       <div class="oc-cuotas">
         <div class="oc-cuotas-title">Forma de pago sugerida (leída de la nota de la OC)</div>
@@ -1789,7 +1820,7 @@ function renderOC(){
               <input type="text" class="oc-cuota-desc" data-cuota-desc value="${escapeHTML(c.descripcion || '')}">
             </div>
             <div class="oc-cuota-actions">
-              <input type="date" data-cuota-fecha>
+              <input type="date" data-cuota-fecha value="${frecuenciaDiasOC && oc.fechaOrden ? fmtDate(addDays(new Date(oc.fechaOrden + 'T00:00:00'), c.cuotaNumero * frecuenciaDiasOC)) : ''}" data-fecha-base="${frecuenciaDiasOC && oc.fechaOrden ? fmtDate(addDays(new Date(oc.fechaOrden + 'T00:00:00'), c.cuotaNumero * frecuenciaDiasOC)) : ''}">
               <button type="button" data-confirmar-cuota>Confirmar</button>
             </div>
             <div class="oc-cuota-msg" data-cuota-msg></div>
@@ -1827,6 +1858,7 @@ function renderOC(){
         <div class="oc-advance-form" data-advance-form="${escapeHTML(String(oc.id))}">
           <label>Valor del anticipo
             <input type="number" min="0.01" step="0.01" data-advance-amount placeholder="0.00" ${oc.poNumero?'':'disabled'}>
+            <span data-advance-pct style="display:block; font-size:10px; color:var(--muted); margin-top:3px;"></span>
           </label>
           <label>Banco de pago
             <select data-advance-bank ${oc.poNumero?'':'disabled'}>${opcionesBancoAnticipo()}</select>
@@ -1859,6 +1891,46 @@ function renderOC(){
         confirmarCuotaFormaPago(Number(fila.dataset.cuotaId), oc, fila);
       });
     });
+
+    // Cascada: si se mueve manualmente la fecha de una cuota, las siguientes
+    // (aún no confirmadas) se recorren la misma cantidad de días — mantiene
+    // el patrón semanal/quincenal/mensual detectado.
+    const filasCuotas = [...card.querySelectorAll('.oc-cuota-row[data-cuota-id]')];
+    filasCuotas.forEach((fila, idx)=>{
+      const inputFecha = fila.querySelector('[data-cuota-fecha]');
+      if(!inputFecha) return;
+      inputFecha.addEventListener('change', e=>{
+        e.stopPropagation();
+        const base = inputFecha.dataset.fechaBase;
+        const nuevoValor = inputFecha.value;
+        if(!nuevoValor){ return; }
+        if(!base){ inputFecha.dataset.fechaBase = nuevoValor; return; }
+        const delta = Math.round((new Date(nuevoValor + 'T00:00:00') - new Date(base + 'T00:00:00')) / 86400000);
+        inputFecha.dataset.fechaBase = nuevoValor;
+        if(delta === 0) return;
+        for(let i = idx + 1; i < filasCuotas.length; i++){
+          const siguiente = filasCuotas[i].querySelector('[data-cuota-fecha]');
+          if(!siguiente || !siguiente.value) continue;
+          const fechaCorrida = addDays(new Date(siguiente.value + 'T00:00:00'), delta);
+          siguiente.value = fmtDate(fechaCorrida);
+          siguiente.dataset.fechaBase = siguiente.value;
+        }
+      });
+    });
+
+    // Al escribir el valor del anticipo, mostrar qué % representa del total de la OC.
+    const inputAnticipo = card.querySelector('[data-advance-amount]');
+    const pctAnticipo = card.querySelector('[data-advance-pct]');
+    if(inputAnticipo && pctAnticipo){
+      inputAnticipo.addEventListener('input', ()=>{
+        const valor = Number(inputAnticipo.value);
+        if(Number.isFinite(valor) && valor > 0 && oc.total > 0){
+          pctAnticipo.textContent = `= ${(valor / oc.total * 100).toFixed(1)}% del total de la OC`;
+        } else {
+          pctAnticipo.textContent = '';
+        }
+      });
+    }
   });
 }
 
@@ -1925,6 +1997,8 @@ async function registrarAnticipo(oc, card){
   mensaje.style.color = 'var(--good)';
   mensaje.textContent = `Anticipo de ${fmtMoney(valor)} registrado en ${banco}.`;
   input.value = '';
+  const pctEl = form.querySelector('[data-advance-pct]');
+  if(pctEl) pctEl.textContent = '';
   await cargarDatos();
 }
 
