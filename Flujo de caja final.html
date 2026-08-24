@@ -97,6 +97,7 @@
   thead th:last-child, tbody td:last-child{padding-right:28px;}
   tbody tr:last-child td{border-bottom:none;}
   tbody tr.executed{background:var(--executed); color:var(--executed-ink);}
+  tbody tr.seleccionada-pago td{background:var(--bad-bg);}
   tbody tr.executed td.concepto::before{
     content:"🔒"; margin-right:6px; font-size:10.5px; opacity:.6;
   }
@@ -369,7 +370,10 @@
 
   <section class="panel">
     <div class="panel-head sticky-panel-head">
-      <div class="panel-title">Movimientos</div>
+      <div class="panel-title" style="display:flex; align-items:center; gap:8px;">
+        Movimientos
+        <button type="button" id="btnAgregarManual" title="Agregar movimiento manual" style="width:24px; height:24px; border-radius:50%; border:1px solid var(--navy); background:var(--navy); color:#fff; font-size:15px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0;">+</button>
+      </div>
       <div class="panel-note" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
         <span><span class="badge exec toggle-estado" id="badgeExec" title="Clic para mostrar u ocultar">EJECUTADO</span> &nbsp;<span class="badge proj toggle-estado" id="badgeProy" title="Clic para mostrar u ocultar">PROYECTADO</span></span>
         <span style="display:flex; align-items:center; gap:6px; position:relative;">
@@ -398,11 +402,14 @@
           </select>
         </span>
         <button type="button" id="btnExportarCSV" class="btn-refrescar">⬇ Descargar Excel</button>
+        <span id="contadorSeleccionados" style="font-size:12px; color:var(--muted);">0 seleccionadas</span>
+        <button type="button" id="btnDescargarSeleccionados" class="btn-refrescar" disabled style="opacity:.5;">⬇ Descargar seleccionados</button>
       </div>
     </div>
     <div class="table-scroll"><table>
       <thead>
         <tr>
+          <th style="width:32px;"></th>
           <th>Concepto</th>
           <th>Proveedor</th>
           <th>Banco</th>
@@ -509,6 +516,53 @@
   </div>
 </div>
 
+<div class="detail-overlay" id="manualMovOverlay" role="dialog" aria-modal="true" aria-labelledby="manualMovTitle">
+  <div class="detail-dialog" style="width:440px;">
+    <div class="detail-dialog-head">
+      <div class="panel-title" id="manualMovTitle">Agregar movimiento manual</div>
+      <button type="button" class="detail-close" id="manualMovClose">Cerrar</button>
+    </div>
+    <div style="padding:20px;">
+      <div style="margin-bottom:12px;">
+        <label style="display:block; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px;">Concepto</label>
+        <input type="text" id="manualConcepto" style="width:100%; padding:8px; border:1px solid var(--line); border-radius:6px; font-family:'Inter',sans-serif; font-size:13px; box-sizing:border-box;" placeholder="Ej. Préstamo socio / Anticipo cliente">
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="display:block; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px;">Proveedor / Tercero (opcional)</label>
+        <input type="text" id="manualProveedor" style="width:100%; padding:8px; border:1px solid var(--line); border-radius:6px; font-family:'Inter',sans-serif; font-size:13px; box-sizing:border-box;" placeholder="Nombre">
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+        <div>
+          <label style="display:block; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px;">Tipo</label>
+          <select id="manualTipo" style="width:100%; padding:8px; border:1px solid var(--line); border-radius:6px; font-family:'Inter',sans-serif; font-size:13px; box-sizing:border-box;">
+            <option value="salida">Salida (pago)</option>
+            <option value="entrada">Entrada (cobro)</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px;">Monto</label>
+          <input type="number" id="manualMonto" min="0.01" step="0.01" style="width:100%; padding:8px; border:1px solid var(--line); border-radius:6px; font-family:'Inter',sans-serif; font-size:13px; box-sizing:border-box;" placeholder="0.00">
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:6px;">
+        <div>
+          <label style="display:block; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px;">Banco</label>
+          <select id="manualBanco" style="width:100%; padding:8px; border:1px solid var(--line); border-radius:6px; font-family:'Inter',sans-serif; font-size:13px; box-sizing:border-box;"></select>
+        </div>
+        <div>
+          <label style="display:block; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px;">Fecha de pago</label>
+          <input type="date" id="manualFecha" style="width:100%; padding:8px; border:1px solid var(--line); border-radius:6px; font-family:'Inter',sans-serif; font-size:13px; box-sizing:border-box;">
+        </div>
+      </div>
+      <div class="oc-form-msg" id="manualMovMsg" style="min-height:16px;"></div>
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
+        <button type="button" id="manualMovCancelar" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:8px 14px; cursor:pointer; font-family:'Inter',sans-serif;">Cancelar</button>
+        <button type="button" id="manualMovGuardar" style="border:0; background:var(--navy); color:#fff; border-radius:6px; padding:8px 14px; cursor:pointer; font-weight:600; font-family:'Inter',sans-serif;">Guardar movimiento</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <main id="vistaPresupuesto" style="display:none;">
   <section class="panel">
     <div class="panel-head">
@@ -600,6 +654,7 @@ let HOY = new Date();
 HOY.setHours(0,0,0,0); // medianoche de hoy, para comparar fechas sin la hora actual de por medio
 let ocAbiertas = new Set();
 let filasVisiblesParaExportar = [];
+let movimientosSeleccionados = new Set();
 let chart;
 
 // ---------- Login ----------
@@ -1031,7 +1086,7 @@ function render(){
     filasVisiblesParaExportar.push(m);
 
     const tr = document.createElement('tr');
-    tr.className = m.estado;
+    tr.className = m.estado + (movimientosSeleccionados.has(m.id) ? ' seleccionada-pago' : '');
     const isProj = m.estado === 'proyectado';
 
     const bancosValidos = bancosDePagoValidos();
@@ -1044,7 +1099,8 @@ function render(){
     ];
 
     tr.innerHTML = `
-      <td class="concepto" data-label="Concepto">${m.concepto || '—'}${esVencida ? ' <span class="badge" style="background:var(--bad-bg); color:var(--bad);">VENCIDA</span>' : ''}</td>
+      <td data-label="Sel."><input type="checkbox" class="chk-pagar-hoy" data-id="${m.id}" ${movimientosSeleccionados.has(m.id)?'checked':''}></td>
+      <td class="concepto" data-label="Concepto">${m.concepto || '—'}${esVencida ? ' <span class="badge" style="background:var(--bad-bg); color:var(--bad);">VENCIDA</span>' : ''}${m.origen==='manual' ? ` <button type="button" class="btn-eliminar-manual" data-eliminar-id="${m.id}" title="Eliminar movimiento manual" style="border:none; background:none; color:var(--bad); cursor:pointer; font-size:13px; margin-left:6px; vertical-align:middle;">🗑</button>` : ''}</td>
       <td data-label="Proveedor">${m.proveedor || '—'}</td>
       <td style="font-size:12.5px;" data-label="Banco">
         ${isProj
@@ -1078,7 +1134,7 @@ function render(){
   });
 
   if(rowsEl.children.length === 0){
-    rowsEl.innerHTML = `<tr><td colspan="9" style="color:var(--muted); font-style:italic; text-align:center; padding:24px;">Sin movimientos para este filtro.</td></tr>`;
+    rowsEl.innerHTML = `<tr><td colspan="10" style="color:var(--muted); font-style:italic; text-align:center; padding:24px;">Sin movimientos para este filtro.</td></tr>`;
   }
 
   document.getElementById('kpiActual').textContent = fmtMoney(saldoActual);
@@ -1106,6 +1162,7 @@ function render(){
   renderBancos();
   renderIndices();
   attachHandlers();
+  actualizarContadorSeleccionados();
 }
 
 const EXCLUIR_DE_SALDO_BANCO = /VISA|DINERS|MASTERCARD|TARJETA|ANTICIPO|SALDOS INICIALES|CAJA CHICA|CAJA GENERAL|^CASH$/i;
@@ -1615,6 +1672,20 @@ function attachHandlers(){
       deshacerPagoManual(parseInt(e.target.dataset.undoId));
     });
   });
+  document.querySelectorAll('.chk-pagar-hoy').forEach(chk=>{
+    chk.addEventListener('change', e=>{
+      const id = parseInt(e.target.dataset.id);
+      if(e.target.checked) movimientosSeleccionados.add(id);
+      else movimientosSeleccionados.delete(id);
+      e.target.closest('tr').classList.toggle('seleccionada-pago', e.target.checked);
+      actualizarContadorSeleccionados();
+    });
+  });
+  document.querySelectorAll('.btn-eliminar-manual').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      confirmarEliminarManual(parseInt(e.currentTarget.dataset.eliminarId));
+    });
+  });
 }
 
 function renderOC(){
@@ -1919,6 +1990,85 @@ async function confirmarCuotaFormaPago(cuotaId, oc, fila){
 
 document.getElementById('estadoConexion').addEventListener('click', cargarDatos);
 
+// ---------- Movimiento manual (botón +) ----------
+function abrirModalManual(){
+  const selBanco = document.getElementById('manualBanco');
+  selBanco.innerHTML = '<option value="">Selecciona un banco</option>' +
+    bancosDePagoValidos().map(b => `<option value="${escapeHTML(b)}">${escapeHTML(b)}</option>`).join('');
+  document.getElementById('manualConcepto').value = '';
+  document.getElementById('manualProveedor').value = '';
+  document.getElementById('manualTipo').value = 'salida';
+  document.getElementById('manualMonto').value = '';
+  document.getElementById('manualFecha').value = '';
+  document.getElementById('manualMovMsg').textContent = '';
+  document.getElementById('manualMovOverlay').classList.add('open');
+}
+
+function cerrarModalManual(){
+  document.getElementById('manualMovOverlay').classList.remove('open');
+}
+
+async function guardarMovimientoManual(){
+  const concepto = document.getElementById('manualConcepto').value.trim();
+  const proveedor = document.getElementById('manualProveedor').value.trim();
+  const tipo = document.getElementById('manualTipo').value;
+  const monto = Number(document.getElementById('manualMonto').value);
+  const banco = document.getElementById('manualBanco').value;
+  const fecha = document.getElementById('manualFecha').value;
+  const mensaje = document.getElementById('manualMovMsg');
+
+  if(!concepto || !Number.isFinite(monto) || monto <= 0 || !banco || !fecha){
+    mensaje.style.color = 'var(--bad)';
+    mensaje.textContent = 'Completa concepto, monto, banco y fecha.';
+    return;
+  }
+
+  const boton = document.getElementById('manualMovGuardar');
+  boton.disabled = true;
+  mensaje.style.color = 'var(--muted)';
+  mensaje.textContent = 'Guardando…';
+
+  const montoFinal = tipo === 'salida' ? -Math.abs(monto) : Math.abs(monto);
+  const { error } = await sb.from('movimientos').insert({
+    concepto,
+    proveedor: proveedor || null,
+    banco_manual: banco,
+    monto: montoFinal,
+    fecha,
+    estado: 'proyectado',
+    origen: 'manual',
+    oculto: false,
+  });
+
+  boton.disabled = false;
+  if(error){
+    mensaje.style.color = 'var(--bad)';
+    mensaje.textContent = `No se pudo guardar: ${error.message}`;
+    return;
+  }
+
+  cerrarModalManual();
+  await cargarDatos();
+}
+
+async function confirmarEliminarManual(id){
+  const confirmado = window.confirm('¿Seguro que quieres eliminar este movimiento manual? Esta acción no se puede deshacer.');
+  if(!confirmado) return;
+  const { error } = await sb.from('movimientos').delete().eq('id', id);
+  if(error){
+    alert('No se pudo eliminar: ' + error.message);
+    return;
+  }
+  await cargarDatos();
+}
+
+document.getElementById('btnAgregarManual').addEventListener('click', abrirModalManual);
+document.getElementById('manualMovClose').addEventListener('click', cerrarModalManual);
+document.getElementById('manualMovCancelar').addEventListener('click', cerrarModalManual);
+document.getElementById('manualMovGuardar').addEventListener('click', guardarMovimientoManual);
+document.getElementById('manualMovOverlay').addEventListener('click', e=>{ if(e.target.id==='manualMovOverlay') cerrarModalManual(); });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') cerrarModalManual(); });
+
 // ---------- Dropdown de filtro de Mes (checkboxes múltiples) ----------
 document.getElementById('btnFiltroMes').addEventListener('click', e=>{
   e.stopPropagation();
@@ -1983,7 +2133,49 @@ function exportarExcel(){
   XLSX.writeFile(libro, `flujo_caja_${fmtDate(new Date())}.xlsx`);
 }
 
+function actualizarContadorSeleccionados(){
+  const contador = document.getElementById('contadorSeleccionados');
+  const boton = document.getElementById('btnDescargarSeleccionados');
+  contador.textContent = `${movimientosSeleccionados.size} seleccionadas`;
+  boton.disabled = movimientosSeleccionados.size === 0;
+  boton.style.opacity = movimientosSeleccionados.size === 0 ? '.5' : '1';
+}
+
+function exportarSeleccionados(){
+  const filas = movimientos
+    .filter(m => movimientosSeleccionados.has(m.id))
+    .sort((a,b)=> a.fecha - b.fecha);
+
+  if(filas.length === 0) return;
+  if(typeof XLSX === 'undefined'){
+    alert('No se pudo cargar el generador de Excel. Revisa la conexión a internet y vuelve a intentarlo.');
+    return;
+  }
+
+  const datos = filas.map(m => ({
+    Banco: m.banco || 'Sin banco',
+    Concepto: m.concepto || '',
+    Proveedor: m.proveedor || '',
+    'P.O.': m.po || '',
+    'Cuenta contable': m.cuenta || '',
+    Monto: Number(m.monto.toFixed(2)),
+    'Fecha factura': m.fechaFactura ? fmtDate(m.fechaFactura) : '',
+    'Fecha pago': fmtDate(m.fecha),
+    Estado: m.estado || ''
+  }));
+  const hoja = XLSX.utils.json_to_sheet(datos, {
+    header: ['Banco','Fecha factura','Fecha pago','Concepto','Proveedor','P.O.','Cuenta contable','Monto','Estado']
+  });
+  hoja['!cols'] = [
+    {wch:24},{wch:15},{wch:15},{wch:42},{wch:34},{wch:18},{wch:34},{wch:15},{wch:14}
+  ];
+  const libro = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(libro, hoja, 'Pagar hoy');
+  XLSX.writeFile(libro, `pagos_a_realizar_${fmtDate(new Date())}.xlsx`);
+}
+
 document.getElementById('btnExportarCSV').addEventListener('click', exportarExcel);
+document.getElementById('btnDescargarSeleccionados').addEventListener('click', exportarSeleccionados);
 
 document.querySelectorAll('.view-tab').forEach(btn=>{
   btn.addEventListener('click', ()=>{
