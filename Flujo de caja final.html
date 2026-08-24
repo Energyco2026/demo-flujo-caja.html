@@ -1112,7 +1112,7 @@ function render(){
 
     tr.innerHTML = `
       <td data-label="Sel.">${isProj ? `<input type="checkbox" class="chk-pagar-hoy" data-id="${m.id}" ${movimientosSeleccionados.has(m.id)?'checked':''}>` : ''}</td>
-      <td class="concepto" data-label="Concepto">${m.concepto || '—'}${esVencida ? ' <span class="badge" style="background:var(--bad-bg); color:var(--bad);">VENCIDA</span>' : ''}${m.origen==='manual' ? ` <button type="button" class="btn-eliminar-manual" data-eliminar-id="${m.id}" title="Eliminar movimiento manual" style="border:none; background:none; color:var(--bad); cursor:pointer; font-size:13px; margin-left:6px; vertical-align:middle;">🗑</button>` : ''}</td>
+      <td class="concepto" data-label="Concepto">${m.concepto || '—'}${esVencida ? ' <span class="badge" style="background:var(--bad-bg); color:var(--bad);">VENCIDA</span>' : ''}${(m.origen==='manual' || m.origen==='anticipo_oc_manual') ? ` <button type="button" class="btn-eliminar-manual" data-eliminar-id="${m.id}" title="Eliminar movimiento manual" style="border:none; background:none; color:var(--bad); cursor:pointer; font-size:13px; margin-left:6px; vertical-align:middle;">🗑</button>` : ''}</td>
       <td data-label="Proveedor">${m.proveedor || '—'}</td>
       <td style="font-size:12.5px;" data-label="Banco">
         ${isProj
@@ -1724,10 +1724,14 @@ function renderOC(){
   const ordenesOperativas = ordenesCompra.filter(oc => !estadosNoOperativos.has(oc.estadoOdoo));
   const resumenPorOC = new Map();
   ordenesOperativas.forEach(oc=>{
+    // Incluye pagos ya ejecutados en Odoo Y anticipos registrados manualmente
+    // (aún proyectados) — el saldo pendiente descuenta el anticipo al instante
+    // para no perder de vista el dinero ya comprometido, aunque Odoo todavía
+    // no lo haya conciliado.
     const pagos = movimientos.filter(m =>
-      m.estado === 'ejecutado' &&
       m.poInterno != null &&
-      String(m.poInterno) === String(oc.id)
+      String(m.poInterno) === String(oc.id) &&
+      (m.estado === 'ejecutado' || (m.estado === 'proyectado' && m.origen === 'anticipo_oc_manual'))
     );
     const pagado = pagos.reduce((s,p)=>s+Math.abs(p.monto),0);
     resumenPorOC.set(String(oc.id), {
@@ -1788,13 +1792,26 @@ function renderOC(){
           <div class="oc-detail-row">
             <div>
               <div class="oc-detail-prov">${p.proveedor || oc.proveedor}</div>
-              <div class="oc-detail-concepto">${p.concepto} · ${fmtDate(p.fecha)}</div>
+              <div class="oc-detail-concepto">${p.concepto} · ${fmtDate(p.fecha)}${p.origen==='anticipo_oc_manual' ? ' <span style="color:var(--projected); font-weight:600;">· anticipo, pendiente de confirmar en Odoo</span>' : ''}</div>
             </div>
             <div class="nums">${fmtMoney(Math.abs(p.monto))}</div>
           </div>`).join('')
       : `<div class="oc-detail-empty">Sin pagos ejecutados todavía para esta OC.</div>`;
 
-    const cuotasOC = cuotasFormaPago.filter(c => c.poId === oc.id && c.estado !== 'confirmada' && c.estado !== 'ya_pagada');
+    const cuotasOC = cuotasFormaPago
+      .filter(c => c.poId === oc.id && c.estado !== 'confirmada' && c.estado !== 'ya_pagada')
+      .sort((a,b) => (a.cuotaNumero||0) - (b.cuotaNumero||0));
+    // Neteo en cascada: lo ya pagado/anticipado (resumen.pagado) se descuenta
+    // primero de la cuota 1, luego de la 2, etc. Si una cuota queda en $0
+    // (ya cubierta por completo), se oculta de la lista.
+    let disponibleParaNetear = resumen.pagado;
+    const cuotasNeteadas = cuotasOC.map(c=>{
+      if(c.estado === 'revisar_manual') return { ...c, montoOriginal: null, montoRestante: null };
+      const montoOriginal = Number(c.monto) || 0;
+      const consumido = Math.min(montoOriginal, Math.max(disponibleParaNetear, 0));
+      disponibleParaNetear -= consumido;
+      return { ...c, montoOriginal, montoRestante: montoOriginal - consumido };
+    }).filter(c => c.estado === 'revisar_manual' || c.montoRestante > 0.01);
     // La frecuencia se busca en el texto completo de todas las cuotas de esta OC
     // (incluidas las marcadas "revisar manual"), por si la nota general la menciona ahí.
     const textoCompletoOC = cuotasFormaPago
@@ -1802,10 +1819,10 @@ function renderOC(){
       .map(c => `${c.descripcion || ''} ${c.textoOriginal || ''}`)
       .join(' ');
     const frecuenciaDiasOC = detectarFrecuenciaDias(textoCompletoOC);
-    const cuotasHtml = cuotasOC.length ? `
+    const cuotasHtml = cuotasNeteadas.length ? `
       <div class="oc-cuotas">
         <div class="oc-cuotas-title">Forma de pago sugerida (leída de la nota de la OC)</div>
-        ${cuotasOC.map(c => c.estado === 'revisar_manual' ? `
+        ${cuotasNeteadas.map(c => c.estado === 'revisar_manual' ? `
           <div class="oc-cuota-row revisar">
             <div class="oc-cuota-info">
               <span class="oc-cuota-badge">Revisar manual</span>
@@ -1813,10 +1830,11 @@ function renderOC(){
             </div>
           </div>
         ` : `
-          <div class="oc-cuota-row" data-cuota-id="${c.id}">
+          <div class="oc-cuota-row" data-cuota-id="${c.id}" data-monto-restante="${c.montoRestante}">
             <div class="oc-cuota-info">
               <span class="oc-cuota-pct">${c.pct}%</span>
-              <span class="oc-cuota-monto nums">${fmtMoney(c.monto)}</span>
+              <span class="oc-cuota-monto nums">${fmtMoney(c.montoRestante)}</span>
+              ${c.montoRestante < c.montoOriginal - 0.01 ? `<span style="font-size:10px; color:var(--muted);">(de ${fmtMoney(c.montoOriginal)} — ya cubierto ${fmtMoney(c.montoOriginal - c.montoRestante)})</span>` : ''}
               <input type="text" class="oc-cuota-desc" data-cuota-desc value="${escapeHTML(c.descripcion || '')}">
             </div>
             <div class="oc-cuota-actions">
@@ -2008,6 +2026,7 @@ async function confirmarCuotaFormaPago(cuotaId, oc, fila){
   const boton = fila.querySelector('[data-confirmar-cuota]');
   const mensaje = fila.querySelector('[data-cuota-msg]');
   const cuota = cuotasFormaPago.find(c => c.id === cuotaId);
+  const montoRestante = Number(fila.dataset.montoRestante);
 
   if(!fechaInput.value){
     mensaje.style.color = 'var(--bad)';
@@ -2017,6 +2036,11 @@ async function confirmarCuotaFormaPago(cuotaId, oc, fila){
   if(!cuota){
     mensaje.style.color = 'var(--bad)';
     mensaje.textContent = 'No se encontró la cuota. Recarga la página.';
+    return;
+  }
+  if(!Number.isFinite(montoRestante) || montoRestante <= 0){
+    mensaje.style.color = 'var(--bad)';
+    mensaje.textContent = 'Esta cuota ya está cubierta por pagos registrados; no hay monto pendiente que confirmar.';
     return;
   }
 
@@ -2031,7 +2055,7 @@ async function confirmarCuotaFormaPago(cuotaId, oc, fila){
     proveedor: oc.proveedor || null,
     po_id: oc.id,
     cuenta_contable: '2101 · Cuentas por Pagar',
-    monto: -Math.abs(Number(cuota.monto)),
+    monto: -Math.abs(montoRestante),
     fecha: fechaInput.value,
     estado: 'proyectado',
     origen: 'oc_forma_pago',
@@ -2044,6 +2068,7 @@ async function confirmarCuotaFormaPago(cuotaId, oc, fila){
     mensaje.textContent = `No se pudo guardar: ${insertMov.error.message}`;
     boton.disabled = false;
     return;
+
   }
 
   const updateSugerida = await sb.from('oc_forma_pago_sugerida')
