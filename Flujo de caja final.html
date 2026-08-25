@@ -464,8 +464,10 @@
 
   <div class="analysis-grid">
     <section class="panel">
-      <div class="panel-head"><div class="panel-title">Antigüedad de cartera</div><div class="panel-note">Según fecha original de factura</div></div>
-      <table class="mini-table"><thead><tr><th>Rango</th><th>CxC</th><th>CxP</th></tr></thead><tbody id="agingRows"></tbody></table>
+      <div class="panel-head"><div class="panel-title">Antigüedad de cartera — CxC</div><div class="panel-note">Según fecha original de factura · 7 días de crédito al cliente</div></div>
+      <table class="mini-table"><thead><tr><th>Rango</th><th>CxC</th></tr></thead><tbody id="agingRowsCxc"></tbody></table>
+      <div class="panel-head" style="border-top:1px solid var(--line);"><div class="panel-title">Antigüedad de cartera — CxP</div><div class="panel-note">Según fecha original de factura</div></div>
+      <table class="mini-table"><thead><tr><th>Rango</th><th>CxP</th></tr></thead><tbody id="agingRowsCxp"></tbody></table>
     </section>
     <section class="panel">
       <div class="panel-head"><div class="panel-title">Mayor exposición por tercero</div><div class="panel-note">Saldos abiertos</div></div>
@@ -1336,29 +1338,46 @@ function renderIndices(){
   document.getElementById('idxDiasContableCxp').textContent = rotContableCxp > 0 && diasPeriodo ? (diasPeriodo/rotContableCxp).toFixed(1) + ' días' : '—';
   renderFacturacionRotacion(publicadas);
 
-  const rangos = [
-    {label:'0–30 días', min:0, max:30},
+  const rangosCxc = [
+    {label:'0–7 días', min:0, max:7},
+    {label:'8–30 días', min:8, max:30},
     {label:'31–60 días', min:31, max:60},
     {label:'61–90 días', min:61, max:90},
     {label:'Más de 90 días', min:91, max:Infinity},
     {label:'Reconocimiento de ingresos', reconocimiento:true}
   ];
-  const agingRows = document.getElementById('agingRows');
-  agingRows.innerHTML = rangos.map(r=>{
-    const enRango = m => {
-      if(r.reconocimiento) return esCxc(m) && esReconocimientoIngresos(m);
-      if(esReconocimientoIngresos(m)) return false;
-      if(!m.fechaFactura) return false;
-      const edad = diasEntre(m.fechaFactura, HOY);
-      return edad >= r.min && edad <= r.max;
-    };
-    const cxc = abiertas.filter(m=>esCxc(m)&&enRango(m)).reduce((s,m)=>s+Math.abs(m.monto),0);
-    const cxp = abiertas.filter(m=>esCxp(m)&&enRango(m)).reduce((s,m)=>s+Math.abs(m.monto),0);
+  const rangosCxp = [
+    {label:'0–30 días', min:0, max:30},
+    {label:'31–60 días', min:31, max:60},
+    {label:'61–90 días', min:61, max:90},
+    {label:'Más de 90 días', min:91, max:Infinity},
+  ];
+
+  function calcularEnRango(m, r){
+    if(r.reconocimiento) return esCxc(m) && esReconocimientoIngresos(m);
+    if(esReconocimientoIngresos(m)) return false;
+    if(!m.fechaFactura) return false;
+    const edad = diasEntre(m.fechaFactura, HOY);
+    return edad >= r.min && edad <= r.max;
+  }
+
+  const agingRowsCxc = document.getElementById('agingRowsCxc');
+  agingRowsCxc.innerHTML = rangosCxc.map(r=>{
+    const monto = abiertas.filter(m=>esCxc(m)&&calcularEnRango(m,r)).reduce((s,m)=>s+Math.abs(m.monto),0);
     const attrs = r.reconocimiento ? 'data-reconocimiento="1"' : `data-min="${r.min}" data-max="${r.max}"`;
-    return `<tr><td>${r.label}</td><td class="nums amt-in"><button type="button" class="aging-link" data-tipo="CxC" ${attrs}>${fmtMoney(cxc)}</button></td><td class="nums amt-out"><button type="button" class="aging-link" data-tipo="CxP" ${attrs}>${fmtMoney(cxp)}</button></td></tr>`;
+    return `<tr><td>${r.label}</td><td class="nums amt-in"><button type="button" class="aging-link" data-tipo="CxC" ${attrs}>${fmtMoney(monto)}</button></td></tr>`;
   }).join('');
-  agingRows.querySelectorAll('.aging-link').forEach(btn=>btn.addEventListener('click',()=>{
+  agingRowsCxc.querySelectorAll('.aging-link').forEach(btn=>btn.addEventListener('click',()=>{
     abrirDetalleAntiguedad(btn.dataset.tipo, Number(btn.dataset.min), Number(btn.dataset.max), btn.dataset.reconocimiento === '1');
+  }));
+
+  const agingRowsCxp = document.getElementById('agingRowsCxp');
+  agingRowsCxp.innerHTML = rangosCxp.map(r=>{
+    const monto = abiertas.filter(m=>esCxp(m)&&calcularEnRango(m,r)).reduce((s,m)=>s+Math.abs(m.monto),0);
+    return `<tr><td>${r.label}</td><td class="nums amt-out"><button type="button" class="aging-link" data-tipo="CxP" data-min="${r.min}" data-max="${r.max}">${fmtMoney(monto)}</button></td></tr>`;
+  }).join('');
+  agingRowsCxp.querySelectorAll('.aging-link').forEach(btn=>btn.addEventListener('click',()=>{
+    abrirDetalleAntiguedad(btn.dataset.tipo, Number(btn.dataset.min), Number(btn.dataset.max), false);
   }));
 
   const exposicion = new Map();
