@@ -1006,6 +1006,12 @@ function coincideFiltroTexto(valor, filtro){
   return normalizarTexto(valor).includes(normalizarTexto(filtro));
 }
 
+// Misma etiqueta para lo que se muestra en la columna P.O. y para lo que se
+// ofrece en el filtro — si no hay P.O. pero sí analítica, se usa "Proy. X".
+function etiquetaPO(m){
+  return m.po || m.analitica || 'Sin P.O.';
+}
+
 let mostrarEjecutados = true;
 let mostrarProyectados = true;
 
@@ -1033,7 +1039,7 @@ function render(){
 
   const valPO = selPO.value, valBanco = selBanco.value;
   poblarFiltroMes(movimientos);
-  poblarSelect(selPO, [...new Set(movimientos.map(m => m.po || 'Sin P.O.'))].sort(), render);
+  poblarSelect(selPO, [...new Set(movimientos.map(m => etiquetaPO(m)))].sort(), render);
   poblarSelect(selBanco, [...new Set(movimientos.map(m => m.banco).filter(Boolean))].sort(), render);
   // Proveedor y Cuenta contable son campos de texto: se deja lo que la
   // usuaria escribió tal cual (no se pisa el valor) y el datalist solo
@@ -1078,7 +1084,7 @@ function render(){
     }
     if(m.fecha >= HOY) chartPoints.push({x: fmtDate(m.fecha), y: running});
 
-    const poLabel = m.po || 'Sin P.O.';
+    const poLabel = etiquetaPO(m);
     if(!mesesSeleccionados.has(claveMes(m.fecha))) return;
     if(!mostrarEjecutados && m.estado === 'ejecutado') return;
     if(!mostrarProyectados && m.estado === 'proyectado') return;
@@ -1121,7 +1127,7 @@ function render(){
           : (m.banco || '—')}
         ${m.esBancoManual?'<div style="font-size:10px; color:var(--projected);" title="Banco cambiado manualmente">✏️ cambiado</div>':''}
       </td>
-      <td data-label="P.O.">${m.po ? `<span class="badge ${isProj?'proj':'exec'}">${m.po}</span>` : (m.analitica ? `<span class="oc-analitica" style="margin-top:0;" title="Código de proyecto (analítica)">Proy. ${escapeHTML(m.analitica)}</span>` : `<span style="color:var(--muted); font-size:12px;">—</span>`)}</td>
+      <td data-label="P.O.">${m.po ? `<span class="badge ${isProj?'proj':'exec'}">${m.po}</span>` : (m.analitica ? `<span class="oc-analitica" style="margin-top:0;" title="Código de proyecto (analítica)">${escapeHTML(m.analitica)}</span>` : `<span style="color:var(--muted); font-size:12px;">—</span>`)}</td>
       <td style="color:var(--muted); font-size:12.5px;" data-label="Cuenta contable">${m.cuenta || '—'}</td>
       <td class="nums ${m.monto>0?'amt-in':'amt-out'}" data-label="Monto">
         ${isProj
