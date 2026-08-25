@@ -1,4 +1,4 @@
-  <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -797,6 +797,24 @@ async function cargarDatos(){
     // La pestaña principal muestra solamente movimientos desde 2026. La
     // pestaña de cartera mantiene el histórico disponible, sin saldos cero.
     movimientos = movimientosCartera.filter(m => fmtDate(m.fecha) >= FECHA_MINIMA);
+
+    // Toda proyección vencida (fecha ya pasada) se corre automáticamente a
+    // hoy — mientras no llegue el pago real de Odoo, "hoy" es la mejor
+    // estimación de cuándo se va a pagar. Se guarda igual que si la usuaria
+    // hubiera movido la fecha a mano, para que mañana, si sigue sin
+    // pagarse, se vuelva a correr a la nueva fecha de hoy.
+    const idsVencidasCorridas = [];
+    movimientos.forEach(m=>{
+      if(m.estado === 'proyectado' && m.fecha < HOY){
+        m.fecha = new Date(HOY);
+        m.esFechaManual = true;
+        idsVencidasCorridas.push(m.id);
+      }
+    });
+    if(idsVencidasCorridas.length){
+      console.log(`  ${idsVencidasCorridas.length} proyecciones vencidas corridas a hoy`);
+      idsVencidasCorridas.forEach(id => guardarFechaManual(id, HOY));
+    }
 
     ordenesCompra = ocData.map(oc => ({
       id: oc.id,
