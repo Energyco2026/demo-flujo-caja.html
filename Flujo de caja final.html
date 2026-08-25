@@ -1034,8 +1034,19 @@ function coincideFiltroTexto(valor, filtro){
 function normalizarCodigoProyecto(codigo){
   const texto = String(codigo || '').trim();
   if(!texto) return texto;
-  const match = texto.match(/^(\d{3,5})(?:[\s-]+[A-Za-zÁÉÍÓÚÑáéíóúñ][A-Za-zÁÉÍÓÚÑáéíóúñ\s-]*)?$/);
-  return match ? `${match[1]}-ER26` : texto;
+  const match = texto.match(/^(\d{3,5})(.*)$/);
+  if(!match) return texto;
+  const numero = match[1];
+  const resto = match[2].trim();
+  if(!resto) return `${numero}-ER26`;
+  // Un sufijo que es explícitamente un año de 2 dígitos (ER26, ER-25, "26"...)
+  // sí distingue una PO real de otro año — se respeta, solo se pareja el formato.
+  const comoAnio = resto.match(/^[\s-]*ER[\s-]*(\d{2})$/i) || resto.match(/^[\s-]*(\d{2})$/);
+  if(comoAnio) return `${numero}-ER${comoAnio[1]}`;
+  // Cualquier otro sufijo (categoría de costo, referencia cruzada a otra PO,
+  // número de documento de retención, etc.) no distingue una PO real del año
+  // en curso — se agrupa en el código del año en curso.
+  return `${numero}-ER26`;
 }
 
 function etiquetaPO(m){
