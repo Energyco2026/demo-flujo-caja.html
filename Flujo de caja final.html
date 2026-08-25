@@ -780,7 +780,7 @@ async function cargarDatos(){
             obtenerPOComercialDesdeTexto(m.concepto, poComercialUnicoPorNumero) ||
             '',
         cuenta: obtenerCuentaContable(m),
-        analitica: m.proyecto_codigo || null,
+        analitica: m.proyecto_codigo ? normalizarCodigoProyecto(m.proyecto_codigo) : null,
         montoOriginal: Number(m.monto),
         monto: Number(m.monto_manual != null ? m.monto_manual : m.monto),
         esMontoManual: m.monto_manual != null,
@@ -1008,6 +1008,18 @@ function coincideFiltroTexto(valor, filtro){
 
 // Misma etiqueta para lo que se muestra en la columna P.O. y para lo que se
 // ofrece en el filtro — si no hay P.O. pero sí analítica, se usa "Proy. X".
+// Junta variantes de la misma PO que solo difieren por una categoría de
+// costo en letras (ej. "1727-CERRAMIENTO", "1727-MONTAJE", "1727-PO") en un
+// único código "1727-ER26". Los códigos que ya traen su propio sufijo con
+// dígitos (ER26, ER-24, CPU-2026...) se dejan intactos porque ya identifican
+// una PO real y distinta.
+function normalizarCodigoProyecto(codigo){
+  const texto = String(codigo || '').trim();
+  if(!texto) return texto;
+  const match = texto.match(/^(\d{3,5})(?:-[A-Za-zÁÉÍÓÚÑáéíóúñ]+)?$/);
+  return match ? `${match[1]}-ER26` : texto;
+}
+
 function etiquetaPO(m){
   return m.po || m.analitica || 'Sin P.O.';
 }
