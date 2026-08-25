@@ -387,7 +387,7 @@
             <div id="listaMeses"></div>
           </div>
         </span>
-        <span style="display:flex; align-items:center; gap:6px;">P.O.: <select id="filtroPO"></select></span>
+        <span style="display:flex; align-items:center; gap:6px;">P.O.: <input type="text" id="filtroPO" list="listaPO" placeholder="Todas (escribe para filtrar)" style="min-width:140px; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px;"><datalist id="listaPO"></datalist></span>
         <span style="display:flex; align-items:center; gap:6px;">Banco: <select id="filtroBanco"></select></span>
         <span style="display:flex; align-items:center; gap:6px;">Concepto: <input type="text" id="filtroConcepto" placeholder="Todos (escribe para filtrar)" style="min-width:200px; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px;"></span>
         <span style="display:flex; align-items:center; gap:6px;">Proveedor: <input type="text" id="filtroProveedor" list="listaProveedores" placeholder="Todas (escribe para filtrar)" style="min-width:220px; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px;"><datalist id="listaProveedores"></datalist></span>
@@ -434,7 +434,7 @@
 
   <section class="panel">
     <div class="panel-head sticky-panel-head">
-      <div class="panel-title">Saldo por Orden de Compra</div>
+      <div class="panel-title">Saldo por Órdenes de Compra Abiertas</div>
       <div class="panel-note" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
         <span>Proveedor: <select id="filtroAnalitica"></select></span>
         <span>P.O.: <select id="filtroOCPO"></select></span>
@@ -583,8 +583,8 @@
   <div class="budget-summary">
     <div class="indice-card"><div class="indice-label">Presupuesto inicial</div><div class="indice-value nums" id="budgetInicial">—</div></div>
     <div class="indice-card"><div class="indice-label">Presupuesto aterrizado</div><div class="indice-value nums" id="budgetAterrizado">—</div></div>
-    <div class="indice-card"><div class="indice-label">Comprometido en OC</div><div class="indice-value nums" id="budgetComprometido">—</div></div>
-    <div class="indice-card"><div class="indice-label">Disponible</div><div class="indice-value nums" id="budgetDisponible">—</div></div>
+    <div class="indice-card"><div class="indice-label">Órdenes de Compras Emitidas</div><div class="indice-value nums" id="budgetComprometido">—</div></div>
+    <div class="indice-card"><div class="indice-label">Órdenes de Compras por Emitir</div><div class="indice-value nums" id="budgetDisponible">—</div></div>
     <div class="indice-card"><div class="indice-label">Avance comprometido</div><div class="indice-value nums" id="budgetPorcentaje">—</div></div>
   </div>
   <section class="panel">
@@ -611,7 +611,7 @@
 <footer class="note">
   Datos en vivo desde <b>Supabase</b>, alimentados directo desde Odoo (sin Excel de por medio): la capa gris viene de pagos ya registrados (<code class="nums">account.payment</code>), y la capa naranja de facturas pendientes de pago (<code class="nums">account.move</code>). Al mover una fecha proyectada, se guarda automáticamente.
   <br><br>
-  El bloque de <b>Saldo por Orden de Compra</b> calcula el saldo pendiente restando, de cada OC, los pagos ya ejecutados que la referencian — se actualiza solo la próxima vez que corras el script de carga.
+  El bloque de <b>Saldo por Órdenes de Compra Abiertas</b> calcula el saldo pendiente restando, de cada OC, los pagos ya ejecutados que la referencian — se actualiza solo la próxima vez que corras el script de carga.
 </footer>
 
 </div>
@@ -1034,12 +1034,13 @@ function coincideFiltroTexto(valor, filtro){
 function normalizarCodigoProyecto(codigo){
   const texto = String(codigo || '').trim();
   if(!texto) return texto;
-  const match = texto.match(/^(\d{3,5})(?:-[A-Za-zÁÉÍÓÚÑáéíóúñ]+)?$/);
+  const match = texto.match(/^(\d{3,5})(?:[\s-]+[A-Za-zÁÉÍÓÚÑáéíóúñ][A-Za-zÁÉÍÓÚÑáéíóúñ\s-]*)?$/);
   return match ? `${match[1]}-ER26` : texto;
 }
 
 function etiquetaPO(m){
-  return m.po || m.analitica || 'Sin P.O.';
+  const base = m.po || m.analitica;
+  return base ? normalizarCodigoProyecto(base) : 'Sin P.O.';
 }
 
 let mostrarEjecutados = true;
@@ -1067,22 +1068,22 @@ function render(){
   badgeExec.onclick = ()=>{ mostrarEjecutados = !mostrarEjecutados; render(); };
   badgeProy.onclick = ()=>{ mostrarProyectados = !mostrarProyectados; render(); };
 
-  const valPO = selPO.value, valBanco = selBanco.value;
+  const valBanco = selBanco.value;
   poblarFiltroMes(movimientos);
-  poblarSelect(selPO, [...new Set(movimientos.map(m => etiquetaPO(m)))].sort(), render);
+  poblarDatalist(document.getElementById('listaPO'), [...new Set(movimientos.map(m => etiquetaPO(m)))].sort());
   poblarSelect(selBanco, [...new Set(movimientos.map(m => m.banco).filter(Boolean))].sort(), render);
-  // Proveedor y Cuenta contable son campos de texto: se deja lo que la
+  // Proveedor, Cuenta contable y P.O. son campos de texto: se deja lo que la
   // usuaria escribió tal cual (no se pisa el valor) y el datalist solo
   // ofrece sugerencias al escribir, no obliga a elegir el texto exacto.
   poblarDatalist(document.getElementById('listaProveedores'), [...new Set(movimientos.map(m => m.proveedor).filter(Boolean))].sort());
   poblarDatalist(document.getElementById('listaCuentas'), [...new Set(movimientos.map(m => m.cuenta).filter(Boolean))].sort());
+  selPO.oninput = render;
   selConcepto.oninput = render;
   selProv.oninput = render;
   selCuenta.oninput = render;
-  if(valPO) selPO.value = valPO;
   if(valBanco) selBanco.value = valBanco;
 
-  const fPO = selPO.value || 'Todas';
+  const fPO = selPO.value.trim();
   const fBanco = selBanco.value || 'Todas';
   const fConcepto = selConcepto.value.trim();
   const fProv = selProv.value.trim();
@@ -1118,7 +1119,7 @@ function render(){
     if(!mesesSeleccionados.has(claveMes(m.fecha))) return;
     if(!mostrarEjecutados && m.estado === 'ejecutado') return;
     if(!mostrarProyectados && m.estado === 'proyectado') return;
-    if(fPO !== 'Todas' && poLabel !== fPO) return;
+    if(!coincideFiltroTexto(poLabel, fPO)) return;
     if(fBanco !== 'Todas' && m.banco !== fBanco) return;
     if(!coincideFiltroTexto(m.concepto, fConcepto)) return;
     if(!coincideFiltroTexto(m.proveedor, fProv)) return;
@@ -1157,7 +1158,7 @@ function render(){
           : (m.banco || '—')}
         ${m.esBancoManual?'<div style="font-size:10px; color:var(--projected);" title="Banco cambiado manualmente">✏️ cambiado</div>':''}
       </td>
-      <td data-label="P.O.">${m.po ? `<span class="badge ${isProj?'proj':'exec'}">${m.po}</span>` : (m.analitica ? `<span class="oc-analitica" style="margin-top:0;" title="Código de proyecto (analítica)">${escapeHTML(m.analitica)}</span>` : `<span style="color:var(--muted); font-size:12px;">—</span>`)}</td>
+      <td data-label="P.O.">${m.po ? `<span class="badge ${isProj?'proj':'exec'}">${normalizarCodigoProyecto(m.po)}</span>` : (m.analitica ? `<span class="oc-analitica" style="margin-top:0;" title="Código de proyecto (analítica)">${escapeHTML(m.analitica)}</span>` : `<span style="color:var(--muted); font-size:12px;">—</span>`)}</td>
       <td style="color:var(--muted); font-size:12.5px;" data-label="Cuenta contable">${m.cuenta || '—'}</td>
       <td class="nums ${m.monto>0?'amt-in':'amt-out'}" data-label="Monto">
         ${isProj
