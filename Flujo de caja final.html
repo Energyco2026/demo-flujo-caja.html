@@ -780,6 +780,7 @@ async function cargarDatos(){
             obtenerPOComercialDesdeTexto(m.concepto, poComercialUnicoPorNumero) ||
             '',
         cuenta: obtenerCuentaContable(m),
+        analitica: m.proyecto_codigo || null,
         montoOriginal: Number(m.monto),
         monto: Number(m.monto_manual != null ? m.monto_manual : m.monto),
         esMontoManual: m.monto_manual != null,
@@ -1120,7 +1121,7 @@ function render(){
           : (m.banco || '—')}
         ${m.esBancoManual?'<div style="font-size:10px; color:var(--projected);" title="Banco cambiado manualmente">✏️ cambiado</div>':''}
       </td>
-      <td data-label="P.O.">${m.po ? `<span class="badge ${isProj?'proj':'exec'}">${m.po}</span>` : `<span style="color:var(--muted); font-size:12px;">—</span>`}</td>
+      <td data-label="P.O.">${m.po ? `<span class="badge ${isProj?'proj':'exec'}">${m.po}</span>` : (m.analitica ? `<span class="oc-analitica" style="margin-top:0;" title="Código de proyecto (analítica)">Proy. ${escapeHTML(m.analitica)}</span>` : `<span style="color:var(--muted); font-size:12px;">—</span>`)}</td>
       <td style="color:var(--muted); font-size:12.5px;" data-label="Cuenta contable">${m.cuenta || '—'}</td>
       <td class="nums ${m.monto>0?'amt-in':'amt-out'}" data-label="Monto">
         ${isProj
