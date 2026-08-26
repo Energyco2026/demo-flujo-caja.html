@@ -576,13 +576,15 @@
   <section class="panel">
     <div class="panel-head">
       <div>
-        <div class="panel-title">Presupuesto por Proyecto</div>
-        <div class="panel-note">Categorías consolidadas desde COSTOS · OC emitidas sin IVA · real contable desde Odoo</div>
+        <div class="panel-title">Presupuesto e ingresos por Proyecto</div>
+        <div class="panel-note">Valor contractual y cobros · costos detallados desde COSTOS · OC emitidas sin IVA · real contable desde Odoo</div>
       </div>
       <label class="panel-note">Proyecto: <select id="filtroProyectoPresupuesto"></select></label>
     </div>
   </section>
   <div class="budget-summary">
+    <div class="indice-card" style="border-color:var(--good); background:var(--good-bg);"><div class="indice-label">Valor del contrato</div><div class="indice-value nums good" id="budgetContrato">—</div><div class="indice-help">Monto registrado en la portada del Excel.</div></div>
+    <div class="indice-card" style="border-color:var(--good); background:var(--good-bg);"><div class="indice-label">Cobrado en Odoo</div><div class="indice-value nums good" id="budgetCobrado">—</div><div class="indice-help" id="budgetCobradoDetalle">Facturas conciliadas y anticipos identificados.</div></div>
     <div class="indice-card"><div class="indice-label">Presupuesto inicial</div><div class="indice-value nums" id="budgetInicial">—</div></div>
     <div class="indice-card"><div class="indice-label">Presupuesto aterrizado</div><div class="indice-value nums" id="budgetAterrizado">—</div></div>
     <div class="indice-card"><div class="indice-label">OC emitidas sin IVA</div><div class="indice-value nums" id="budgetComprometido">—</div></div>
@@ -614,7 +616,7 @@
 
 
 <footer class="note">
-  Datos en vivo desde <b>Supabase</b>: flujo, órdenes de compra y real ejecutado provienen de Odoo; el presupuesto inicial y aterrizado se consolidan desde la hoja <b>COSTOS</b> de cada proyecto. La capa gris viene de pagos ya registrados (<code class="nums">account.payment</code>) y la capa naranja de facturas pendientes (<code class="nums">account.move</code>).
+  Datos en vivo desde <b>Supabase</b>: flujo, órdenes de compra, cobros y real ejecutado provienen de Odoo; el valor del contrato se lee de <b>PORTADA</b> y el presupuesto inicial y aterrizado se consolidan desde <b>COSTOS</b>. La capa gris viene de pagos ya registrados (<code class="nums">account.payment</code>) y la capa naranja de facturas pendientes (<code class="nums">account.move</code>).
   <br><br>
   El bloque de <b>Saldo por Órdenes de Compra Abiertas</b> calcula el saldo pendiente restando, de cada OC, los pagos ya ejecutados que la referencian — se actualiza solo la próxima vez que corras el script de carga.
 </footer>
@@ -660,6 +662,7 @@ let anioActualRotacion = null;
 let ordenesCompra = [];
 let cuotasFormaPago = [];
 let presupuestosProyecto = [];
+let ingresosProyecto = [];
 let asignacionesPresupuesto = [];
 let asignacionesAutoPresupuesto = [];
 let bancosBase = {};
@@ -736,11 +739,12 @@ async function cargarDatos(){
   errorBox.innerHTML = '';
   estado.textContent = 'Cargando datos…';
   try{
-    const [bancosData, movData, ocData, presupuestoData, asignacionData, asignacionAutoData, facturacionData, cuotasData] = await Promise.all([
+    const [bancosData, movData, ocData, presupuestoData, ingresosData, asignacionData, asignacionAutoData, facturacionData, cuotasData] = await Promise.all([
       fetchTabla('bancos'),
       fetchTabla('movimientos', q => q.order('fecha', {ascending: true})),
       fetchTabla('ordenes_compra'),
       fetchTabla('presupuesto_categoria_vs_comprometido'),
+      fetchTabla('presupuesto_proyecto_ingresos'),
       fetchTabla('oc_categoria_asignaciones'),
       fetchTabla('oc_categoria_compromisos_auto'),
       fetchTabla('facturacion_rotacion', q => q.order('fecha', {ascending: true})),
@@ -853,6 +857,13 @@ async function cargarDatos(){
       porEjecutar: p.por_ejecutar == null ? null : Number(p.por_ejecutar),
       porcentaje: Number(p.porcentaje_comprometido) || 0,
       documentosReales: Number(p.documentos_reales) || 0,
+    }));
+    ingresosProyecto = ingresosData.map(p=>({
+      proyecto: String(p.proyecto),
+      proyectoNombre: p.proyecto_nombre || '',
+      montoContrato: Number(p.monto_contrato) || 0,
+      montoCobrado: Number(p.monto_cobrado) || 0,
+      documentosCobrados: Number(p.documentos_cobrados) || 0,
     }));
     asignacionesPresupuesto = asignacionData;
     asignacionesAutoPresupuesto = asignacionAutoData;
@@ -1521,12 +1532,18 @@ function completarMontoOC(){
 function renderPresupuesto(){
   const proyecto = document.getElementById('filtroProyectoPresupuesto').value;
   const filas = presupuestosProyecto.filter(p=>p.proyecto===proyecto);
+  const ingreso = ingresosProyecto.find(p=>p.proyecto===proyecto);
   const inicial = filas.reduce((s,p)=>s+p.presupuestoInicial,0);
   const aterrizado = filas.reduce((s,p)=>s+p.presupuestoAterrizado,0);
   const comprometido = filas.reduce((s,p)=>s+p.comprometido,0);
   const real = filas.reduce((s,p)=>s+(p.presupuestoReal || 0),0);
   const disponible = aterrizado-comprometido;
   const porEjecutar = aterrizado-real;
+  document.getElementById('budgetContrato').textContent = fmtMoney(ingreso?.montoContrato || 0);
+  document.getElementById('budgetCobrado').textContent = fmtMoney(ingreso?.montoCobrado || 0);
+  document.getElementById('budgetCobradoDetalle').textContent = ingreso
+    ? `${ingreso.documentosCobrados} documento${ingreso.documentosCobrados===1?'':'s'} cobrado${ingreso.documentosCobrados===1?'':'s'} identificado${ingreso.documentosCobrados===1?'':'s'}.`
+    : 'Sin resumen de ingresos cargado.';
   document.getElementById('budgetInicial').textContent = fmtMoney(inicial);
   document.getElementById('budgetAterrizado').textContent = fmtMoney(aterrizado);
   document.getElementById('budgetComprometido').textContent = fmtMoney(comprometido);
