@@ -520,7 +520,7 @@
       <button type="button" class="detail-close" id="rubroDetailClose">Cerrar</button>
     </div>
     <div class="detail-scroll">
-      <table><thead><tr><th>P.O.</th><th>Proveedor</th><th>Total OC</th><th>Comprometido en este rubro</th><th>Estado</th></tr></thead><tbody id="rubroDetailRows"></tbody></table>
+      <table><thead><tr><th>P.O.</th><th>Proveedor</th><th>Subtotal OC sin IVA</th><th>Comprometido en esta categoría</th><th>Clasificación</th><th>Estado</th></tr></thead><tbody id="rubroDetailRows"></tbody></table>
     </div>
   </div>
 </div>
@@ -577,7 +577,7 @@
     <div class="panel-head">
       <div>
         <div class="panel-title">Presupuesto por Proyecto</div>
-        <div class="panel-note">Presupuesto inicial − OC comprometidas = disponible</div>
+        <div class="panel-note">Categorías consolidadas desde COSTOS · OC emitidas sin IVA · real contable desde Odoo</div>
       </div>
       <label class="panel-note">Proyecto: <select id="filtroProyectoPresupuesto"></select></label>
     </div>
@@ -585,25 +585,28 @@
   <div class="budget-summary">
     <div class="indice-card"><div class="indice-label">Presupuesto inicial</div><div class="indice-value nums" id="budgetInicial">—</div></div>
     <div class="indice-card"><div class="indice-label">Presupuesto aterrizado</div><div class="indice-value nums" id="budgetAterrizado">—</div></div>
-    <div class="indice-card"><div class="indice-label">Órdenes de Compras Emitidas</div><div class="indice-value nums" id="budgetComprometido">—</div></div>
-    <div class="indice-card"><div class="indice-label">Órdenes de Compras por Emitir</div><div class="indice-value nums" id="budgetDisponible">—</div></div>
+    <div class="indice-card"><div class="indice-label">OC emitidas sin IVA</div><div class="indice-value nums" id="budgetComprometido">—</div></div>
+    <div class="indice-card"><div class="indice-label">Disponible por comprometer</div><div class="indice-value nums" id="budgetDisponible">—</div></div>
+    <div class="indice-card"><div class="indice-label">Real ejecutado Odoo</div><div class="indice-value nums" id="budgetReal">—</div></div>
+    <div class="indice-card"><div class="indice-label">Saldo por ejecutar</div><div class="indice-value nums" id="budgetPorEjecutar">—</div></div>
     <div class="indice-card"><div class="indice-label">Avance comprometido</div><div class="indice-value nums" id="budgetPorcentaje">—</div></div>
+    <div class="indice-card"><div class="indice-label">Avance real</div><div class="indice-value nums" id="budgetPorcentajeReal">—</div></div>
   </div>
   <section class="panel">
-    <div class="panel-head"><div class="panel-title">Asignar una OC a un rubro</div><div class="panel-note">Solo se hace una vez; después el saldo se actualiza automáticamente.</div></div>
+    <div class="panel-head"><div class="panel-title">Corregir la categoría de una OC</div><div class="panel-note">Las OC se clasifican automáticamente; usa este bloque únicamente para ajustar una clasificación.</div></div>
     <div class="budget-form">
       <label>Orden de compra<select id="budgetOC"></select></label>
-      <label>Rubro presupuestario<select id="budgetRubro"></select></label>
-      <label>Monto comprometido<input id="budgetMonto" type="number" min="0" step="0.01" placeholder="0.00"></label>
-      <button type="button" id="budgetAsignar">Asignar OC</button>
+      <label>Categoría presupuestaria<select id="budgetRubro"></select></label>
+      <label>Monto comprometido sin IVA<input id="budgetMonto" type="number" min="0" step="0.01" placeholder="0.00"></label>
+      <button type="button" id="budgetAsignar">Guardar ajuste</button>
       <div id="budgetMensaje" class="oc-form-msg"></div>
     </div>
   </section>
   <section class="panel">
-    <div class="panel-head"><div class="panel-title">Detalle por rubro</div><div class="panel-note" id="budgetProyectoNombre"></div></div>
+    <div class="panel-head"><div class="panel-title">Detalle por categoría</div><div class="panel-note" id="budgetProyectoNombre"></div></div>
     <div class="panel-note" style="margin:-6px 0 8px;">Clic en una fila para ver qué OC la componen.</div>
     <div class="table-scroll"><table>
-      <thead><tr><th>Rubro</th><th>Presupuesto inicial</th><th>Presupuesto aterrizado</th><th>Comprometido</th><th>Disponible</th><th>Avance</th><th>Real ejecutado</th><th>Por ejecutar</th></tr></thead>
+      <thead><tr><th>Categoría</th><th>Presupuesto inicial</th><th>Presupuesto aterrizado</th><th>OC emitidas sin IVA</th><th>Disponible por comprometer</th><th>Avance OC</th><th>Real ejecutado Odoo</th><th>Por ejecutar</th></tr></thead>
       <tbody id="budgetRows"></tbody>
     </table></div>
   </section>
@@ -611,7 +614,7 @@
 
 
 <footer class="note">
-  Datos en vivo desde <b>Supabase</b>, alimentados directo desde Odoo (sin Excel de por medio): la capa gris viene de pagos ya registrados (<code class="nums">account.payment</code>), y la capa naranja de facturas pendientes de pago (<code class="nums">account.move</code>). Al mover una fecha proyectada, se guarda automáticamente.
+  Datos en vivo desde <b>Supabase</b>: flujo, órdenes de compra y real ejecutado provienen de Odoo; el presupuesto inicial y aterrizado se consolidan desde la hoja <b>COSTOS</b> de cada proyecto. La capa gris viene de pagos ya registrados (<code class="nums">account.payment</code>) y la capa naranja de facturas pendientes (<code class="nums">account.move</code>).
   <br><br>
   El bloque de <b>Saldo por Órdenes de Compra Abiertas</b> calcula el saldo pendiente restando, de cada OC, los pagos ya ejecutados que la referencian — se actualiza solo la próxima vez que corras el script de carga.
 </footer>
@@ -658,6 +661,7 @@ let ordenesCompra = [];
 let cuotasFormaPago = [];
 let presupuestosProyecto = [];
 let asignacionesPresupuesto = [];
+let asignacionesAutoPresupuesto = [];
 let bancosBase = {};
 let HOY = new Date();
 HOY.setHours(0,0,0,0); // medianoche de hoy, para comparar fechas sin la hora actual de por medio
@@ -732,12 +736,13 @@ async function cargarDatos(){
   errorBox.innerHTML = '';
   estado.textContent = 'Cargando datos…';
   try{
-    const [bancosData, movData, ocData, presupuestoData, asignacionData, facturacionData, cuotasData] = await Promise.all([
+    const [bancosData, movData, ocData, presupuestoData, asignacionData, asignacionAutoData, facturacionData, cuotasData] = await Promise.all([
       fetchTabla('bancos'),
       fetchTabla('movimientos', q => q.order('fecha', {ascending: true})),
       fetchTabla('ordenes_compra'),
-      fetchTabla('presupuesto_vs_comprometido'),
-      fetchTabla('oc_rubro_asignaciones'),
+      fetchTabla('presupuesto_categoria_vs_comprometido'),
+      fetchTabla('oc_categoria_asignaciones'),
+      fetchTabla('oc_categoria_compromisos_auto'),
       fetchTabla('facturacion_rotacion', q => q.order('fecha', {ascending: true})),
       fetchTabla('oc_forma_pago_sugerida'),
     ]);
@@ -823,6 +828,7 @@ async function cargarDatos(){
       poNumero: obtenerPOComercial(oc),
       proveedor: oc.proveedor,
       analitica: oc.cuenta_analitica || 'Sin cuenta analítica',
+      subtotalPresupuesto: Number(oc.subtotal_presupuesto != null ? oc.subtotal_presupuesto : oc.total),
       total: Number(oc.total),
       estadoOdoo: oc.estado_odoo || '',
       fechaOrden: oc.fecha_orden || null,
@@ -838,16 +844,18 @@ async function cargarDatos(){
       estado: c.estado,
     }));
     presupuestosProyecto = presupuestoData.map(p=>({
-      id: Number(p.id), proyecto: String(p.proyecto), proyectoNombre: p.proyecto_nombre || '',
-      rubro: p.rubro,
+      id: p.id == null ? null : Number(p.id), proyecto: String(p.proyecto), proyectoNombre: p.proyecto_nombre || '',
+      rubro: p.rubro, rubroClave: p.rubro_clave || '',
       presupuestoInicial: Number(p.presupuesto_inicial) || 0,
       presupuestoAterrizado: Number(p.presupuesto_aterrizado) || 0,
       presupuestoReal: p.presupuesto_real == null ? null : Number(p.presupuesto_real),
       comprometido: Number(p.comprometido) || 0, disponible: Number(p.disponible) || 0,
       porEjecutar: p.por_ejecutar == null ? null : Number(p.por_ejecutar),
       porcentaje: Number(p.porcentaje_comprometido) || 0,
+      documentosReales: Number(p.documentos_reales) || 0,
     }));
     asignacionesPresupuesto = asignacionData;
+    asignacionesAutoPresupuesto = asignacionAutoData;
     facturacionRotacion = facturacionData.map(f => ({
       odooId: Number(f.odoo_id),
       numero: f.numero || null,
@@ -1503,11 +1511,11 @@ function prepararPresupuestos(){
 function completarMontoOC(){
   const ocId = document.getElementById('budgetOC').value;
   const oc = ordenesCompra.find(x=>String(x.id)===ocId);
-  if(!oc) return;
+  if(!oc){ document.getElementById('budgetMonto').value = ''; return; }
   const yaAsignado = asignacionesPresupuesto
     .filter(a=>String(a.oc_id)===ocId)
     .reduce((s,a)=>s + Number(a.monto_comprometido || 0), 0);
-  document.getElementById('budgetMonto').value = Math.max(0, oc.total - yaAsignado).toFixed(2);
+  document.getElementById('budgetMonto').value = Math.max(0, oc.subtotalPresupuesto - yaAsignado).toFixed(2);
 }
 
 function renderPresupuesto(){
@@ -1516,19 +1524,27 @@ function renderPresupuesto(){
   const inicial = filas.reduce((s,p)=>s+p.presupuestoInicial,0);
   const aterrizado = filas.reduce((s,p)=>s+p.presupuestoAterrizado,0);
   const comprometido = filas.reduce((s,p)=>s+p.comprometido,0);
+  const real = filas.reduce((s,p)=>s+(p.presupuestoReal || 0),0);
   const disponible = aterrizado-comprometido;
+  const porEjecutar = aterrizado-real;
   document.getElementById('budgetInicial').textContent = fmtMoney(inicial);
   document.getElementById('budgetAterrizado').textContent = fmtMoney(aterrizado);
   document.getElementById('budgetComprometido').textContent = fmtMoney(comprometido);
   const disponibleEl = document.getElementById('budgetDisponible');
   disponibleEl.textContent = fmtMoney(disponible);
   disponibleEl.className = 'indice-value nums ' + (disponible < 0 ? 'budget-over' : 'budget-ok');
+  const realEl = document.getElementById('budgetReal');
+  realEl.textContent = fmtMoney(real);
+  const porEjecutarEl = document.getElementById('budgetPorEjecutar');
+  porEjecutarEl.textContent = fmtMoney(porEjecutar);
+  porEjecutarEl.className = 'indice-value nums ' + (porEjecutar < 0 ? 'budget-over' : 'budget-ok');
   document.getElementById('budgetPorcentaje').textContent = aterrizado ? (comprometido*100/aterrizado).toFixed(1)+'%' : '—';
+  document.getElementById('budgetPorcentajeReal').textContent = aterrizado ? (real*100/aterrizado).toFixed(1)+'%' : '—';
   document.getElementById('budgetProyectoNombre').textContent = filas[0]?.proyectoNombre || '';
   document.getElementById('budgetRows').innerHTML = filas.length ? filas
     .sort((a,b)=>a.rubro.localeCompare(b.rubro,'es'))
-    .map(p=>`<tr class="rubro-row" data-rubro-id="${p.id}" style="cursor:pointer;">
-      <td>${escapeHTML(p.rubro)}</td>
+    .map(p=>`<tr class="rubro-row" data-rubro-id="${p.id==null?'':p.id}" data-proyecto="${escapeHTML(p.proyecto)}" data-rubro-clave="${escapeHTML(p.rubroClave)}" style="cursor:pointer;">
+      <td>${escapeHTML(p.rubro)}${p.rubroClave==='sin_clasificar'?' <span class="badge" style="background:var(--bad-bg); color:var(--bad);">REVISAR</span>':''}</td>
       <td class="nums">${fmtMoney(p.presupuestoInicial)}</td>
       <td class="nums">${fmtMoney(p.presupuestoAterrizado)}</td>
       <td class="nums">${fmtMoney(p.comprometido)}</td>
@@ -1538,38 +1554,59 @@ function renderPresupuesto(){
       <td class="nums">${p.porEjecutar==null?'—':fmtMoney(p.porEjecutar)}</td>
     </tr>`).join('') : '<tr><td colspan="8" class="oc-detail-empty">Sin presupuesto cargado.</td></tr>';
   document.querySelectorAll('#budgetRows tr.rubro-row').forEach(tr=>{
-    tr.addEventListener('click', ()=>abrirDetalleRubro(Number(tr.dataset.rubroId)));
+    tr.addEventListener('click', ()=>abrirDetalleRubro(
+      tr.dataset.rubroId ? Number(tr.dataset.rubroId) : null,
+      tr.dataset.proyecto,
+      tr.dataset.rubroClave
+    ));
   });
 
-  document.getElementById('budgetRubro').innerHTML = filas.map(p=>
+  const categoriasAsignables = filas.filter(p=>p.id!=null);
+  document.getElementById('budgetRubro').innerHTML = categoriasAsignables.map(p=>
     `<option value="${p.id}">${escapeHTML(p.rubro)} · disponible ${fmtMoney(p.disponible)}</option>`
   ).join('');
   const ocs = ordenesCompra.filter(oc=>
-    numeroProyecto(oc.poNumero)===proyecto || numeroProyecto(oc.analitica)===proyecto
+    (numeroProyecto(oc.poNumero)===proyecto || numeroProyecto(oc.analitica)===proyecto) &&
+    ['purchase','done'].includes(oc.estadoOdoo)
   );
   document.getElementById('budgetOC').innerHTML = ocs.length ? ocs.map(oc=>
-    `<option value="${escapeHTML(String(oc.id))}">${escapeHTML(oc.poNumero)} · ${escapeHTML(oc.proveedor || '')} · ${fmtMoney(oc.total)}</option>`
+    `<option value="${escapeHTML(String(oc.id))}">${escapeHTML(oc.poNumero)} · ${escapeHTML(oc.proveedor || '')} · sin IVA ${fmtMoney(oc.subtotalPresupuesto)}</option>`
   ).join('') : '<option value="">No hay OC vinculadas a este proyecto</option>';
   completarMontoOC();
 }
 
-function abrirDetalleRubro(rubroId){
-  const rubro = presupuestosProyecto.find(p=>p.id===rubroId);
+function abrirDetalleRubro(rubroId, proyecto='', rubroClave=''){
+  const rubro = presupuestosProyecto.find(p=>
+    rubroId!=null ? p.id===rubroId : (p.proyecto===proyecto && p.rubroClave===rubroClave)
+  );
   if(!rubro) return;
-  const asignaciones = asignacionesPresupuesto.filter(a=>Number(a.presupuesto_rubro_id)===rubroId);
+  const manuales = asignacionesPresupuesto.filter(a=>{
+    if(rubroId==null || Number(a.presupuesto_categoria_id)!==rubroId) return false;
+    const oc = ordenesCompra.find(x=>String(x.id)===String(a.oc_id));
+    return oc && ['purchase','done'].includes(oc.estadoOdoo);
+  }).map(a=>({...a, esAutomatica:false}));
+  const ocConAjusteManual = new Set(asignacionesPresupuesto.map(a=>String(a.oc_id)));
+  const automaticas = asignacionesAutoPresupuesto.filter(a=>{
+    if(String(a.proyecto)!==rubro.proyecto || a.rubro_clave!==rubro.rubroClave) return false;
+    if(ocConAjusteManual.has(String(a.oc_id))) return false;
+    const oc = ordenesCompra.find(x=>String(x.id)===String(a.oc_id));
+    return oc && ['purchase','done'].includes(oc.estadoOdoo);
+  }).map(a=>({...a, esAutomatica:true}));
+  const asignaciones = [...manuales, ...automaticas];
   document.getElementById('rubroDetailTitle').textContent = `Detalle · ${rubro.rubro}`;
   document.getElementById('rubroDetailSummary').textContent =
-    `${asignaciones.length} OC asignada${asignaciones.length===1?'':'s'} · Comprometido ${fmtMoney(rubro.comprometido)} de ${fmtMoney(rubro.presupuestoAterrizado)}`;
+    `${asignaciones.length} OC comprometida${asignaciones.length===1?'':'s'} · ${rubro.documentosReales} documento${rubro.documentosReales===1?'':'s'} real${rubro.documentosReales===1?'':'es'} · Comprometido ${fmtMoney(rubro.comprometido)} · Real ${fmtMoney(rubro.presupuestoReal||0)}`;
   document.getElementById('rubroDetailRows').innerHTML = asignaciones.length ? asignaciones.map(a=>{
     const oc = ordenesCompra.find(x=>String(x.id)===String(a.oc_id));
     return `<tr>
       <td>${escapeHTML(oc ? oc.poNumero : a.oc_id)}</td>
       <td>${escapeHTML(oc?.proveedor || '—')}</td>
-      <td class="nums">${oc ? fmtMoney(oc.total) : '—'}</td>
+      <td class="nums">${oc ? fmtMoney(oc.subtotalPresupuesto) : '—'}</td>
       <td class="nums">${fmtMoney(Number(a.monto_comprometido)||0)}</td>
+      <td>${a.esAutomatica?'Automática desde Odoo':'Ajuste manual'}</td>
       <td>${escapeHTML(oc?.estadoOdoo || '—')}</td>
     </tr>`;
-  }).join('') : '<tr><td colspan="5" class="oc-detail-empty">Todavía no hay ninguna OC asignada a este rubro.</td></tr>';
+  }).join('') : '<tr><td colspan="6" class="oc-detail-empty">Todavía no hay ninguna OC comprometida en esta categoría.</td></tr>';
   document.getElementById('rubroDetailOverlay').classList.add('open');
 }
 
@@ -1620,30 +1657,31 @@ async function asignarOCPresupuesto(){
   }
   const oc = ordenesCompra.find(x=>String(x.id)===ocId);
   const asignadoOtros = asignacionesPresupuesto
-    .filter(a=>String(a.oc_id)===ocId && Number(a.presupuesto_rubro_id)!==rubroId)
+    .filter(a=>String(a.oc_id)===ocId && Number(a.presupuesto_categoria_id)!==rubroId)
     .reduce((s,a)=>s+Number(a.monto_comprometido||0),0);
-  if(oc && asignadoOtros + monto > oc.total + 0.01){
-    mensaje.style.color = 'var(--bad)'; mensaje.textContent = `La distribución supera el total de la OC (${fmtMoney(oc.total)}).`; return;
+  if(oc && asignadoOtros + monto > oc.subtotalPresupuesto + 0.01){
+    mensaje.style.color = 'var(--bad)'; mensaje.textContent = `La distribución supera el subtotal sin IVA de la OC (${fmtMoney(oc.subtotalPresupuesto)}).`; return;
   }
   const boton = document.getElementById('budgetAsignar');
   boton.disabled = true; mensaje.textContent = 'Guardando…';
-  const { error } = await sb.from('oc_rubro_asignaciones').upsert({
-    presupuesto_rubro_id:rubroId, oc_id:ocId, monto_comprometido:monto, actualizado_en:new Date().toISOString()
-  }, {onConflict:'presupuesto_rubro_id,oc_id'});
+  const { error } = await sb.from('oc_categoria_asignaciones').upsert({
+    presupuesto_categoria_id:rubroId, oc_id:ocId, monto_comprometido:monto, actualizado_en:new Date().toISOString()
+  }, {onConflict:'presupuesto_categoria_id,oc_id'});
   boton.disabled = false;
   if(error){ mensaje.style.color='var(--bad)'; mensaje.textContent='No se pudo guardar: '+error.message; return; }
-  const [p,a] = await Promise.all([fetchTabla('presupuesto_vs_comprometido'),fetchTabla('oc_rubro_asignaciones')]);
+  const [p,a] = await Promise.all([fetchTabla('presupuesto_categoria_vs_comprometido'),fetchTabla('oc_categoria_asignaciones')]);
   presupuestosProyecto = p.map(x=>({
-    id:Number(x.id),proyecto:String(x.proyecto),proyectoNombre:x.proyecto_nombre||'',rubro:x.rubro,
+    id:x.id==null?null:Number(x.id),proyecto:String(x.proyecto),proyectoNombre:x.proyecto_nombre||'',rubro:x.rubro,rubroClave:x.rubro_clave||'',
     presupuestoInicial:Number(x.presupuesto_inicial)||0,
     presupuestoAterrizado:Number(x.presupuesto_aterrizado)||0,
     presupuestoReal:x.presupuesto_real==null?null:Number(x.presupuesto_real),
     comprometido:Number(x.comprometido)||0,disponible:Number(x.disponible)||0,
     porEjecutar:x.por_ejecutar==null?null:Number(x.por_ejecutar),
     porcentaje:Number(x.porcentaje_comprometido)||0,
+    documentosReales:Number(x.documentos_reales)||0,
   }));
   asignacionesPresupuesto = a;
-  mensaje.style.color='var(--good)'; mensaje.textContent='OC asignada. El presupuesto disponible ya fue actualizado.';
+  mensaje.style.color='var(--good)'; mensaje.textContent='Ajuste guardado. El presupuesto disponible ya fue actualizado.';
   renderPresupuesto();
 }
 
