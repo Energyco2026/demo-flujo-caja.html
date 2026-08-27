@@ -1641,7 +1641,7 @@ function abrirDetalleComprometido(proyecto, rubroClave){
   document.querySelectorAll('#rubroDetailRows tr[data-linea-id]').forEach(tr=>{
     tr.querySelector('.reclasificar-btn')?.addEventListener('click', ()=>{
       const select = tr.querySelector('.reclasificar-select');
-      guardarReclasificacion('comprometido', Number(tr.dataset.lineaId), proyecto, select.value, ()=>abrirDetalleComprometido(proyecto, rubroClave));
+      guardarReclasificacion('comprometido', tr.dataset.lineaId, proyecto, select.value, ()=>abrirDetalleComprometido(proyecto, rubroClave));
     });
   });
   document.getElementById('rubroDetailOverlay').classList.add('open');
@@ -1667,7 +1667,7 @@ function abrirDetalleReal(proyecto, rubroClave){
   document.querySelectorAll('#realDetailRows tr[data-linea-id]').forEach(tr=>{
     tr.querySelector('.reclasificar-btn')?.addEventListener('click', ()=>{
       const select = tr.querySelector('.reclasificar-select');
-      guardarReclasificacion('real', Number(tr.dataset.lineaId), proyecto, select.value, ()=>abrirDetalleReal(proyecto, rubroClave));
+      guardarReclasificacion('real', tr.dataset.lineaId, proyecto, select.value, ()=>abrirDetalleReal(proyecto, rubroClave));
     });
   });
   document.getElementById('realDetailOverlay').classList.add('open');
