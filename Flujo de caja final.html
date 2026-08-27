@@ -424,6 +424,7 @@
           <th>Cuenta contable</th>
           <th>Monto</th>
           <th>Fecha factura</th>
+          <th>Fecha vencimiento</th>
           <th>Fecha pago</th>
           <th>Saldo proyectado (a esa fecha)</th>
         </tr>
@@ -798,6 +799,7 @@ async function cargarDatos(){
         monto: Number(m.monto_manual != null ? m.monto_manual : m.monto),
         esMontoManual: m.monto_manual != null,
         fechaFactura: m.fecha_factura ? new Date(m.fecha_factura + 'T00:00:00') : null,
+        fechaVencimiento: m.fecha_vencimiento ? new Date(m.fecha_vencimiento + 'T00:00:00') : null,
         fecha: new Date((m.fecha_pago_manual || m.fecha) + 'T00:00:00'),
         esFechaManual: !!m.fecha_pago_manual,
         pagadoManual: m.pagado_manual_fecha || null,
@@ -833,6 +835,7 @@ async function cargarDatos(){
       id: oc.id,
       poNumero: obtenerPOComercial(oc),
       proveedor: oc.proveedor,
+      referenciaProveedor: oc.referencia_proveedor || null,
       analitica: oc.cuenta_analitica || 'Sin cuenta analítica',
       total: Number(oc.total),
       totalSinIva: Number(oc.subtotal_presupuesto) || 0,
@@ -1213,6 +1216,9 @@ function render(){
       </td>
       <td class="nums" data-label="Fecha factura">
         ${m.fechaFactura ? fmtDate(m.fechaFactura) : '<span style="color:var(--muted)">—</span>'}
+      </td>
+      <td class="nums" style="color:var(--muted); font-size:12.5px;" data-label="Fecha vencimiento" title="Fecha de vencimiento según Odoo (informativa, no editable)">
+        ${m.fechaVencimiento ? fmtDate(m.fechaVencimiento) : '<span style="color:var(--muted)">—</span>'}
       </td>
       <td data-label="Fecha pago">
         ${isProj?'<div style="font-size:9.5px; color:var(--projected); text-transform:uppercase; letter-spacing:.03em; margin-bottom:3px; font-weight:600;">Fecha de pago (editable)</div>':''}
@@ -2018,6 +2024,7 @@ function renderOC(){
         </div>
         <div class="oc-prov">${oc.proveedor || '—'}</div>
         <div class="oc-internal" title="Identificador único de la orden en Odoo">N.º OC Odoo: ${escapeHTML(String(oc.id))}</div>
+        ${oc.referenciaProveedor ? `<div class="oc-internal" title="Referencia de proveedor cargada en la OC">Ref. proveedor: ${escapeHTML(oc.referenciaProveedor)}</div>` : ''}
         <br>
         <span class="oc-analitica">${oc.analitica}</span>
         <div class="oc-amounts nums">
@@ -2378,16 +2385,17 @@ function exportarExcel(){
     'Cuenta contable': m.cuenta || '',
     Monto: Number(m.monto.toFixed(2)),
     'Fecha factura': m.fechaFactura ? fmtDate(m.fechaFactura) : '',
+    'Fecha vencimiento': m.fechaVencimiento ? fmtDate(m.fechaVencimiento) : '',
     'Fecha pago': fmtDate(m.fecha),
     Estado: m.estado || ''
   }));
   const hoja = XLSX.utils.json_to_sheet(datos, {
-    header: ['Banco','Fecha factura','Fecha pago','Concepto','Proveedor','P.O.','Cuenta contable','Monto','Estado']
+    header: ['Banco','Fecha factura','Fecha vencimiento','Fecha pago','Concepto','Proveedor','P.O.','Cuenta contable','Monto','Estado']
   });
   hoja['!cols'] = [
-    {wch:24},{wch:15},{wch:15},{wch:42},{wch:34},{wch:18},{wch:34},{wch:15},{wch:14}
+    {wch:24},{wch:15},{wch:15},{wch:15},{wch:42},{wch:34},{wch:18},{wch:34},{wch:15},{wch:14}
   ];
-  hoja['!autofilter'] = {ref: hoja['!ref'] || 'A1:I1'};
+  hoja['!autofilter'] = {ref: hoja['!ref'] || 'A1:J1'};
   const libro = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(libro, hoja, 'Movimientos');
   XLSX.writeFile(libro, `flujo_caja_${fmtDate(new Date())}.xlsx`);
@@ -2420,14 +2428,15 @@ function exportarSeleccionados(){
     'Cuenta contable': m.cuenta || '',
     Monto: Number(m.monto.toFixed(2)),
     'Fecha factura': m.fechaFactura ? fmtDate(m.fechaFactura) : '',
+    'Fecha vencimiento': m.fechaVencimiento ? fmtDate(m.fechaVencimiento) : '',
     'Fecha pago': fmtDate(m.fecha),
     Estado: m.estado || ''
   }));
   const hoja = XLSX.utils.json_to_sheet(datos, {
-    header: ['Banco','Fecha factura','Fecha pago','Concepto','Proveedor','P.O.','Cuenta contable','Monto','Estado']
+    header: ['Banco','Fecha factura','Fecha vencimiento','Fecha pago','Concepto','Proveedor','P.O.','Cuenta contable','Monto','Estado']
   });
   hoja['!cols'] = [
-    {wch:24},{wch:15},{wch:15},{wch:42},{wch:34},{wch:18},{wch:34},{wch:15},{wch:14}
+    {wch:24},{wch:15},{wch:15},{wch:15},{wch:42},{wch:34},{wch:18},{wch:34},{wch:15},{wch:14}
   ];
   const libro = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(libro, hoja, 'Pagar hoy');
