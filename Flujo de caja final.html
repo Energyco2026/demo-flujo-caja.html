@@ -516,11 +516,23 @@
 <div class="detail-overlay" id="rubroDetailOverlay" role="dialog" aria-modal="true" aria-labelledby="rubroDetailTitle">
   <div class="detail-dialog">
     <div class="detail-dialog-head">
-      <div><div class="panel-title" id="rubroDetailTitle">Detalle de rubro</div><div class="panel-note" id="rubroDetailSummary"></div></div>
+      <div><div class="panel-title" id="rubroDetailTitle">Detalle de Comprometido</div><div class="panel-note" id="rubroDetailSummary"></div></div>
       <button type="button" class="detail-close" id="rubroDetailClose">Cerrar</button>
     </div>
     <div class="detail-scroll">
-      <table><thead><tr><th>P.O.</th><th>Proveedor</th><th>Subtotal OC sin IVA</th><th>Comprometido en esta categoría</th><th>Clasificación</th><th>Estado</th></tr></thead><tbody id="rubroDetailRows"></tbody></table>
+      <table><thead><tr><th>P.O.</th><th>Proveedor</th><th>Total OC</th><th>Comprometido en este rubro</th><th>Estado</th><th></th></tr></thead><tbody id="rubroDetailRows"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<div class="detail-overlay" id="realDetailOverlay" role="dialog" aria-modal="true" aria-labelledby="realDetailTitle">
+  <div class="detail-dialog">
+    <div class="detail-dialog-head">
+      <div><div class="panel-title" id="realDetailTitle">Detalle de Real ejecutado</div><div class="panel-note" id="realDetailSummary"></div></div>
+      <button type="button" class="detail-close" id="realDetailClose">Cerrar</button>
+    </div>
+    <div class="detail-scroll">
+      <table><thead><tr><th>Fecha</th><th>Factura</th><th>Proveedor</th><th>Descripción</th><th>Monto</th><th>Reclasificar</th></tr></thead><tbody id="realDetailRows"></tbody></table>
     </div>
   </div>
 </div>
@@ -576,39 +588,24 @@
   <section class="panel">
     <div class="panel-head">
       <div>
-        <div class="panel-title">Presupuesto e ingresos por Proyecto</div>
-        <div class="panel-note">Valor contractual y cobros · costos detallados desde COSTOS · OC emitidas sin IVA · real contable desde Odoo</div>
+        <div class="panel-title">Presupuesto por Proyecto</div>
+        <div class="panel-note">Presupuesto Inicial y Aterrizado se cargan una sola vez desde tu Excel y quedan fijos. Comprometido y Real ejecutado se calculan solos desde Odoo en cada corrida.</div>
       </div>
       <label class="panel-note">Proyecto: <select id="filtroProyectoPresupuesto"></select></label>
     </div>
   </section>
   <div class="budget-summary">
-    <div class="indice-card" style="border-color:var(--good); background:var(--good-bg);"><div class="indice-label">Valor del contrato</div><div class="indice-value nums good" id="budgetContrato">—</div><div class="indice-help">Monto registrado en la portada del Excel.</div></div>
-    <div class="indice-card" style="border-color:var(--good); background:var(--good-bg);"><div class="indice-label">Cobrado en Odoo</div><div class="indice-value nums good" id="budgetCobrado">—</div><div class="indice-help" id="budgetCobradoDetalle">Facturas conciliadas y anticipos identificados.</div></div>
     <div class="indice-card"><div class="indice-label">Presupuesto inicial</div><div class="indice-value nums" id="budgetInicial">—</div></div>
     <div class="indice-card"><div class="indice-label">Presupuesto aterrizado</div><div class="indice-value nums" id="budgetAterrizado">—</div></div>
-    <div class="indice-card"><div class="indice-label">OC emitidas sin IVA</div><div class="indice-value nums" id="budgetComprometido">—</div></div>
-    <div class="indice-card"><div class="indice-label">Disponible por comprometer</div><div class="indice-value nums" id="budgetDisponible">—</div></div>
-    <div class="indice-card"><div class="indice-label">Real ejecutado Odoo</div><div class="indice-value nums" id="budgetReal">—</div></div>
-    <div class="indice-card"><div class="indice-label">Saldo por ejecutar</div><div class="indice-value nums" id="budgetPorEjecutar">—</div></div>
+    <div class="indice-card"><div class="indice-label">Órdenes de Compras Emitidas</div><div class="indice-value nums" id="budgetComprometido">—</div></div>
+    <div class="indice-card"><div class="indice-label">Órdenes de Compras por Emitir</div><div class="indice-value nums" id="budgetDisponible">—</div></div>
     <div class="indice-card"><div class="indice-label">Avance comprometido</div><div class="indice-value nums" id="budgetPorcentaje">—</div></div>
-    <div class="indice-card"><div class="indice-label">Avance real</div><div class="indice-value nums" id="budgetPorcentajeReal">—</div></div>
   </div>
   <section class="panel">
-    <div class="panel-head"><div class="panel-title">Corregir la categoría de una OC</div><div class="panel-note">Las OC se clasifican automáticamente; usa este bloque únicamente para ajustar una clasificación.</div></div>
-    <div class="budget-form">
-      <label>Orden de compra<select id="budgetOC"></select></label>
-      <label>Categoría presupuestaria<select id="budgetRubro"></select></label>
-      <label>Monto comprometido sin IVA<input id="budgetMonto" type="number" min="0" step="0.01" placeholder="0.00"></label>
-      <button type="button" id="budgetAsignar">Guardar ajuste</button>
-      <div id="budgetMensaje" class="oc-form-msg"></div>
-    </div>
-  </section>
-  <section class="panel">
-    <div class="panel-head"><div class="panel-title">Detalle por categoría</div><div class="panel-note" id="budgetProyectoNombre"></div></div>
-    <div class="panel-note" style="margin:-6px 0 8px;">Clic en una fila para ver qué OC la componen.</div>
+    <div class="panel-head"><div class="panel-title">Detalle por rubro</div><div class="panel-note" id="budgetProyectoNombre"></div></div>
+    <div class="panel-note" style="margin:-6px 0 8px;">Clic en "Comprometido" para ver las OC que lo componen · clic en "Real ejecutado" para ver las facturas. En "Sin clasificar" puedes elegir el rubro correcto ahí mismo.</div>
     <div class="table-scroll"><table>
-      <thead><tr><th>Categoría</th><th>Presupuesto inicial</th><th>Presupuesto aterrizado</th><th>OC emitidas sin IVA</th><th>Disponible por comprometer</th><th>Avance OC</th><th>Real ejecutado Odoo</th><th>Por ejecutar</th></tr></thead>
+      <thead><tr><th>Rubro</th><th>Presupuesto inicial</th><th>Presupuesto aterrizado</th><th>Comprometido</th><th>Disponible</th><th>Avance</th><th>Real ejecutado</th><th>Por ejecutar</th></tr></thead>
       <tbody id="budgetRows"></tbody>
     </table></div>
   </section>
@@ -616,7 +613,7 @@
 
 
 <footer class="note">
-  Datos en vivo desde <b>Supabase</b>: flujo, órdenes de compra, cobros y real ejecutado provienen de Odoo; el valor del contrato se lee de <b>PORTADA</b> y el presupuesto inicial y aterrizado se consolidan desde <b>COSTOS</b>. La capa gris viene de pagos ya registrados (<code class="nums">account.payment</code>) y la capa naranja de facturas pendientes (<code class="nums">account.move</code>).
+  Datos en vivo desde <b>Supabase</b>, alimentados directo desde Odoo (sin Excel de por medio): la capa gris viene de pagos ya registrados (<code class="nums">account.payment</code>), y la capa naranja de facturas pendientes de pago (<code class="nums">account.move</code>). Al mover una fecha proyectada, se guarda automáticamente.
   <br><br>
   El bloque de <b>Saldo por Órdenes de Compra Abiertas</b> calcula el saldo pendiente restando, de cada OC, los pagos ya ejecutados que la referencian — se actualiza solo la próxima vez que corras el script de carga.
 </footer>
@@ -662,9 +659,8 @@ let anioActualRotacion = null;
 let ordenesCompra = [];
 let cuotasFormaPago = [];
 let presupuestosProyecto = [];
-let ingresosProyecto = [];
-let asignacionesPresupuesto = [];
-let asignacionesAutoPresupuesto = [];
+let realCategoriaDetalle = [];
+let ocCompromisosDetalle = [];
 let bancosBase = {};
 let HOY = new Date();
 HOY.setHours(0,0,0,0); // medianoche de hoy, para comparar fechas sin la hora actual de por medio
@@ -739,14 +735,13 @@ async function cargarDatos(){
   errorBox.innerHTML = '';
   estado.textContent = 'Cargando datos…';
   try{
-    const [bancosData, movData, ocData, presupuestoData, ingresosData, asignacionData, asignacionAutoData, facturacionData, cuotasData] = await Promise.all([
+    const [bancosData, movData, ocData, presupuestoData, realDetalleData, compromisosDetalleData, facturacionData, cuotasData] = await Promise.all([
       fetchTabla('bancos'),
       fetchTabla('movimientos', q => q.order('fecha', {ascending: true})),
       fetchTabla('ordenes_compra'),
-      fetchTabla('presupuesto_categoria_vs_comprometido'),
-      fetchTabla('presupuesto_proyecto_ingresos'),
-      fetchTabla('oc_categoria_asignaciones'),
-      fetchTabla('oc_categoria_compromisos_auto'),
+      fetchTabla('presupuesto_vs_comprometido_categoria'),
+      fetchTabla('presupuesto_real_categoria_detalle'),
+      fetchTabla('oc_categoria_compromisos_detalle'),
       fetchTabla('facturacion_rotacion', q => q.order('fecha', {ascending: true})),
       fetchTabla('oc_forma_pago_sugerida'),
     ]);
@@ -832,7 +827,6 @@ async function cargarDatos(){
       poNumero: obtenerPOComercial(oc),
       proveedor: oc.proveedor,
       analitica: oc.cuenta_analitica || 'Sin cuenta analítica',
-      subtotalPresupuesto: Number(oc.subtotal_presupuesto != null ? oc.subtotal_presupuesto : oc.total),
       total: Number(oc.total),
       estadoOdoo: oc.estado_odoo || '',
       fechaOrden: oc.fecha_orden || null,
@@ -848,25 +842,31 @@ async function cargarDatos(){
       estado: c.estado,
     }));
     presupuestosProyecto = presupuestoData.map(p=>({
-      id: p.id == null ? null : Number(p.id), proyecto: String(p.proyecto), proyectoNombre: p.proyecto_nombre || '',
-      rubro: p.rubro, rubroClave: p.rubro_clave || '',
+      // rubro_clave + proyecto es la llave estable (id puede venir null para
+      // "sin_clasificar", que no tiene fila propia en presupuesto_proyecto_categoria).
+      key: `${p.proyecto}::${p.rubro_clave}`,
+      id: p.id == null ? null : Number(p.id),
+      proyecto: String(p.proyecto), proyectoNombre: p.proyecto_nombre || '',
+      rubro: p.rubro, rubroClave: p.rubro_clave,
       presupuestoInicial: Number(p.presupuesto_inicial) || 0,
       presupuestoAterrizado: Number(p.presupuesto_aterrizado) || 0,
       presupuestoReal: p.presupuesto_real == null ? null : Number(p.presupuesto_real),
       comprometido: Number(p.comprometido) || 0, disponible: Number(p.disponible) || 0,
       porEjecutar: p.por_ejecutar == null ? null : Number(p.por_ejecutar),
       porcentaje: Number(p.porcentaje_comprometido) || 0,
-      documentosReales: Number(p.documentos_reales) || 0,
     }));
-    ingresosProyecto = ingresosData.map(p=>({
-      proyecto: String(p.proyecto),
-      proyectoNombre: p.proyecto_nombre || '',
-      montoContrato: Number(p.monto_contrato) || 0,
-      montoCobrado: Number(p.monto_cobrado) || 0,
-      documentosCobrados: Number(p.documentos_cobrados) || 0,
+    realCategoriaDetalle = realDetalleData.map(d=>({
+      id: d.id, proyecto: String(d.proyecto), rubroClave: d.rubro_clave, rubro: d.rubro,
+      lineaId: d.linea_id, moveId: d.move_id,
+      factura: d.factura || '', fecha: d.fecha || null, proveedor: d.proveedor || '',
+      descripcion: d.descripcion || '', cuentaContable: d.cuenta_contable || '',
+      monto: Number(d.monto) || 0,
     }));
-    asignacionesPresupuesto = asignacionData;
-    asignacionesAutoPresupuesto = asignacionAutoData;
+    ocCompromisosDetalle = compromisosDetalleData.map(d=>({
+      id: d.id, proyecto: String(d.proyecto), rubroClave: d.rubro_clave, rubro: d.rubro,
+      lineaId: d.linea_id, ocId: d.oc_id,
+      descripcion: d.descripcion || '', monto: Number(d.monto) || 0,
+    }));
     facturacionRotacion = facturacionData.map(f => ({
       odooId: Number(f.odoo_id),
       numero: f.numero || null,
@@ -1514,123 +1514,166 @@ function prepararPresupuestos(){
   filtro.innerHTML = proyectos.map(p=>`<option value="${escapeHTML(p)}">PO ${escapeHTML(p)}</option>`).join('');
   if(proyectos.includes(actual)) filtro.value = actual;
   filtro.onchange = renderPresupuesto;
-  document.getElementById('budgetOC').onchange = completarMontoOC;
-  document.getElementById('budgetAsignar').onclick = asignarOCPresupuesto;
   renderPresupuesto();
 }
 
-function completarMontoOC(){
-  const ocId = document.getElementById('budgetOC').value;
-  const oc = ordenesCompra.find(x=>String(x.id)===ocId);
-  if(!oc){ document.getElementById('budgetMonto').value = ''; return; }
-  const yaAsignado = asignacionesPresupuesto
-    .filter(a=>String(a.oc_id)===ocId)
-    .reduce((s,a)=>s + Number(a.monto_comprometido || 0), 0);
-  document.getElementById('budgetMonto').value = Math.max(0, oc.subtotalPresupuesto - yaAsignado).toFixed(2);
+// Recalcula Comprometido y Real ejecutado de cada rubro a partir de las
+// tablas de detalle ya cargadas en memoria (no del agregado que trajo el
+// servidor) — así una reclasificación manual se refleja al instante en
+// pantalla sin tener que volver a consultar Supabase.
+function filasPresupuestoConAgregados(proyecto){
+  return presupuestosProyecto.filter(p=>p.proyecto===proyecto).map(p=>{
+    const realLineas = realCategoriaDetalle.filter(d=>d.proyecto===proyecto && d.rubroClave===p.rubroClave);
+    const compLineas = ocCompromisosDetalle.filter(d=>d.proyecto===proyecto && d.rubroClave===p.rubroClave);
+    const presupuestoReal = realLineas.length ? realLineas.reduce((s,d)=>s+d.monto,0) : null;
+    const comprometido = compLineas.reduce((s,d)=>s+d.monto,0);
+    const disponible = p.presupuestoAterrizado - comprometido;
+    const porEjecutar = presupuestoReal==null ? null : (p.presupuestoAterrizado - presupuestoReal);
+    const porcentaje = p.presupuestoAterrizado ? (comprometido*100/p.presupuestoAterrizado) : 0;
+    return {...p, presupuestoReal, comprometido, disponible, porEjecutar, porcentaje};
+  });
 }
 
 function renderPresupuesto(){
   const proyecto = document.getElementById('filtroProyectoPresupuesto').value;
-  const filas = presupuestosProyecto.filter(p=>p.proyecto===proyecto);
-  const ingreso = ingresosProyecto.find(p=>p.proyecto===proyecto);
+  const filas = filasPresupuestoConAgregados(proyecto);
   const inicial = filas.reduce((s,p)=>s+p.presupuestoInicial,0);
   const aterrizado = filas.reduce((s,p)=>s+p.presupuestoAterrizado,0);
   const comprometido = filas.reduce((s,p)=>s+p.comprometido,0);
-  const real = filas.reduce((s,p)=>s+(p.presupuestoReal || 0),0);
   const disponible = aterrizado-comprometido;
-  const porEjecutar = aterrizado-real;
-  document.getElementById('budgetContrato').textContent = fmtMoney(ingreso?.montoContrato || 0);
-  document.getElementById('budgetCobrado').textContent = fmtMoney(ingreso?.montoCobrado || 0);
-  document.getElementById('budgetCobradoDetalle').textContent = ingreso
-    ? `${ingreso.documentosCobrados} documento${ingreso.documentosCobrados===1?'':'s'} cobrado${ingreso.documentosCobrados===1?'':'s'} identificado${ingreso.documentosCobrados===1?'':'s'}.`
-    : 'Sin resumen de ingresos cargado.';
   document.getElementById('budgetInicial').textContent = fmtMoney(inicial);
   document.getElementById('budgetAterrizado').textContent = fmtMoney(aterrizado);
   document.getElementById('budgetComprometido').textContent = fmtMoney(comprometido);
   const disponibleEl = document.getElementById('budgetDisponible');
   disponibleEl.textContent = fmtMoney(disponible);
   disponibleEl.className = 'indice-value nums ' + (disponible < 0 ? 'budget-over' : 'budget-ok');
-  const realEl = document.getElementById('budgetReal');
-  realEl.textContent = fmtMoney(real);
-  const porEjecutarEl = document.getElementById('budgetPorEjecutar');
-  porEjecutarEl.textContent = fmtMoney(porEjecutar);
-  porEjecutarEl.className = 'indice-value nums ' + (porEjecutar < 0 ? 'budget-over' : 'budget-ok');
   document.getElementById('budgetPorcentaje').textContent = aterrizado ? (comprometido*100/aterrizado).toFixed(1)+'%' : '—';
-  document.getElementById('budgetPorcentajeReal').textContent = aterrizado ? (real*100/aterrizado).toFixed(1)+'%' : '—';
   document.getElementById('budgetProyectoNombre').textContent = filas[0]?.proyectoNombre || '';
   document.getElementById('budgetRows').innerHTML = filas.length ? filas
     .sort((a,b)=>a.rubro.localeCompare(b.rubro,'es'))
-    .map(p=>`<tr class="rubro-row" data-rubro-id="${p.id==null?'':p.id}" data-proyecto="${escapeHTML(p.proyecto)}" data-rubro-clave="${escapeHTML(p.rubroClave)}" style="cursor:pointer;">
-      <td>${escapeHTML(p.rubro)}${p.rubroClave==='sin_clasificar'?' <span class="badge" style="background:var(--bad-bg); color:var(--bad);">REVISAR</span>':''}</td>
+    .map(p=>`<tr data-rubro-key="${escapeHTML(p.key)}">
+      <td>${escapeHTML(p.rubro)}</td>
       <td class="nums">${fmtMoney(p.presupuestoInicial)}</td>
       <td class="nums">${fmtMoney(p.presupuestoAterrizado)}</td>
-      <td class="nums">${fmtMoney(p.comprometido)}</td>
+      <td class="nums rubro-clic" style="cursor:pointer; text-decoration:underline dotted;">${fmtMoney(p.comprometido)}</td>
       <td class="nums ${p.disponible<0?'budget-over':'budget-ok'}">${fmtMoney(p.disponible)}</td>
       <td class="nums">${p.porcentaje.toFixed(1)}%</td>
-      <td class="nums">${p.presupuestoReal==null?'—':fmtMoney(p.presupuestoReal)}</td>
+      <td class="nums real-clic" style="cursor:pointer; text-decoration:underline dotted;">${p.presupuestoReal==null?'—':fmtMoney(p.presupuestoReal)}</td>
       <td class="nums">${p.porEjecutar==null?'—':fmtMoney(p.porEjecutar)}</td>
     </tr>`).join('') : '<tr><td colspan="8" class="oc-detail-empty">Sin presupuesto cargado.</td></tr>';
-  document.querySelectorAll('#budgetRows tr.rubro-row').forEach(tr=>{
-    tr.addEventListener('click', ()=>abrirDetalleRubro(
-      tr.dataset.rubroId ? Number(tr.dataset.rubroId) : null,
-      tr.dataset.proyecto,
-      tr.dataset.rubroClave
-    ));
+  document.querySelectorAll('#budgetRows tr').forEach(tr=>{
+    const key = tr.dataset.rubroKey;
+    if(!key) return;
+    const fila = filas.find(p=>p.key===key);
+    if(!fila) return;
+    tr.querySelector('.rubro-clic')?.addEventListener('click', ()=>abrirDetalleComprometido(fila.proyecto, fila.rubroClave));
+    tr.querySelector('.real-clic')?.addEventListener('click', ()=>abrirDetalleReal(fila.proyecto, fila.rubroClave));
   });
-
-  const categoriasAsignables = filas.filter(p=>p.id!=null);
-  document.getElementById('budgetRubro').innerHTML = categoriasAsignables.map(p=>
-    `<option value="${p.id}">${escapeHTML(p.rubro)} · disponible ${fmtMoney(p.disponible)}</option>`
-  ).join('');
-  const ocs = ordenesCompra.filter(oc=>
-    (numeroProyecto(oc.poNumero)===proyecto || numeroProyecto(oc.analitica)===proyecto) &&
-    ['purchase','done'].includes(oc.estadoOdoo)
-  );
-  document.getElementById('budgetOC').innerHTML = ocs.length ? ocs.map(oc=>
-    `<option value="${escapeHTML(String(oc.id))}">${escapeHTML(oc.poNumero)} · ${escapeHTML(oc.proveedor || '')} · sin IVA ${fmtMoney(oc.subtotalPresupuesto)}</option>`
-  ).join('') : '<option value="">No hay OC vinculadas a este proyecto</option>';
-  completarMontoOC();
 }
 
-function abrirDetalleRubro(rubroId, proyecto='', rubroClave=''){
-  const rubro = presupuestosProyecto.find(p=>
-    rubroId!=null ? p.id===rubroId : (p.proyecto===proyecto && p.rubroClave===rubroClave)
-  );
-  if(!rubro) return;
-  const manuales = asignacionesPresupuesto.filter(a=>{
-    if(rubroId==null || Number(a.presupuesto_categoria_id)!==rubroId) return false;
-    const oc = ordenesCompra.find(x=>String(x.id)===String(a.oc_id));
-    return oc && ['purchase','done'].includes(oc.estadoOdoo);
-  }).map(a=>({...a, esAutomatica:false}));
-  const ocConAjusteManual = new Set(asignacionesPresupuesto.map(a=>String(a.oc_id)));
-  const automaticas = asignacionesAutoPresupuesto.filter(a=>{
-    if(String(a.proyecto)!==rubro.proyecto || a.rubro_clave!==rubro.rubroClave) return false;
-    if(ocConAjusteManual.has(String(a.oc_id))) return false;
-    const oc = ordenesCompra.find(x=>String(x.id)===String(a.oc_id));
-    return oc && ['purchase','done'].includes(oc.estadoOdoo);
-  }).map(a=>({...a, esAutomatica:true}));
-  const asignaciones = [...manuales, ...automaticas];
-  document.getElementById('rubroDetailTitle').textContent = `Detalle · ${rubro.rubro}`;
+// Lista de rubros del proyecto que se pueden elegir al reclasificar — se
+// excluye "sin_clasificar" (no es un rubro de presupuesto real) y cualquier
+// fila que no tenga presupuesto propio cargado (id null).
+function opcionesRubroReclasificar(proyecto){
+  return presupuestosProyecto
+    .filter(p=>p.proyecto===proyecto && p.id!=null && p.rubroClave!=='sin_clasificar')
+    .sort((a,b)=>a.rubro.localeCompare(b.rubro,'es'));
+}
+
+function selectorReclasificar(proyecto, rubroClaveActual, onchangeAttr){
+  const opciones = opcionesRubroReclasificar(proyecto);
+  const opcionesHTML = opciones.map(o=>
+    `<option value="${escapeHTML(o.rubroClave)}" ${o.rubroClave===rubroClaveActual?'selected':''}>${escapeHTML(o.rubro)}</option>`
+  ).join('');
+  return `<select class="reclasificar-select" style="font-family:'Inter',sans-serif; font-size:12px; padding:3px;">
+    <option value="">Elegir rubro…</option>${opcionesHTML}
+  </select> <button type="button" class="reclasificar-btn" style="border:1px solid var(--line); background:#fff; border-radius:4px; padding:3px 8px; cursor:pointer; font-size:12px;">Guardar</button>`;
+}
+
+function abrirDetalleComprometido(proyecto, rubroClave){
+  const fila = presupuestosProyecto.find(p=>p.proyecto===proyecto && p.rubroClave===rubroClave);
+  const lineas = ocCompromisosDetalle.filter(d=>d.proyecto===proyecto && d.rubroClave===rubroClave);
+  const total = lineas.reduce((s,d)=>s+d.monto,0);
+  document.getElementById('rubroDetailTitle').textContent = `Comprometido · ${fila?.rubro || rubroClave}`;
   document.getElementById('rubroDetailSummary').textContent =
-    `${asignaciones.length} OC comprometida${asignaciones.length===1?'':'s'} · ${rubro.documentosReales} documento${rubro.documentosReales===1?'':'s'} real${rubro.documentosReales===1?'':'es'} · Comprometido ${fmtMoney(rubro.comprometido)} · Real ${fmtMoney(rubro.presupuestoReal||0)}`;
-  document.getElementById('rubroDetailRows').innerHTML = asignaciones.length ? asignaciones.map(a=>{
-    const oc = ordenesCompra.find(x=>String(x.id)===String(a.oc_id));
-    return `<tr>
-      <td>${escapeHTML(oc ? oc.poNumero : a.oc_id)}</td>
+    `${lineas.length} línea${lineas.length===1?'':'s'} de OC · Comprometido ${fmtMoney(total)}`;
+  document.getElementById('rubroDetailRows').innerHTML = lineas.length ? lineas.map(d=>{
+    const oc = ordenesCompra.find(x=>String(x.id)===String(d.ocId));
+    return `<tr data-linea-id="${d.lineaId}">
+      <td>${escapeHTML(oc ? oc.poNumero : String(d.ocId))}</td>
       <td>${escapeHTML(oc?.proveedor || '—')}</td>
-      <td class="nums">${oc ? fmtMoney(oc.subtotalPresupuesto) : '—'}</td>
-      <td class="nums">${fmtMoney(Number(a.monto_comprometido)||0)}</td>
-      <td>${a.esAutomatica?'Automática desde Odoo':'Ajuste manual'}</td>
+      <td class="nums">${oc ? fmtMoney(oc.total) : '—'}</td>
+      <td class="nums">${fmtMoney(d.monto)}</td>
       <td>${escapeHTML(oc?.estadoOdoo || '—')}</td>
+      <td>${selectorReclasificar(proyecto, rubroClave)}</td>
     </tr>`;
-  }).join('') : '<tr><td colspan="6" class="oc-detail-empty">Todavía no hay ninguna OC comprometida en esta categoría.</td></tr>';
+  }).join('') : '<tr><td colspan="6" class="oc-detail-empty">Todavía no hay ninguna línea de OC en este rubro.</td></tr>';
+  document.querySelectorAll('#rubroDetailRows tr[data-linea-id]').forEach(tr=>{
+    tr.querySelector('.reclasificar-btn')?.addEventListener('click', ()=>{
+      const select = tr.querySelector('.reclasificar-select');
+      guardarReclasificacion('comprometido', Number(tr.dataset.lineaId), proyecto, select.value, ()=>abrirDetalleComprometido(proyecto, rubroClave));
+    });
+  });
   document.getElementById('rubroDetailOverlay').classList.add('open');
+}
+
+function abrirDetalleReal(proyecto, rubroClave){
+  const fila = presupuestosProyecto.find(p=>p.proyecto===proyecto && p.rubroClave===rubroClave);
+  const lineas = realCategoriaDetalle.filter(d=>d.proyecto===proyecto && d.rubroClave===rubroClave);
+  const total = lineas.reduce((s,d)=>s+d.monto,0);
+  document.getElementById('realDetailTitle').textContent = `Real ejecutado · ${fila?.rubro || rubroClave}`;
+  document.getElementById('realDetailSummary').textContent =
+    `${lineas.length} línea${lineas.length===1?'':'s'} contable${lineas.length===1?'':'s'} · Total ${fmtMoney(total)}`;
+  document.getElementById('realDetailRows').innerHTML = lineas.length ? lineas
+    .sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||''))
+    .map(d=>`<tr data-linea-id="${d.lineaId}">
+      <td class="nums">${d.fecha ? fmtDate(new Date(d.fecha+'T00:00:00')) : '—'}</td>
+      <td>${escapeHTML(d.factura || '—')}</td>
+      <td>${escapeHTML(d.proveedor || '—')}</td>
+      <td>${escapeHTML(d.descripcion || '—')}</td>
+      <td class="nums">${fmtMoney(d.monto)}</td>
+      <td>${selectorReclasificar(proyecto, rubroClave)}</td>
+    </tr>`).join('') : '<tr><td colspan="6" class="oc-detail-empty">Todavía no hay facturas en este rubro.</td></tr>';
+  document.querySelectorAll('#realDetailRows tr[data-linea-id]').forEach(tr=>{
+    tr.querySelector('.reclasificar-btn')?.addEventListener('click', ()=>{
+      const select = tr.querySelector('.reclasificar-select');
+      guardarReclasificacion('real', Number(tr.dataset.lineaId), proyecto, select.value, ()=>abrirDetalleReal(proyecto, rubroClave));
+    });
+  });
+  document.getElementById('realDetailOverlay').classList.add('open');
+}
+
+// Guarda la reclasificación manual en Supabase (queda fija para siempre,
+// el script de Python la respeta en cada corrida futura y nunca toca el
+// Excel) y actualiza en memoria + pantalla al instante.
+async function guardarReclasificacion(tipo, lineaId, proyecto, nuevaRubroClave, refrescarOverlay){
+  if(!nuevaRubroClave){ alert('Elige un rubro antes de guardar.'); return; }
+  const destino = presupuestosProyecto.find(p=>p.proyecto===proyecto && p.rubroClave===nuevaRubroClave);
+  if(!destino){ alert('No se encontró ese rubro para el proyecto.'); return; }
+  try{
+    const { error } = await sb.from('reclasificacion_manual').upsert({
+      tipo, linea_id: lineaId, proyecto, rubro_clave: nuevaRubroClave, rubro: destino.rubro,
+    }, { onConflict: 'tipo,linea_id,proyecto' });
+    if(error) throw error;
+  }catch(err){
+    alert('No se pudo guardar la reclasificación: ' + err.message);
+    return;
+  }
+  const arreglo = tipo === 'real' ? realCategoriaDetalle : ocCompromisosDetalle;
+  const item = arreglo.find(d=>d.proyecto===proyecto && d.lineaId===lineaId);
+  if(item){ item.rubroClave = nuevaRubroClave; item.rubro = destino.rubro; }
+  renderPresupuesto();
+  if(refrescarOverlay) refrescarOverlay();
 }
 
 function cerrarDetalleRubro(){ document.getElementById('rubroDetailOverlay').classList.remove('open'); }
 document.getElementById('rubroDetailClose').addEventListener('click', cerrarDetalleRubro);
 document.getElementById('rubroDetailOverlay').addEventListener('click', e=>{ if(e.target.id==='rubroDetailOverlay') cerrarDetalleRubro(); });
-document.addEventListener('keydown', e=>{ if(e.key==='Escape') cerrarDetalleRubro(); });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ cerrarDetalleRubro(); cerrarDetalleReal(); } });
+
+function cerrarDetalleReal(){ document.getElementById('realDetailOverlay').classList.remove('open'); }
+document.getElementById('realDetailClose').addEventListener('click', cerrarDetalleReal);
+document.getElementById('realDetailOverlay').addEventListener('click', e=>{ if(e.target.id==='realDetailOverlay') cerrarDetalleReal(); });
 
 // Detalle de Ventas Netas / Compras Netas: reutiliza la misma tabla de
 // facturación ya cargada (facturacion_rotacion), sin volver a consultar Odoo.
@@ -1664,43 +1707,7 @@ document.getElementById('ventasDetailClose').addEventListener('click', cerrarDet
 document.getElementById('ventasDetailOverlay').addEventListener('click', e=>{ if(e.target.id==='ventasDetailOverlay') cerrarDetalleVentas(); });
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') cerrarDetalleVentas(); });
 
-async function asignarOCPresupuesto(){
-  const ocId = document.getElementById('budgetOC').value;
-  const rubroId = Number(document.getElementById('budgetRubro').value);
-  const monto = Number(document.getElementById('budgetMonto').value);
-  const mensaje = document.getElementById('budgetMensaje');
-  if(!ocId || !rubroId || !Number.isFinite(monto) || monto <= 0){
-    mensaje.style.color = 'var(--bad)'; mensaje.textContent = 'Selecciona la OC, el rubro y un monto mayor que cero.'; return;
-  }
-  const oc = ordenesCompra.find(x=>String(x.id)===ocId);
-  const asignadoOtros = asignacionesPresupuesto
-    .filter(a=>String(a.oc_id)===ocId && Number(a.presupuesto_categoria_id)!==rubroId)
-    .reduce((s,a)=>s+Number(a.monto_comprometido||0),0);
-  if(oc && asignadoOtros + monto > oc.subtotalPresupuesto + 0.01){
-    mensaje.style.color = 'var(--bad)'; mensaje.textContent = `La distribución supera el subtotal sin IVA de la OC (${fmtMoney(oc.subtotalPresupuesto)}).`; return;
-  }
-  const boton = document.getElementById('budgetAsignar');
-  boton.disabled = true; mensaje.textContent = 'Guardando…';
-  const { error } = await sb.from('oc_categoria_asignaciones').upsert({
-    presupuesto_categoria_id:rubroId, oc_id:ocId, monto_comprometido:monto, actualizado_en:new Date().toISOString()
-  }, {onConflict:'presupuesto_categoria_id,oc_id'});
-  boton.disabled = false;
-  if(error){ mensaje.style.color='var(--bad)'; mensaje.textContent='No se pudo guardar: '+error.message; return; }
-  const [p,a] = await Promise.all([fetchTabla('presupuesto_categoria_vs_comprometido'),fetchTabla('oc_categoria_asignaciones')]);
-  presupuestosProyecto = p.map(x=>({
-    id:x.id==null?null:Number(x.id),proyecto:String(x.proyecto),proyectoNombre:x.proyecto_nombre||'',rubro:x.rubro,rubroClave:x.rubro_clave||'',
-    presupuestoInicial:Number(x.presupuesto_inicial)||0,
-    presupuestoAterrizado:Number(x.presupuesto_aterrizado)||0,
-    presupuestoReal:x.presupuesto_real==null?null:Number(x.presupuesto_real),
-    comprometido:Number(x.comprometido)||0,disponible:Number(x.disponible)||0,
-    porEjecutar:x.por_ejecutar==null?null:Number(x.por_ejecutar),
-    porcentaje:Number(x.porcentaje_comprometido)||0,
-    documentosReales:Number(x.documentos_reales)||0,
-  }));
-  asignacionesPresupuesto = a;
-  mensaje.style.color='var(--good)'; mensaje.textContent='Ajuste guardado. El presupuesto disponible ya fue actualizado.';
-  renderPresupuesto();
-}
+
 
 function fmtDateCorta(d){
   const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
