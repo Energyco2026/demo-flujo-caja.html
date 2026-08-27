@@ -465,9 +465,9 @@
 
   <div class="analysis-grid">
     <section class="panel">
-      <div class="panel-head"><div class="panel-title">Antigüedad de cartera — CxC</div><div class="panel-note">Según fecha original de factura · 7 días de crédito al cliente</div></div>
+      <div class="panel-head"><div class="panel-title">Antigüedad de cartera — CxC</div><div class="panel-note">Según fecha de vencimiento (Odoo)</div></div>
       <table class="mini-table"><thead><tr><th>Rango</th><th>CxC</th></tr></thead><tbody id="agingRowsCxc"></tbody></table>
-      <div class="panel-head" style="border-top:1px solid var(--line);"><div class="panel-title">Antigüedad de cartera — CxP</div><div class="panel-note">Según fecha original de factura</div></div>
+      <div class="panel-head" style="border-top:1px solid var(--line);"><div class="panel-title">Antigüedad de cartera — CxP</div><div class="panel-note">Según fecha de vencimiento (Odoo)</div></div>
       <table class="mini-table"><thead><tr><th>Rango</th><th>CxP</th></tr></thead><tbody id="agingRowsCxp"></tbody></table>
     </section>
     <section class="panel">
@@ -1394,8 +1394,9 @@ function renderIndices(){
   function calcularEnRango(m, r){
     if(r.reconocimiento) return esCxc(m) && esReconocimientoIngresos(m);
     if(esReconocimientoIngresos(m)) return false;
-    if(!m.fechaFactura) return false;
-    const edad = diasEntre(m.fechaFactura, HOY);
+    const fechaRef = m.fechaVencimiento || m.fechaFactura;
+    if(!fechaRef) return false;
+    const edad = diasEntre(fechaRef, HOY);
     return edad >= r.min && edad <= r.max;
   }
 
@@ -1473,19 +1474,21 @@ function abrirDetalleAntiguedad(tipo, min, max, reconocimiento=false){
     if(m.estado !== 'proyectado' || m.origen !== 'account.move' || Math.abs(m.monto) <= 0.005 || !esTipo(m)) return false;
     if(reconocimiento) return tipo === 'CxC' && esReconocimientoIngresos(m);
     if(esReconocimientoIngresos(m)) return false;
-    if(!m.fechaFactura) return false;
-    const edad = diasEntre(m.fechaFactura, HOY);
+    const fechaRef = m.fechaVencimiento || m.fechaFactura;
+    if(!fechaRef) return false;
+    const edad = diasEntre(fechaRef, HOY);
     return edad >= min && edad <= max;
   }).sort((a,b)=>{
-    const fa = a.fechaFactura ? a.fechaFactura.getTime() : 0;
-    const fb = b.fechaFactura ? b.fechaFactura.getTime() : 0;
+    const fa = (a.fechaVencimiento || a.fechaFactura) ? (a.fechaVencimiento || a.fechaFactura).getTime() : 0;
+    const fb = (b.fechaVencimiento || b.fechaFactura) ? (b.fechaVencimiento || b.fechaFactura).getTime() : 0;
     return fa-fb || Math.abs(b.monto)-Math.abs(a.monto);
   });
   const total = detalle.reduce((s,m)=>s+Math.abs(m.monto),0);
   document.getElementById('agingDetailTitle').textContent = `Detalle ${tipo} · ${rangoLabel}`;
   document.getElementById('agingDetailSummary').textContent = `${detalle.length} movimiento${detalle.length===1?'':'s'} · Total ${fmtMoney(total)}`;
   document.getElementById('agingDetailRows').innerHTML = detalle.length ? detalle.map(m=>{
-    const edad = m.fechaFactura ? diasEntre(m.fechaFactura, HOY) : null;
+    const fechaRef = m.fechaVencimiento || m.fechaFactura;
+    const edad = fechaRef ? diasEntre(fechaRef, HOY) : null;
     const poVisible = m.po || obtenerPOComercialDesdeTexto(m.concepto, {});
     return `<tr>
       <td>${escapeHTML(m.concepto || '—')}</td>
