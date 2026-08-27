@@ -595,11 +595,16 @@
     </div>
   </section>
   <div class="budget-summary">
+    <div class="indice-card"><div class="indice-label">Valor de Contrato</div><div class="indice-value nums" id="budgetContrato">—</div></div>
+    <div class="indice-card"><div class="indice-label">Cobrado</div><div class="indice-value nums" id="budgetCobrado">—</div></div>
+    <div class="indice-card"><div class="indice-label">Pendiente por Cobrar</div><div class="indice-value nums" id="budgetPendienteCobrar">—</div></div>
     <div class="indice-card"><div class="indice-label">Presupuesto inicial</div><div class="indice-value nums" id="budgetInicial">—</div></div>
     <div class="indice-card"><div class="indice-label">Presupuesto aterrizado</div><div class="indice-value nums" id="budgetAterrizado">—</div></div>
     <div class="indice-card"><div class="indice-label">Órdenes de Compras Emitidas</div><div class="indice-value nums" id="budgetComprometido">—</div></div>
     <div class="indice-card"><div class="indice-label">Órdenes de Compras por Emitir</div><div class="indice-value nums" id="budgetDisponible">—</div></div>
     <div class="indice-card"><div class="indice-label">Avance comprometido</div><div class="indice-value nums" id="budgetPorcentaje">—</div></div>
+    <div class="indice-card"><div class="indice-label">Real ejecutado</div><div class="indice-value nums" id="budgetRealTotal">—</div></div>
+    <div class="indice-card"><div class="indice-label">Por ejecutar</div><div class="indice-value nums" id="budgetPorEjecutarTotal">—</div></div>
   </div>
   <section class="panel">
     <div class="panel-head"><div class="panel-title">Detalle por rubro</div><div class="panel-note" id="budgetProyectoNombre"></div></div>
@@ -661,6 +666,7 @@ let cuotasFormaPago = [];
 let presupuestosProyecto = [];
 let realCategoriaDetalle = [];
 let ocCompromisosDetalle = [];
+let ingresosProyecto = [];
 let bancosBase = {};
 let HOY = new Date();
 HOY.setHours(0,0,0,0); // medianoche de hoy, para comparar fechas sin la hora actual de por medio
@@ -735,13 +741,14 @@ async function cargarDatos(){
   errorBox.innerHTML = '';
   estado.textContent = 'Cargando datos…';
   try{
-    const [bancosData, movData, ocData, presupuestoData, realDetalleData, compromisosDetalleData, facturacionData, cuotasData] = await Promise.all([
+    const [bancosData, movData, ocData, presupuestoData, realDetalleData, compromisosDetalleData, ingresosData, facturacionData, cuotasData] = await Promise.all([
       fetchTabla('bancos'),
       fetchTabla('movimientos', q => q.order('fecha', {ascending: true})),
       fetchTabla('ordenes_compra'),
       fetchTabla('presupuesto_vs_comprometido_categoria'),
       fetchTabla('presupuesto_real_categoria_detalle'),
       fetchTabla('oc_categoria_compromisos_detalle'),
+      fetchTabla('presupuesto_proyecto_ingresos'),
       fetchTabla('facturacion_rotacion', q => q.order('fecha', {ascending: true})),
       fetchTabla('oc_forma_pago_sugerida'),
     ]);
@@ -866,6 +873,11 @@ async function cargarDatos(){
       id: d.id, proyecto: String(d.proyecto), rubroClave: d.rubro_clave, rubro: d.rubro,
       lineaId: d.linea_id, ocId: d.oc_id,
       descripcion: d.descripcion || '', monto: Number(d.monto) || 0,
+    }));
+    ingresosProyecto = ingresosData.map(i=>({
+      proyecto: String(i.proyecto), proyectoNombre: i.proyecto_nombre || '',
+      montoContrato: Number(i.monto_contrato) || 0, montoCobrado: Number(i.monto_cobrado) || 0,
+      documentosCobrados: Number(i.documentos_cobrados) || 0,
     }));
     facturacionRotacion = facturacionData.map(f => ({
       odooId: Number(f.odoo_id),
@@ -1536,6 +1548,17 @@ function filasPresupuestoConAgregados(proyecto){
 
 function renderPresupuesto(){
   const proyecto = document.getElementById('filtroProyectoPresupuesto').value;
+  const ingreso = ingresosProyecto.find(i=>i.proyecto===proyecto);
+  document.getElementById('budgetContrato').textContent = ingreso ? fmtMoney(ingreso.montoContrato) : '—';
+  document.getElementById('budgetCobrado').textContent = ingreso ? fmtMoney(ingreso.montoCobrado) : '—';
+  const pendienteCobrarEl = document.getElementById('budgetPendienteCobrar');
+  if(ingreso){
+    const pendiente = ingreso.montoContrato - ingreso.montoCobrado;
+    pendienteCobrarEl.textContent = fmtMoney(pendiente);
+    pendienteCobrarEl.className = 'indice-value nums ' + (pendiente < 0 ? 'budget-over' : 'budget-ok');
+  } else {
+    pendienteCobrarEl.textContent = '—'; pendienteCobrarEl.className = 'indice-value nums';
+  }
   const filas = filasPresupuestoConAgregados(proyecto);
   const inicial = filas.reduce((s,p)=>s+p.presupuestoInicial,0);
   const aterrizado = filas.reduce((s,p)=>s+p.presupuestoAterrizado,0);
@@ -1548,6 +1571,13 @@ function renderPresupuesto(){
   disponibleEl.textContent = fmtMoney(disponible);
   disponibleEl.className = 'indice-value nums ' + (disponible < 0 ? 'budget-over' : 'budget-ok');
   document.getElementById('budgetPorcentaje').textContent = aterrizado ? (comprometido*100/aterrizado).toFixed(1)+'%' : '—';
+  const filasConReal = filas.filter(p=>p.presupuestoReal!=null);
+  const realTotal = filasConReal.reduce((s,p)=>s+p.presupuestoReal,0);
+  document.getElementById('budgetRealTotal').textContent = filasConReal.length ? fmtMoney(realTotal) : '—';
+  const porEjecutarTotal = aterrizado - realTotal;
+  const porEjecutarEl = document.getElementById('budgetPorEjecutarTotal');
+  porEjecutarEl.textContent = filasConReal.length ? fmtMoney(porEjecutarTotal) : '—';
+  porEjecutarEl.className = 'indice-value nums ' + (porEjecutarTotal < 0 ? 'budget-over' : 'budget-ok');
   document.getElementById('budgetProyectoNombre').textContent = filas[0]?.proyectoNombre || '';
   document.getElementById('budgetRows').innerHTML = filas.length ? filas
     .sort((a,b)=>a.rubro.localeCompare(b.rubro,'es'))
