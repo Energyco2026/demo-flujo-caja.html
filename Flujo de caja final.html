@@ -1630,7 +1630,7 @@ function abrirDetalleComprometido(proyecto, rubroClave){
   document.getElementById('rubroDetailRows').innerHTML = lineas.length ? lineas.map(d=>{
     const oc = ordenesCompra.find(x=>String(x.id)===String(d.ocId));
     return `<tr data-linea-id="${d.lineaId}">
-      <td>${escapeHTML(oc ? oc.poNumero : String(d.ocId))}</td>
+      <td>${escapeHTML(oc ? oc.poNumero : String(d.ocId))}<br><span style="font-size:11px; color:var(--muted);">${escapeHTML(oc ? oc.id : String(d.ocId))}</span></td>
       <td>${escapeHTML(oc?.proveedor || '—')}</td>
       <td class="nums">${oc ? fmtMoney(oc.total) : '—'}</td>
       <td class="nums">${fmtMoney(d.monto)}</td>
