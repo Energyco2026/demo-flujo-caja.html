@@ -589,7 +589,7 @@
     <div class="panel-head">
       <div>
         <div class="panel-title">Presupuesto por Proyecto</div>
-        <div class="panel-note">Presupuesto Inicial y Aterrizado se cargan una sola vez desde tu Excel y quedan fijos. Comprometido y Real ejecutado se calculan solos desde Odoo en cada corrida.</div>
+        <div class="panel-note">Presupuesto Inicial y Aterrizado se cargan una sola vez desde tu Excel y quedan fijos. Comprometido = OC emitidas que faltan por facturar (se descuenta solo cuando llega la factura de esa línea). Real ejecutado = facturas ya contabilizadas + material que salió de bodega.</div>
       </div>
       <label class="panel-note">Proyecto: <select id="filtroProyectoPresupuesto"></select></label>
     </div>
