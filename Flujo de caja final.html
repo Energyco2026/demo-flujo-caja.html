@@ -275,6 +275,9 @@
   .indice-help{font-size:11px; color:var(--muted); margin-top:5px; line-height:1.4;}
   .analysis-grid{display:grid; grid-template-columns:1fr 1fr; gap:18px;}
   @media(max-width:850px){.analysis-grid{grid-template-columns:1fr;}}
+  .aging-side-by-side{display:flex; gap:18px;}
+  .aging-side-by-side > div{flex:1; min-width:0;}
+  @media(max-width:650px){.aging-side-by-side{flex-direction:column;}}
   .mini-table th,.mini-table td{padding:10px 14px;}
   .btn-refrescar{
     font-size:11.5px; font-family:'Inter',sans-serif; font-weight:600; border:1px solid var(--line);
@@ -465,10 +468,16 @@
 
   <div class="analysis-grid">
     <section class="panel">
-      <div class="panel-head"><div class="panel-title">Antigüedad de cartera — CxC</div><div class="panel-note">Según fecha de vencimiento (Odoo)</div></div>
-      <table class="mini-table"><thead><tr><th>Rango</th><th>CxC</th></tr></thead><tbody id="agingRowsCxc"></tbody></table>
-      <div class="panel-head" style="border-top:1px solid var(--line);"><div class="panel-title">Antigüedad de cartera — CxP</div><div class="panel-note">Según fecha de vencimiento (Odoo)</div></div>
-      <table class="mini-table"><thead><tr><th>Rango</th><th>CxP</th></tr></thead><tbody id="agingRowsCxp"></tbody></table>
+      <div class="aging-side-by-side">
+        <div>
+          <div class="panel-head"><div class="panel-title">Antigüedad de cartera — CxC</div><div class="panel-note">Según fecha de vencimiento (Odoo)</div></div>
+          <table class="mini-table"><thead><tr><th>Rango</th><th>CxC</th></tr></thead><tbody id="agingRowsCxc"></tbody></table>
+        </div>
+        <div>
+          <div class="panel-head"><div class="panel-title">Antigüedad de cartera — CxP</div><div class="panel-note">Según fecha de vencimiento (Odoo)</div></div>
+          <table class="mini-table"><thead><tr><th>Rango</th><th>CxP</th></tr></thead><tbody id="agingRowsCxp"></tbody></table>
+        </div>
+      </div>
     </section>
     <section class="panel">
       <div class="panel-head"><div class="panel-title">Mayor exposición por tercero</div><div class="panel-note">Saldos abiertos</div></div>
