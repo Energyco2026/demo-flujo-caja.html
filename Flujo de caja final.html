@@ -520,7 +520,7 @@
       <button type="button" class="detail-close" id="rubroDetailClose">Cerrar</button>
     </div>
     <div class="detail-scroll">
-      <table><thead><tr><th>P.O.</th><th>Proveedor</th><th>Total OC</th><th>Comprometido en este rubro</th><th>Estado</th><th></th></tr></thead><tbody id="rubroDetailRows"></tbody></table>
+      <table><thead><tr><th>P.O.</th><th>Proveedor</th><th>Total OC (sin IVA)</th><th>Comprometido en este rubro</th><th>Estado</th><th></th></tr></thead><tbody id="rubroDetailRows"></tbody></table>
     </div>
   </div>
 </div>
@@ -835,6 +835,7 @@ async function cargarDatos(){
       proveedor: oc.proveedor,
       analitica: oc.cuenta_analitica || 'Sin cuenta analítica',
       total: Number(oc.total),
+      totalSinIva: Number(oc.subtotal_presupuesto) || 0,
       estadoOdoo: oc.estado_odoo || '',
       fechaOrden: oc.fecha_orden || null,
     }));
@@ -1632,7 +1633,7 @@ function abrirDetalleComprometido(proyecto, rubroClave){
     return `<tr data-linea-id="${d.lineaId}">
       <td>${escapeHTML(oc ? oc.poNumero : String(d.ocId))}<br><span style="font-size:11px; color:var(--muted);">${escapeHTML(oc ? oc.id : String(d.ocId))}</span></td>
       <td>${escapeHTML(oc?.proveedor || '—')}</td>
-      <td class="nums">${oc ? fmtMoney(oc.total) : '—'}</td>
+      <td class="nums">${oc ? fmtMoney(oc.totalSinIva) : '—'}</td>
       <td class="nums">${fmtMoney(d.monto)}</td>
       <td>${escapeHTML(oc?.estadoOdoo || '—')}</td>
       <td>${selectorReclasificar(proyecto, rubroClave)}</td>
