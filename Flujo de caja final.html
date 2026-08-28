@@ -426,6 +426,7 @@
           <th>P.O.</th>
           <th>Cuenta contable</th>
           <th>Monto</th>
+          <th>Total factura</th>
           <th>Fecha factura</th>
           <th>Fecha vencimiento</th>
           <th>Fecha pago</th>
@@ -442,6 +443,7 @@
       <div class="panel-note" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
         <span>Proveedor: <select id="filtroAnalitica"></select></span>
         <span>P.O.: <select id="filtroOCPO"></select></span>
+        <span>N.° PEN: <input type="text" id="filtroPEN" list="listaPEN" placeholder="Todas (escribe para filtrar)" style="min-width:160px; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px;"><datalist id="listaPEN"></datalist></span>
       </div>
     </div>
     <div class="oc-scroll"><div class="oc-grid" id="ocGrid"></div></div>
@@ -807,6 +809,10 @@ async function cargarDatos(){
         montoOriginal: Number(m.monto),
         monto: Number(m.monto_manual != null ? m.monto_manual : m.monto),
         esMontoManual: m.monto_manual != null,
+        // Total de la factura en Odoo (sin netear pagos parciales). Todavía no
+        // se extrae desde el script para todas las facturas — llega null
+        // hasta que se agregue `monto_factura_total` en Supabase.
+        montoFacturaTotal: m.monto_factura_total != null ? Number(m.monto_factura_total) : null,
         fechaFactura: m.fecha_factura ? new Date(m.fecha_factura + 'T00:00:00') : null,
         fechaVencimiento: m.fecha_vencimiento ? new Date(m.fecha_vencimiento + 'T00:00:00') : null,
         fecha: new Date((m.fecha_pago_manual || m.fecha) + 'T00:00:00'),
@@ -845,6 +851,7 @@ async function cargarDatos(){
       poNumero: obtenerPOComercial(oc),
       proveedor: oc.proveedor,
       referenciaProveedor: oc.referencia_proveedor || null,
+      comentariosFormaPago: oc.comentarios_forma_pago || null,
       analitica: oc.cuenta_analitica || 'Sin cuenta analítica',
       total: Number(oc.total),
       totalSinIva: Number(oc.subtotal_presupuesto) || 0,
@@ -1216,13 +1223,20 @@ function render(){
           : (m.banco || '—')}
         ${m.esBancoManual?'<div style="font-size:10px; color:var(--projected);" title="Banco cambiado manualmente">✏️ cambiado</div>':''}
       </td>
-      <td data-label="P.O.">${m.po ? `<span class="badge ${isProj?'proj':'exec'}">${normalizarCodigoProyecto(m.po)}</span>` : (m.analitica ? `<span class="oc-analitica" style="margin-top:0;" title="Código de proyecto (analítica)">${escapeHTML(m.analitica)}</span>` : `<span style="color:var(--muted); font-size:12px;">—</span>`)}</td>
+      <td data-label="P.O.">${m.po ? `<span class="badge ${isProj?'proj':'exec'}">${normalizarCodigoProyecto(m.po)}</span>` : (m.analitica ? `<span class="oc-analitica" style="margin-top:0;" title="Código de proyecto (analítica)">${escapeHTML(m.analitica)}</span>` : `<span style="color:var(--muted); font-size:12px;">—</span>`)}
+        ${m.poInterno ? `<div style="font-size:10px; color:var(--muted); font-family:'JetBrains Mono',monospace; margin-top:2px;" title="Identificador de la OC en Odoo">PEN ${escapeHTML(String(m.poInterno))}</div>` : ''}
+      </td>
       <td style="color:var(--muted); font-size:12.5px;" data-label="Cuenta contable">${m.cuenta || '—'}</td>
       <td class="nums ${m.monto>0?'amt-in':'amt-out'}" data-label="Monto">
         ${isProj
           ? `<input type="number" step="0.01" class="nums" data-monto-id="${m.id}" value="${m.monto}" style="width:100px; border:1px solid var(--projected); border-radius:6px; padding:4px 6px; font-size:12.5px;">`
           : `${m.monto>0?'+':''}${fmtMoney(m.monto)}`}
         ${m.esMontoManual?'<div style="font-size:10px; color:var(--projected);" title="Monto editado manualmente">✏️ editado</div>':''}
+      </td>
+      <td class="nums" style="font-size:12px; color:var(--muted);" data-label="Total factura">
+        ${m.montoFacturaTotal != null
+          ? `${fmtMoney(m.montoFacturaTotal)}${Math.abs(m.montoFacturaTotal) - Math.abs(m.monto) > 0.01 ? `<div style="font-size:10px;">Abonado: ${fmtMoney(Math.abs(m.montoFacturaTotal) - Math.abs(m.monto))}</div>` : ''}`
+          : '<span style="color:var(--muted)">—</span>'}
       </td>
       <td class="nums" data-label="Fecha factura">
         ${m.fechaFactura ? fmtDate(m.fechaFactura) : '<span style="color:var(--muted)">—</span>'}
@@ -1245,7 +1259,7 @@ function render(){
   });
 
   if(rowsEl.children.length === 0){
-    rowsEl.innerHTML = `<tr><td colspan="10" style="color:var(--muted); font-style:italic; text-align:center; padding:24px;">Sin movimientos para este filtro.</td></tr>`;
+    rowsEl.innerHTML = `<tr><td colspan="11" style="color:var(--muted); font-style:italic; text-align:center; padding:24px;">Sin movimientos para este filtro.</td></tr>`;
   }
 
   document.getElementById('kpiActual').textContent = fmtMoney(saldoActual);
@@ -1968,6 +1982,11 @@ function renderOC(){
   }
   const filtroPOActivo = filtroPOSel.value || 'Todas';
 
+  const filtroPENInput = document.getElementById('filtroPEN');
+  poblarDatalist(document.getElementById('listaPEN'), [...new Set(ordenesAbiertas.map(o=>o.id))].sort());
+  filtroPENInput.oninput = renderOC;
+  const filtroPENActivo = filtroPENInput.value.trim();
+
   // El proveedor depende de la P.O. seleccionada: si esa P.O. tiene dos
   // proveedores, el desplegable muestra únicamente esos dos.
   const proveedores = [...new Set(
@@ -1987,7 +2006,8 @@ function renderOC(){
 
   const lista = ordenesAbiertas.filter(oc =>
     (filtroActivo === 'Todas' || oc.proveedor === filtroActivo) &&
-    (filtroPOActivo === 'Todas' || oc.poNumero === filtroPOActivo)
+    (filtroPOActivo === 'Todas' || oc.poNumero === filtroPOActivo) &&
+    coincideFiltroTexto(oc.id, filtroPENActivo)
   );
 
   if(lista.length === 0){
@@ -2087,6 +2107,7 @@ function renderOC(){
         <div class="oc-prov">${oc.proveedor || '—'}</div>
         <div class="oc-internal" title="Identificador único de la orden en Odoo">N.º OC Odoo: ${escapeHTML(String(oc.id))}</div>
         ${oc.referenciaProveedor ? `<div class="oc-internal" title="Referencia de proveedor cargada en la OC">Ref. proveedor: ${escapeHTML(oc.referenciaProveedor)}</div>` : ''}
+        ${oc.comentariosFormaPago ? `<div class="oc-internal" title="Campo 'Comentarios Formas de Pago' de la OC en Odoo">Pago: ${escapeHTML(oc.comentariosFormaPago)}</div>` : ''}
         <br>
         <span class="oc-analitica">${oc.analitica}</span>
         <div class="oc-amounts nums">
@@ -2242,12 +2263,35 @@ async function registrarAnticipo(oc, card){
     return;
   }
 
+  const nuevoId = resultado.data.id;
   mensaje.style.color = 'var(--good)';
-  mensaje.textContent = `Anticipo de ${fmtMoney(valor)} registrado en ${banco}.`;
+  mensaje.innerHTML = `Anticipo de ${fmtMoney(valor)} registrado en ${escapeHTML(banco)}. `
+    + `<button type="button" data-marcar-anticipo-pagado style="margin-left:6px; font-size:11px; border:1px solid var(--good); background:#fff; color:var(--good); border-radius:5px; padding:3px 8px; cursor:pointer;">Marcar pagado hoy</button>`
+    + `<div style="font-size:10.5px; color:var(--muted); margin-top:4px;">Si ya hiciste la transferencia, márcalo para que se refleje ya en el saldo real de ${escapeHTML(banco)}.</div>`;
   input.value = '';
   const pctEl = form.querySelector('[data-advance-pct]');
   if(pctEl) pctEl.textContent = '';
-  await cargarDatos();
+
+  // Se da tiempo a que la usuaria decida si marcar el anticipo como pagado
+  // hoy antes de refrescar los datos (el refresco reconstruye la tarjeta y
+  // borraría este mensaje/botón).
+  const refrescoAutomatico = setTimeout(()=>{ cargarDatos(); }, 6000);
+  const botonMarcar = mensaje.querySelector('[data-marcar-anticipo-pagado]');
+  if(botonMarcar){
+    botonMarcar.addEventListener('click', async ()=>{
+      clearTimeout(refrescoAutomatico);
+      botonMarcar.disabled = true;
+      botonMarcar.textContent = 'Marcando…';
+      const { error } = await sb.from('movimientos').update({ pagado_manual_fecha: fecha }).eq('id', nuevoId);
+      if(error){
+        alert('No se pudo marcar como pagado hoy: ' + error.message);
+        botonMarcar.disabled = false;
+        botonMarcar.textContent = 'Marcar pagado hoy';
+        return;
+      }
+      await cargarDatos();
+    });
+  }
 }
 
 async function confirmarCuotaFormaPago(cuotaId, oc, fila){
@@ -2444,20 +2488,22 @@ function exportarExcel(){
     Concepto: m.concepto || '',
     Proveedor: m.proveedor || '',
     'P.O.': m.po || '',
+    'N.° PEN': m.poInterno || '',
     'Cuenta contable': m.cuenta || '',
     Monto: Number(m.monto.toFixed(2)),
+    'Total factura': m.montoFacturaTotal != null ? Number(m.montoFacturaTotal.toFixed(2)) : '',
     'Fecha factura': m.fechaFactura ? fmtDate(m.fechaFactura) : '',
     'Fecha vencimiento': m.fechaVencimiento ? fmtDate(m.fechaVencimiento) : '',
     'Fecha pago': fmtDate(m.fecha),
     Estado: m.estado || ''
   }));
   const hoja = XLSX.utils.json_to_sheet(datos, {
-    header: ['Banco','Fecha factura','Fecha vencimiento','Fecha pago','Concepto','Proveedor','P.O.','Cuenta contable','Monto','Estado']
+    header: ['Banco','Fecha factura','Fecha vencimiento','Fecha pago','Concepto','Proveedor','P.O.','N.° PEN','Cuenta contable','Monto','Total factura','Estado']
   });
   hoja['!cols'] = [
-    {wch:24},{wch:15},{wch:15},{wch:15},{wch:42},{wch:34},{wch:18},{wch:34},{wch:15},{wch:14}
+    {wch:24},{wch:15},{wch:15},{wch:15},{wch:42},{wch:34},{wch:18},{wch:16},{wch:34},{wch:15},{wch:15},{wch:14}
   ];
-  hoja['!autofilter'] = {ref: hoja['!ref'] || 'A1:J1'};
+  hoja['!autofilter'] = {ref: hoja['!ref'] || 'A1:L1'};
   const libro = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(libro, hoja, 'Movimientos');
   XLSX.writeFile(libro, `flujo_caja_${fmtDate(new Date())}.xlsx`);
@@ -2487,18 +2533,20 @@ function exportarSeleccionados(){
     Concepto: m.concepto || '',
     Proveedor: m.proveedor || '',
     'P.O.': m.po || '',
+    'N.° PEN': m.poInterno || '',
     'Cuenta contable': m.cuenta || '',
     Monto: Number(m.monto.toFixed(2)),
+    'Total factura': m.montoFacturaTotal != null ? Number(m.montoFacturaTotal.toFixed(2)) : '',
     'Fecha factura': m.fechaFactura ? fmtDate(m.fechaFactura) : '',
     'Fecha vencimiento': m.fechaVencimiento ? fmtDate(m.fechaVencimiento) : '',
     'Fecha pago': fmtDate(m.fecha),
     Estado: m.estado || ''
   }));
   const hoja = XLSX.utils.json_to_sheet(datos, {
-    header: ['Banco','Fecha factura','Fecha vencimiento','Fecha pago','Concepto','Proveedor','P.O.','Cuenta contable','Monto','Estado']
+    header: ['Banco','Fecha factura','Fecha vencimiento','Fecha pago','Concepto','Proveedor','P.O.','N.° PEN','Cuenta contable','Monto','Total factura','Estado']
   });
   hoja['!cols'] = [
-    {wch:24},{wch:15},{wch:15},{wch:15},{wch:42},{wch:34},{wch:18},{wch:34},{wch:15},{wch:14}
+    {wch:24},{wch:15},{wch:15},{wch:15},{wch:42},{wch:34},{wch:18},{wch:16},{wch:34},{wch:15},{wch:15},{wch:14}
   ];
   const libro = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(libro, hoja, 'Pagar hoy');
