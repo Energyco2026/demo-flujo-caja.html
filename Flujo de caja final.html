@@ -860,6 +860,7 @@ async function cargarDatos(){
       descripcion: c.descripcion,
       textoOriginal: c.texto_original,
       estado: c.estado,
+      fecha: c.fecha || null,
     }));
     presupuestosProyecto = presupuestoData.map(p=>({
       // rubro_clave + proyecto es la llave estable (id puede venir null para
@@ -1984,24 +1985,35 @@ function renderOC(){
     const cuotasOC = cuotasFormaPago
       .filter(c => c.poId === oc.id && c.estado !== 'confirmada' && c.estado !== 'ya_pagada')
       .sort((a,b) => (a.cuotaNumero||0) - (b.cuotaNumero||0));
+    // Corrimiento en cascada: si una cuota queda vencida sin confirmar, todas
+    // las siguientes se corren por el mismo intervalo real que había entre
+    // ellas (7 días si es semanal, 15 si es quincenal, 30 si es mensual,
+    // etc. — se toma de la diferencia real entre las fechas originales, no
+    // un número fijo), para no acumular dos cuotas en el mismo período.
+    let acumuladoDias = 0;
+    const cuotasConCascada = cuotasOC.map((c, idx) => {
+      const fechaOriginal = c.fecha ? new Date(c.fecha + 'T00:00:00') : null;
+      const fechaEfectiva = fechaOriginal ? addDays(fechaOriginal, acumuladoDias) : null;
+      if(fechaEfectiva && fechaEfectiva < HOY){
+        const siguiente = cuotasOC[idx + 1];
+        const intervalo = (siguiente && siguiente.fecha && c.fecha)
+          ? diasEntre(new Date(c.fecha + 'T00:00:00'), new Date(siguiente.fecha + 'T00:00:00'))
+          : 0;
+        acumuladoDias += intervalo;
+      }
+      return { ...c, fechaOriginal, fechaEfectiva };
+    });
     // Neteo en cascada: lo ya pagado/anticipado (resumen.pagado) se descuenta
     // primero de la cuota 1, luego de la 2, etc. Si una cuota queda en $0
     // (ya cubierta por completo), se oculta de la lista.
     let disponibleParaNetear = resumen.pagado;
-    const cuotasNeteadas = cuotasOC.map(c=>{
+    const cuotasNeteadas = cuotasConCascada.map(c=>{
       if(c.estado === 'revisar_manual') return { ...c, montoOriginal: null, montoRestante: null };
       const montoOriginal = Number(c.monto) || 0;
       const consumido = Math.min(montoOriginal, Math.max(disponibleParaNetear, 0));
       disponibleParaNetear -= consumido;
       return { ...c, montoOriginal, montoRestante: montoOriginal - consumido };
     }).filter(c => c.estado === 'revisar_manual' || c.montoRestante > 0.01);
-    // La frecuencia se busca en el texto completo de todas las cuotas de esta OC
-    // (incluidas las marcadas "revisar manual"), por si la nota general la menciona ahí.
-    const textoCompletoOC = cuotasFormaPago
-      .filter(c => c.poId === oc.id)
-      .map(c => `${c.descripcion || ''} ${c.textoOriginal || ''}`)
-      .join(' ');
-    const frecuenciaDiasOC = detectarFrecuenciaDias(textoCompletoOC);
     const cuotasHtml = cuotasNeteadas.length ? `
       <div class="oc-cuotas">
         <div class="oc-cuotas-title">Forma de pago sugerida (leída de la nota de la OC)</div>
@@ -2018,10 +2030,11 @@ function renderOC(){
               <span class="oc-cuota-pct">${c.pct}%</span>
               <span class="oc-cuota-monto nums">${fmtMoney(c.montoRestante)}</span>
               ${c.montoRestante < c.montoOriginal - 0.01 ? `<span style="font-size:10px; color:var(--muted);">(de ${fmtMoney(c.montoOriginal)} — ya cubierto ${fmtMoney(c.montoOriginal - c.montoRestante)})</span>` : ''}
+              ${c.fechaEfectiva && c.fechaOriginal && c.fechaEfectiva.getTime() !== c.fechaOriginal.getTime() ? `<span style="font-size:10px; color:var(--projected);" title="Se corrió porque una cuota anterior sigue sin confirmarse">(corrida desde ${fmtDate(c.fechaOriginal)})</span>` : ''}
               <input type="text" class="oc-cuota-desc" data-cuota-desc value="${escapeHTML(c.descripcion || '')}">
             </div>
             <div class="oc-cuota-actions">
-              <input type="date" data-cuota-fecha value="${frecuenciaDiasOC && oc.fechaOrden ? fmtDate(addDays(new Date(oc.fechaOrden + 'T00:00:00'), c.cuotaNumero * frecuenciaDiasOC)) : ''}" data-fecha-base="${frecuenciaDiasOC && oc.fechaOrden ? fmtDate(addDays(new Date(oc.fechaOrden + 'T00:00:00'), c.cuotaNumero * frecuenciaDiasOC)) : ''}">
+              <input type="date" data-cuota-fecha value="${c.fechaEfectiva ? fmtDate(c.fechaEfectiva) : ''}" data-fecha-base="${c.fechaEfectiva ? fmtDate(c.fechaEfectiva) : ''}">
               <button type="button" data-confirmar-cuota>Confirmar</button>
             </div>
             <div class="oc-cuota-msg" data-cuota-msg></div>
