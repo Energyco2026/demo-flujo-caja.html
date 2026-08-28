@@ -1425,10 +1425,11 @@ function renderIndices(){
   const agingRowsCxp = document.getElementById('agingRowsCxp');
   agingRowsCxp.innerHTML = rangosCxp.map(r=>{
     const monto = abiertas.filter(m=>esCxp(m)&&calcularEnRango(m,r)).reduce((s,m)=>s+Math.abs(m.monto),0);
-    return `<tr><td>${r.label}</td><td class="nums amt-out"><button type="button" class="aging-link" data-tipo="CxP" data-min="${r.min}" data-max="${r.max}">${fmtMoney(monto)}</button></td></tr>`;
+    const attrs = r.reconocimiento ? 'data-reconocimiento="1"' : `data-min="${r.min}" data-max="${r.max}"`;
+    return `<tr><td>${r.label}</td><td class="nums amt-out"><button type="button" class="aging-link" data-tipo="CxP" ${attrs}>${fmtMoney(monto)}</button></td></tr>`;
   }).join('');
   agingRowsCxp.querySelectorAll('.aging-link').forEach(btn=>btn.addEventListener('click',()=>{
-    abrirDetalleAntiguedad(btn.dataset.tipo, Number(btn.dataset.min), Number(btn.dataset.max), false);
+    abrirDetalleAntiguedad(btn.dataset.tipo, Number(btn.dataset.min), Number(btn.dataset.max), btn.dataset.reconocimiento === '1');
   }));
 
   const exposicion = new Map();
