@@ -394,6 +394,7 @@
         <span style="display:flex; align-items:center; gap:6px;">Banco: <select id="filtroBanco"></select></span>
         <span style="display:flex; align-items:center; gap:6px;">Concepto: <input type="text" id="filtroConcepto" placeholder="Todos (escribe para filtrar)" style="min-width:200px; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px;"></span>
         <span style="display:flex; align-items:center; gap:6px;">Proveedor: <input type="text" id="filtroProveedor" list="listaProveedores" placeholder="Todas (escribe para filtrar)" style="min-width:220px; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px;"><datalist id="listaProveedores"></datalist></span>
+        <span id="totalProveedorFiltrado" class="nums" style="display:none; font-size:12px; font-weight:600; color:var(--bad); background:var(--bad-bg); border-radius:6px; padding:5px 10px;"></span>
         <span style="display:flex; align-items:center; gap:6px;">Cuenta contable: <input type="text" id="filtroCuenta" list="listaCuentas" placeholder="Todas (escribe para filtrar)" style="min-width:220px; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px;"><datalist id="listaCuentas"></datalist></span>
         <span style="display:flex; align-items:center; gap:6px;">Desde: <input type="date" id="filtroFechaDesde"></span>
         <span style="display:flex; align-items:center; gap:6px;">Hasta: <input type="date" id="filtroFechaHasta"></span>
@@ -412,6 +413,7 @@
           </select>
         </span>
         <button type="button" id="btnExportarCSV" class="btn-refrescar">⬇ Descargar Excel</button>
+        <button type="button" id="btnSeleccionarTodos" class="btn-refrescar">Seleccionar todos</button>
         <span id="contadorSeleccionados" style="font-size:12px; color:var(--muted);">0 seleccionadas</span>
         <button type="button" id="btnDescargarSeleccionados" class="btn-refrescar" disabled style="opacity:.5;">⬇ Descargar seleccionados</button>
       </div>
@@ -1152,6 +1154,23 @@ function render(){
   const fBanco = selBanco.value || 'Todas';
   const fConcepto = selConcepto.value.trim();
   const fProv = selProv.value.trim();
+
+  // Total pendiente (proyectado, sin pagar todavía) del proveedor que está
+  // escrito en el filtro — independiente de los demás filtros de la tabla,
+  // para que responda solo a "cuánto le debo/me debe este proveedor".
+  const totalProvEl = document.getElementById('totalProveedorFiltrado');
+  if(fProv){
+    const pendientesProv = movimientos.filter(m => m.estado === 'proyectado' && coincideFiltroTexto(m.proveedor, fProv));
+    const totalPagar = pendientesProv.filter(m => m.monto < 0).reduce((s,m)=>s+Math.abs(m.monto), 0);
+    const totalCobrar = pendientesProv.filter(m => m.monto > 0).reduce((s,m)=>s+m.monto, 0);
+    const partes = [];
+    if(totalPagar > 0.01) partes.push(`Total a pagar: ${fmtMoney(totalPagar)}`);
+    if(totalCobrar > 0.01) partes.push(`Total a cobrar: ${fmtMoney(totalCobrar)}`);
+    totalProvEl.style.display = partes.length ? 'inline-block' : 'none';
+    totalProvEl.textContent = partes.join(' · ');
+  } else {
+    totalProvEl.style.display = 'none';
+  }
   const fCuenta = selCuenta.value.trim();
   const fDesde = inpDesde.value ? new Date(inpDesde.value + 'T00:00:00') : null;
   const fHasta = inpHasta.value ? new Date(inpHasta.value + 'T23:59:59') : null;
@@ -1294,13 +1313,16 @@ const EXCLUIR_DE_SALDO_BANCO = /VISA|DINERS|MASTERCARD|TARJETA|ANTICIPO|SALDOS I
 
 // Bancos que existen en Odoo pero no se usan en la operación real — se ocultan
 // del panel "Saldo por Banco", del saldo bancario total y del selector de banco.
-// Si el nombre exacto en Supabase difiere de este texto, ajustarlo aquí.
+// Se identifica por el número de cuenta (único) en vez del nombre completo,
+// porque el nombre puede variar levemente en mayúsculas/espacios.
 const BANCOS_OCULTOS = ['BANCO INTERNACIONAL CTA AHO # 1508025103'];
+const NUMEROS_CUENTA_OCULTOS = ['1508025103'];
 
 function bancosDePagoValidos(){
   return Object.keys(bancosBase)
     .filter(b => !EXCLUIR_DE_SALDO_BANCO.test(b))
     .filter(b => !BANCOS_OCULTOS.includes(b))
+    .filter(b => !NUMEROS_CUENTA_OCULTOS.some(numero => b.includes(numero)))
     .sort();
 }
 
@@ -1870,6 +1892,25 @@ async function deshacerPagoManual(id){
 }
 
 function attachHandlers(){
+  const botonSeleccionarTodos = document.getElementById('btnSeleccionarTodos');
+  if(botonSeleccionarTodos){
+    // Solo se seleccionan proyectados (los únicos con checkbox), y solo los
+    // que están pasando los filtros activos ahora mismo, no todos los que existen.
+    const idsProyectadosVisibles = filasVisiblesParaExportar.filter(m=>m.estado==='proyectado').map(m=>m.id);
+    const hayVisibles = idsProyectadosVisibles.length > 0;
+    const todosSeleccionados = hayVisibles && idsProyectadosVisibles.every(id=>movimientosSeleccionados.has(id));
+    botonSeleccionarTodos.textContent = todosSeleccionados ? 'Quitar selección' : 'Seleccionar todos';
+    botonSeleccionarTodos.disabled = !hayVisibles;
+    botonSeleccionarTodos.style.opacity = hayVisibles ? '1' : '.5';
+    botonSeleccionarTodos.onclick = ()=>{
+      if(todosSeleccionados){
+        idsProyectadosVisibles.forEach(id=>movimientosSeleccionados.delete(id));
+      } else {
+        idsProyectadosVisibles.forEach(id=>movimientosSeleccionados.add(id));
+      }
+      render();
+    };
+  }
   document.querySelectorAll('input[type=date]').forEach(inp=>{
     inp.addEventListener('change', e=>{
       const id = parseInt(e.target.dataset.id);
