@@ -1278,10 +1278,28 @@ function render(){
 
 const EXCLUIR_DE_SALDO_BANCO = /VISA|DINERS|MASTERCARD|TARJETA|ANTICIPO|SALDOS INICIALES|CAJA CHICA|CAJA GENERAL|^CASH$/i;
 
+// Bancos que existen en Odoo pero no se usan en la operación real — se ocultan
+// del panel "Saldo por Banco", del saldo bancario total y del selector de banco.
+// Si el nombre exacto en Supabase difiere de este texto, ajustarlo aquí.
+const BANCOS_OCULTOS = ['BANCO INTERNACIONAL CTA AHO # 1508025103'];
+
 function bancosDePagoValidos(){
   return Object.keys(bancosBase)
     .filter(b => !EXCLUIR_DE_SALDO_BANCO.test(b))
+    .filter(b => !BANCOS_OCULTOS.includes(b))
     .sort();
+}
+
+// Saldo real estimado HOY de un banco puntual: su saldo actual + los pagos
+// que ya se marcaron "pagado hoy" pero que Odoo aún no ha registrado.
+function ajusteManualBanco(banco){
+  return movimientos
+    .filter(m => m.estado === 'proyectado' && m.pagadoManual && m.banco === banco)
+    .reduce((s, m) => s + m.monto, 0);
+}
+
+function saldoRealBanco(banco){
+  return (Number(bancosBase[banco]) || 0) + ajusteManualBanco(banco);
 }
 
 function renderBancos(){
@@ -1290,6 +1308,8 @@ function renderBancos(){
   const nombresBanco = bancosDePagoValidos();
   nombresBanco.forEach(banco=>{
     const saldo = bancosBase[banco];
+    const ajuste = ajusteManualBanco(banco);
+    const saldoReal = saldo + ajuste;
     let proyectado30 = 0;
     movimientos.filter(m=>m.banco===banco && m.estado==='proyectado').forEach(m=>{
       if(m.fecha > HOY && m.fecha <= addDays(HOY,30)) proyectado30 += m.monto;
@@ -1299,6 +1319,9 @@ function renderBancos(){
     card.innerHTML = `
       <div class="banco-name">${banco}</div>
       <div class="banco-saldo nums ${saldo<0?'amt-out':''}">${fmtMoney(saldo)}</div>
+      <div style="font-size:10px; color:var(--projected); text-transform:uppercase; letter-spacing:.04em; margin-top:8px;">Saldo real estimado hoy</div>
+      <div class="nums" style="font-size:15px; font-weight:600; color:${saldoReal<0?'var(--bad)':'var(--projected)'};">${fmtMoney(saldoReal)}</div>
+      ${ajuste !== 0 ? `<div style="font-size:10px; color:var(--muted);">Incluye ${fmtMoney(Math.abs(ajuste))} marcado hoy, aún sin registrar en Odoo</div>` : ''}
       <div class="banco-proj nums">${proyectado30>=0?'+':''}${fmtMoney(proyectado30)} proyectado (30d)</div>
     `;
     grid.appendChild(card);
@@ -1862,12 +1885,22 @@ function attachHandlers(){
     sel.addEventListener('change', e=>{
       const id = parseInt(e.target.dataset.bancoId);
       const m = movimientos.find(x=>x.id===id);
-      if(m){
-        m.banco = e.target.value;
-        m.esBancoManual = true;
-        guardarBancoManual(id, e.target.value);
-        render();
+      if(!m) return;
+      const bancoAnterior = m.banco || '';
+      const nuevoBanco = e.target.value;
+      // Solo se valida flujo para egresos (montos negativos) asignados a un banco real.
+      if(nuevoBanco && m.monto < 0){
+        const saldoReal = saldoRealBanco(nuevoBanco);
+        if(saldoReal + m.monto < 0){
+          alert(`No se puede guardar: ${nuevoBanco} tiene un saldo real estimado hoy de ${fmtMoney(saldoReal)} y este pago es de ${fmtMoney(Math.abs(m.monto))}. No alcanza el flujo en ese banco.`);
+          e.target.value = bancoAnterior;
+          return;
+        }
       }
+      m.banco = nuevoBanco;
+      m.esBancoManual = true;
+      guardarBancoManual(id, nuevoBanco);
+      render();
     });
   });
   document.querySelectorAll('button[data-marcar-id]').forEach(btn=>{
