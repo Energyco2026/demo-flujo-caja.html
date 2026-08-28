@@ -275,7 +275,7 @@
   .indice-help{font-size:11px; color:var(--muted); margin-top:5px; line-height:1.4;}
   .analysis-grid{display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start;}
   @media(max-width:850px){.analysis-grid{grid-template-columns:1fr;}}
-  .aging-side-by-side{display:flex; gap:18px;}
+  .aging-side-by-side{display:flex; gap:18px; align-items:start;}
   .aging-side-by-side > div{flex:1; min-width:0;}
   @media(max-width:650px){.aging-side-by-side{flex-direction:column;}}
   .mini-table th,.mini-table td{padding:10px 14px;}
@@ -1316,7 +1316,8 @@ function diasEntre(inicio, fin){
 }
 
 function esReconocimientoIngresos(m){
-  return /\b001-003-000009\d{3}\b/i.test(String(m.concepto || ''));
+  if(/\b001-003-000009\d{3}\b/i.test(String(m.concepto || ''))) return true;
+  return /GARCIA\s+URIBE\s+JORGE\s+ANDRES/i.test(String(m.proveedor || ''));
 }
 
 // Busca en el texto de la forma de pago si menciona una frecuencia reconocible.
@@ -1391,7 +1392,7 @@ function renderIndices(){
     {label:'31–60 días', min:31, max:60},
     {label:'61–90 días', min:61, max:90},
     {label:'Más de 90 días', min:91, max:Infinity},
-    {label:'Reconocimiento de ingresos', reconocimiento:true}
+    {label:'Reconocimiento de ingreso/egreso', reconocimiento:true}
   ];
   const rangosCxp = [
     {label:'0–7 días', min:0, max:7},
@@ -1399,10 +1400,11 @@ function renderIndices(){
     {label:'31–60 días', min:31, max:60},
     {label:'61–90 días', min:61, max:90},
     {label:'Más de 90 días', min:91, max:Infinity},
+    {label:'Reconocimiento de ingreso/egreso', reconocimiento:true}
   ];
 
   function calcularEnRango(m, r){
-    if(r.reconocimiento) return esCxc(m) && esReconocimientoIngresos(m);
+    if(r.reconocimiento) return esReconocimientoIngresos(m);
     if(esReconocimientoIngresos(m)) return false;
     const fechaRef = m.fechaVencimiento || m.fechaFactura;
     if(!fechaRef) return false;
@@ -1479,10 +1481,10 @@ function abrirDetalleAntiguedad(tipo, min, max, reconocimiento=false){
   const esTipo = tipo === 'CxC'
     ? m => /Cuentas por Cobrar/i.test(m.cuenta || '')
     : m => /Cuentas por Pagar/i.test(m.cuenta || '');
-  const rangoLabel = reconocimiento ? 'Reconocimiento de ingresos' : max === Infinity ? 'Más de 90 días' : `${min}–${max} días`;
+  const rangoLabel = reconocimiento ? 'Reconocimiento de ingreso/egreso' : max === Infinity ? 'Más de 90 días' : `${min}–${max} días`;
   const detalle = movimientosCartera.filter(m=>{
     if(m.estado !== 'proyectado' || m.origen !== 'account.move' || Math.abs(m.monto) <= 0.005 || !esTipo(m)) return false;
-    if(reconocimiento) return tipo === 'CxC' && esReconocimientoIngresos(m);
+    if(reconocimiento) return esReconocimientoIngresos(m);
     if(esReconocimientoIngresos(m)) return false;
     const fechaRef = m.fechaVencimiento || m.fechaFactura;
     if(!fechaRef) return false;
