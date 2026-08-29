@@ -1087,6 +1087,21 @@ function poblarDatalist(datalistEl, valores){
 function normalizarTexto(valor){
   return String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
+
+// Misma lógica que textos_compatibles() en el script de Python: acepta
+// nombres abreviados o con distinta capitalización cuando comparten una
+// palabra significativa, para no marcar como "distinto" lo que en realidad
+// es el mismo proveedor escrito distinto.
+function textos_compatibles_dashboard(izquierda, derecha){
+  const a = normalizarTexto(izquierda);
+  const b = normalizarTexto(derecha);
+  if(!a || !b) return false;
+  if(a.includes(b) || b.includes(a)) return true;
+  const ignorar = new Set(['s','sa','cia','compania','de','del','la','el','y']);
+  const tokensA = new Set(a.split(/\s+/).filter(t => t.length >= 5 && !ignorar.has(t)));
+  const tokensB = b.split(/\s+/).filter(t => t.length >= 5 && !ignorar.has(t));
+  return tokensB.some(t => tokensA.has(t));
+}
 function coincideFiltroTexto(valor, filtro){
   if(!filtro) return true;
   return normalizarTexto(valor).includes(normalizarTexto(filtro));
@@ -2161,14 +2176,17 @@ function renderOC(){
     const isOpen = ocAbiertas.has(oc.id);
 
     const detailRows = pagosOC.length
-      ? pagosOC.map(p=>`
+      ? pagosOC.map(p=>{
+          const proveedorDistinto = p.proveedor && oc.proveedor && !textos_compatibles_dashboard(p.proveedor, oc.proveedor);
+          return `
           <div class="oc-detail-row">
             <div>
-              <div class="oc-detail-prov">${p.proveedor || oc.proveedor}</div>
+              <div class="oc-detail-prov">${p.proveedor || oc.proveedor}${proveedorDistinto ? ` <span style="color:var(--bad); font-weight:600; font-size:11px;" title="Este pago quedó registrado a nombre de ${escapeHTML(p.proveedor)}, pero la OC ahora está a nombre de ${escapeHTML(oc.proveedor)} — probablemente se reasignó el proveedor en Odoo después de este pago.">⚠️ proveedor distinto al actual de la OC</span>` : ''}</div>
               <div class="oc-detail-concepto">${p.concepto} · ${fmtDate(p.fecha)}${p.origen==='anticipo_oc_manual' ? ' <span style="color:var(--projected); font-weight:600;">· anticipo, pendiente de confirmar en Odoo</span>' : ''}</div>
             </div>
             <div class="nums">${fmtMoney(Math.abs(p.monto))}</div>
-          </div>`).join('')
+          </div>`;
+        }).join('')
       : `<div class="oc-detail-empty">Sin pagos ejecutados todavía para esta OC.</div>`;
 
     const cuotasOC = cuotasFormaPago
@@ -2609,6 +2627,43 @@ document.getElementById('mesLimpiar').addEventListener('click', ()=>{
 });
 
 // ---------- Exportar a Excel lo que se está viendo (respeta todos los filtros activos) ----------
+// Genera una hoja tipo "pivot" (Row Labels / Sum of Monto) agrupada por
+// banco y, dentro de cada banco, por proveedor — igual al formato que la
+// usuaria ya usaba armando su propia tabla dinámica sobre la descarga.
+function construirFilasResumenBanco(filas){
+  const bancos = {};
+  const ordenBancos = [];
+  filas.forEach(m=>{
+    const banco = m.banco || 'Sin banco';
+    const prov = m.proveedor || 'Sin proveedor';
+    if(!bancos[banco]){ bancos[banco] = { total: 0, proveedores: {}, ordenProv: [] }; ordenBancos.push(banco); }
+    bancos[banco].total += m.monto;
+    if(!(prov in bancos[banco].proveedores)){ bancos[banco].proveedores[prov] = 0; bancos[banco].ordenProv.push(prov); }
+    bancos[banco].proveedores[prov] += m.monto;
+  });
+  const filasResumen = [];
+  ordenBancos
+    .sort((a,b) => bancos[b].total - bancos[a].total)
+    .forEach(banco=>{
+      filasResumen.push({ 'Row Labels': banco, 'Sum of Monto': Number(bancos[banco].total.toFixed(2)) });
+      bancos[banco].ordenProv
+        .sort((a,b) => bancos[banco].proveedores[b] - bancos[banco].proveedores[a])
+        .forEach(prov=>{
+          filasResumen.push({ 'Row Labels': '    ' + prov, 'Sum of Monto': Number(bancos[banco].proveedores[prov].toFixed(2)) });
+        });
+    });
+  filasResumen.push({ 'Row Labels': 'Grand Total', 'Sum of Monto': Number(filas.reduce((s,m)=>s+m.monto,0).toFixed(2)) });
+  return filasResumen;
+}
+
+function hojaResumenBanco(filas){
+  const hoja = XLSX.utils.json_to_sheet(construirFilasResumenBanco(filas), {
+    header: ['Row Labels','Sum of Monto']
+  });
+  hoja['!cols'] = [{wch:40},{wch:16}];
+  return hoja;
+}
+
 function exportarExcel(){
   const filas = [...filasVisiblesParaExportar].sort((a,b)=>{
     // Ordenado por banco primero (para girar banco por banco), luego por fecha
@@ -2643,6 +2698,7 @@ function exportarExcel(){
   ];
   hoja['!autofilter'] = {ref: hoja['!ref'] || 'A1:L1'};
   const libro = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(libro, hojaResumenBanco(filas), 'Sheet1');
   XLSX.utils.book_append_sheet(libro, hoja, 'Movimientos');
   XLSX.writeFile(libro, `flujo_caja_${fmtDate(new Date())}.xlsx`);
 }
@@ -2698,6 +2754,7 @@ function exportarSeleccionados(){
     {wch:34},{wch:42},{wch:34},{wch:15},{wch:18},{wch:16},{wch:15},{wch:24},{wch:15},{wch:15},{wch:15},{wch:14}
   ];
   const libro = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(libro, hojaResumenBanco(filas), 'Sheet1');
   XLSX.utils.book_append_sheet(libro, hoja, 'Pagar hoy');
   XLSX.writeFile(libro, `pagos_a_realizar_${fmtDate(new Date())}.xlsx`);
 }
