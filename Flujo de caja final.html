@@ -478,7 +478,7 @@
       <div class="panel-note"><input type="text" id="buscarFacturaCxc" placeholder="Escribe el N.° de factura o el proveedor" style="min-width:280px; font-family:'Inter',sans-serif; font-size:12.5px; border:1px solid var(--line); border-radius:6px; padding:6px 10px;"></div>
     </div>
     <div class="table-scroll" id="buscarFacturaCxcResultado" style="display:none;">
-      <table><thead><tr><th>Concepto</th><th>Proveedor</th><th>Cuenta</th><th>Banco</th><th>P.O.</th><th>Fecha factura</th><th>Fecha prevista</th><th>Saldo</th></tr></thead><tbody id="buscarFacturaCxcRows"></tbody></table>
+      <table><thead><tr><th>Concepto</th><th>Proveedor</th><th>Cuenta</th><th>Banco</th><th>P.O.</th><th>Fecha factura</th><th>Fecha prevista</th><th>Total factura</th><th>Saldo</th></tr></thead><tbody id="buscarFacturaCxcRows"></tbody></table>
     </div>
   </section>
 
@@ -1621,10 +1621,25 @@ function renderBuscarFacturaCxc(filtro){
       <td>${escapeHTML(m.banco || 'Sin banco')}</td>
       <td>${escapeHTML(poVisible || '—')}</td>
       <td class="nums">${m.fechaFactura ? fmtDate(m.fechaFactura) : 'Sin fecha'}</td>
-      <td class="nums">${fmtDate(m.fecha)}</td>
+      <td class="nums"><input type="date" class="nums buscar-factura-fecha" value="${fmtDate(m.fecha)}" data-id="${m.id}" ${m.estado==='proyectado'?'':'disabled'}></td>
+      <td class="nums" style="color:var(--muted);">${m.montoFacturaTotal != null ? fmtMoney(m.montoFacturaTotal) : '—'}</td>
       <td class="nums ${esCxc?'amt-in':'amt-out'}">${fmtMoney(Math.abs(m.monto))}</td>
     </tr>`;
-  }).join('') : '<tr><td colspan="8" class="oc-detail-empty">Sin resultados para esa búsqueda.</td></tr>';
+  }).join('') : '<tr><td colspan="9" class="oc-detail-empty">Sin resultados para esa búsqueda.</td></tr>';
+  document.querySelectorAll('#buscarFacturaCxcRows input.buscar-factura-fecha').forEach(inp=>{
+    inp.addEventListener('change', ()=>{
+      const id = Number(inp.dataset.id);
+      const m = movimientosCartera.find(x=>x.id===id);
+      if(!m || !inp.value) return;
+      m.fecha = new Date(inp.value + 'T00:00:00');
+      m.esFechaManual = true;
+      guardarFechaManual(id, m.fecha);
+      // Es el mismo movimiento que se usa en Antigüedad de cartera y en el
+      // Flujo de caja general, así que un solo cambio se refleja en ambos.
+      render();
+      renderBuscarFacturaCxc(document.getElementById('buscarFacturaCxc').value);
+    });
+  });
 }
 document.getElementById('buscarFacturaCxc').addEventListener('input', e=>renderBuscarFacturaCxc(e.target.value));
 
