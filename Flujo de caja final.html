@@ -778,19 +778,30 @@ async function cargarAuditoria(){
       duplicado_bnk_payment: 'posible(s) pago(s) contado(s) dos veces (banco y account.payment)',
       proveedor_distinto_po: 'pago(s) con proveedor distinto al actual de su Orden de Compra',
     };
+    const camposPorTipo = {
+      duplicado_bnk_payment: [['concepto','Concepto'],['proveedor','Proveedor'],['banco','Banco'],['monto','Monto'],['fecha','Fecha']],
+      proveedor_distinto_po: [['pen','N.° PEN'],['proveedor_en_pago','Proveedor en el pago'],['proveedor_actual_oc','Proveedor actual de la OC'],['monto','Monto'],['fecha','Fecha']],
+    };
     banner.style.display = 'block';
     banner.innerHTML = `
       <div style="background:var(--bad-bg); border:1px solid var(--bad); border-radius:8px; padding:10px 14px; margin-bottom:16px;">
         <div style="font-weight:600; color:var(--bad); font-size:13px; margin-bottom:4px;">⚠️ Auditoría automática — última corrida ${fmtDate(new Date(alertas[0].corrida_en))}</div>
-        ${alertas.map(a => `
+        ${alertas.map(a => {
+          const columnas = camposPorTipo[a.tipo] || [];
+          return `
           <div style="display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--ink); margin-top:2px;">
             <span>${a.cantidad} ${etiquetas[a.tipo] || a.tipo}</span>
             <button type="button" class="btn-ver-alerta" data-tipo="${a.tipo}" style="font-size:11px; border:1px solid var(--bad); background:#fff; color:var(--bad); border-radius:5px; padding:2px 8px; cursor:pointer;">Ver detalle</button>
           </div>
-          <div class="panel-alerta-detalle" data-tipo-detalle="${a.tipo}" style="display:none; margin-top:8px; max-height:220px; overflow-y:auto; font-size:11.5px; background:#fff; border-radius:6px; padding:8px;">
-            ${(a.detalle || []).map(d => `<div style="padding:3px 0; border-bottom:1px dashed var(--line);">${escapeHTML(JSON.stringify(d))}</div>`).join('')}
-          </div>
-        `).join('')}
+          <div class="panel-alerta-detalle" data-tipo-detalle="${a.tipo}" style="display:none; margin-top:8px; max-height:260px; overflow:auto; background:#fff; border-radius:6px;">
+            <table style="width:100%; font-size:11.5px; border-collapse:collapse;">
+              <thead><tr>${columnas.map(([,etiqueta])=>`<th style="text-align:left; padding:5px 8px; border-bottom:1px solid var(--line); color:var(--muted); white-space:nowrap;">${etiqueta}</th>`).join('')}</tr></thead>
+              <tbody>
+                ${(a.detalle || []).map(d => `<tr>${columnas.map(([campo])=>`<td style="padding:5px 8px; border-bottom:1px dashed var(--line);">${escapeHTML(String(d[campo] ?? '—'))}</td>`).join('')}</tr>`).join('')}
+              </tbody>
+            </table>
+          </div>`;
+        }).join('')}
       </div>`;
     banner.querySelectorAll('.btn-ver-alerta').forEach(btn=>{
       btn.addEventListener('click', ()=>{
