@@ -472,6 +472,16 @@
     <div class="indice-card"><div class="indice-label">Días contables CxP</div><div class="indice-value nums" id="idxDiasContableCxp">—</div><div class="indice-help">Días transcurridos del período ÷ rotación contable.</div></div>
   </div>
 
+  <section class="panel" id="panelBuscarFacturaCxc">
+    <div class="panel-head">
+      <div class="panel-title">Buscar factura</div>
+      <div class="panel-note"><input type="text" id="buscarFacturaCxc" placeholder="Escribe el N.° de factura o el proveedor" style="min-width:280px; font-family:'Inter',sans-serif; font-size:12.5px; border:1px solid var(--line); border-radius:6px; padding:6px 10px;"></div>
+    </div>
+    <div class="table-scroll" id="buscarFacturaCxcResultado" style="display:none;">
+      <table><thead><tr><th>Concepto</th><th>Proveedor</th><th>Cuenta</th><th>Banco</th><th>P.O.</th><th>Fecha factura</th><th>Fecha prevista</th><th>Saldo</th></tr></thead><tbody id="buscarFacturaCxcRows"></tbody></table>
+    </div>
+  </section>
+
   <div class="analysis-grid">
     <section class="panel">
       <div class="aging-side-by-side">
@@ -509,7 +519,6 @@
   <div class="detail-dialog">
     <div class="detail-dialog-head">
       <div><div class="panel-title" id="agingDetailTitle">Detalle de antigüedad</div><div class="panel-note" id="agingDetailSummary"></div></div>
-      <input type="text" id="agingDetailBuscar" placeholder="Buscar N.° factura o proveedor" style="min-width:220px; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:6px 9px; margin-left:12px;">
       <button type="button" class="detail-close" id="agingDetailClose">Cerrar</button>
     </div>
     <div class="detail-scroll">
@@ -522,7 +531,6 @@
   <div class="detail-dialog">
     <div class="detail-dialog-head">
       <div><div class="panel-title" id="ventasDetailTitle">Detalle de facturación</div><div class="panel-note" id="ventasDetailSummary"></div></div>
-      <input type="text" id="ventasDetailBuscar" placeholder="Buscar N.° factura o proveedor" style="min-width:220px; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:6px 9px; margin-left:12px;">
       <button type="button" class="detail-close" id="ventasDetailClose">Cerrar</button>
     </div>
     <div class="detail-scroll">
@@ -1585,6 +1593,41 @@ function renderAgingDetailRows(filtro){
   });
 }
 
+function renderBuscarFacturaCxc(filtro){
+  const contenedor = document.getElementById('buscarFacturaCxcResultado');
+  const f = (filtro || '').trim();
+  if(!f){
+    contenedor.style.display = 'none';
+    return;
+  }
+  const resultados = movimientosCartera.filter(m =>
+    m.estado === 'proyectado' &&
+    m.origen === 'account.move' &&
+    Math.abs(m.monto) > 0.005 &&
+    (coincideFiltroTexto(m.concepto, f) || coincideFiltroTexto(m.proveedor, f))
+  ).sort((a,b)=>{
+    const fa = (a.fechaVencimiento || a.fechaFactura) ? (a.fechaVencimiento || a.fechaFactura).getTime() : 0;
+    const fb = (b.fechaVencimiento || b.fechaFactura) ? (b.fechaVencimiento || b.fechaFactura).getTime() : 0;
+    return fa-fb;
+  });
+  contenedor.style.display = 'block';
+  document.getElementById('buscarFacturaCxcRows').innerHTML = resultados.length ? resultados.map(m=>{
+    const esCxc = /Cuentas por Cobrar/i.test(m.cuenta || '');
+    const poVisible = m.po || obtenerPOComercialDesdeTexto(m.concepto, {});
+    return `<tr>
+      <td>${escapeHTML(m.concepto || '—')}</td>
+      <td>${escapeHTML(m.proveedor || '—')}</td>
+      <td>${esCxc ? 'CxC' : 'CxP'}</td>
+      <td>${escapeHTML(m.banco || 'Sin banco')}</td>
+      <td>${escapeHTML(poVisible || '—')}</td>
+      <td class="nums">${m.fechaFactura ? fmtDate(m.fechaFactura) : 'Sin fecha'}</td>
+      <td class="nums">${fmtDate(m.fecha)}</td>
+      <td class="nums ${esCxc?'amt-in':'amt-out'}">${fmtMoney(Math.abs(m.monto))}</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="8" class="oc-detail-empty">Sin resultados para esa búsqueda.</td></tr>';
+}
+document.getElementById('buscarFacturaCxc').addEventListener('input', e=>renderBuscarFacturaCxc(e.target.value));
+
 function abrirDetalleAntiguedad(tipo, min, max, reconocimiento=false){
   const esTipo = tipo === 'CxC'
     ? m => /Cuentas por Cobrar/i.test(m.cuenta || '')
@@ -1608,13 +1651,9 @@ function abrirDetalleAntiguedad(tipo, min, max, reconocimiento=false){
   agingTipoActual = tipo;
   document.getElementById('agingDetailTitle').textContent = `Detalle ${tipo} · ${rangoLabel}`;
   document.getElementById('agingDetailSummary').textContent = `${detalle.length} movimiento${detalle.length===1?'':'s'} · Total ${fmtMoney(total)}`;
-  const buscador = document.getElementById('agingDetailBuscar');
-  buscador.value = '';
   renderAgingDetailRows('');
   document.getElementById('agingDetailOverlay').classList.add('open');
 }
-
-document.getElementById('agingDetailBuscar').addEventListener('input', e=>renderAgingDetailRows(e.target.value));
 
 function cerrarDetalleAntiguedad(){ document.getElementById('agingDetailOverlay').classList.remove('open'); }
 document.getElementById('agingDetailClose').addEventListener('click', cerrarDetalleAntiguedad);
@@ -1850,12 +1889,9 @@ function abrirDetalleVentas(categoria, anio){
   document.getElementById('ventasDetailTitle').textContent = `Detalle de ${etiqueta.toLowerCase()} netas · ${anio}`;
   document.getElementById('ventasDetailSummary').textContent =
     `${detalle.length} documento${detalle.length===1?'':'s'} · Neto ${fmtMoney(neto)}`;
-  const buscador = document.getElementById('ventasDetailBuscar');
-  buscador.value = '';
   renderVentasDetailRows('');
   document.getElementById('ventasDetailOverlay').classList.add('open');
 }
-document.getElementById('ventasDetailBuscar').addEventListener('input', e=>renderVentasDetailRows(e.target.value));
 function cerrarDetalleVentas(){ document.getElementById('ventasDetailOverlay').classList.remove('open'); }
 document.getElementById('ventasDetailClose').addEventListener('click', cerrarDetalleVentas);
 document.getElementById('ventasDetailOverlay').addEventListener('click', e=>{ if(e.target.id==='ventasDetailOverlay') cerrarDetalleVentas(); });
