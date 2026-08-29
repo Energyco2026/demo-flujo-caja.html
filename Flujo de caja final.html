@@ -2657,10 +2657,40 @@ function construirFilasResumenBanco(filas){
 }
 
 function hojaResumenBanco(filas){
-  const hoja = XLSX.utils.json_to_sheet(construirFilasResumenBanco(filas), {
-    header: ['Row Labels','Sum of Monto']
-  });
-  hoja['!cols'] = [{wch:40},{wch:16}];
+  const filasResumen = construirFilasResumenBanco(filas);
+  const datosAoa = [['Row Labels', 'Sum of Monto']]
+    .concat(filasResumen.map(r => [r['Row Labels'], r['Sum of Monto']]));
+  const hoja = XLSX.utils.aoa_to_sheet(datosAoa);
+  hoja['!cols'] = [{wch:42},{wch:16}];
+
+  const numFilas = datosAoa.length;
+  const formatoMoneda = '$#,##0.00;($#,##0.00)';
+  const filasConfig = [{}]; // encabezado sin nivel de esquema
+
+  for(let r = 0; r < numFilas; r++){
+    const esEncabezado = r === 0;
+    const esTotal = r === numFilas - 1;
+    const esBanco = !esEncabezado && !esTotal && !String(datosAoa[r][0]).startsWith('    ');
+    if(r > 0) filasConfig.push(esBanco || esTotal || esEncabezado ? {} : { level: 1 });
+
+    for(let c = 0; c <= 1; c++){
+      const addr = XLSX.utils.encode_cell({ r, c });
+      if(!hoja[addr]) continue;
+      if(c === 1 && r > 0) hoja[addr].z = formatoMoneda;
+      // Los colores/negrita dependen de que Excel respete el estilo escrito
+      // por la librería gratuita — no siempre se guardan, pero se intentan.
+      if(esEncabezado){
+        hoja[addr].s = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '2F5233' } } };
+      } else if(esTotal){
+        hoja[addr].s = { font: { bold: true }, border: { top: { style: 'thin', color: { rgb: '000000' } } } };
+      } else if(esBanco){
+        hoja[addr].s = { font: { bold: true }, fill: { fgColor: { rgb: 'E8F0E3' } } };
+      }
+    }
+  }
+  hoja['!rows'] = filasConfig;
+  hoja['!outline'] = { above: false };
+  hoja['!ref'] = XLSX.utils.encode_range({ s: { r:0, c:0 }, e: { r: numFilas-1, c:1 } });
   return hoja;
 }
 
@@ -2700,7 +2730,7 @@ function exportarExcel(){
   const libro = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(libro, hojaResumenBanco(filas), 'Sheet1');
   XLSX.utils.book_append_sheet(libro, hoja, 'Movimientos');
-  XLSX.writeFile(libro, `flujo_caja_${fmtDate(new Date())}.xlsx`);
+  XLSX.writeFile(libro, `flujo_caja_${fmtDate(new Date())}.xlsx`, { cellStyles: true });
 }
 
 function actualizarContadorSeleccionados(){
@@ -2756,7 +2786,7 @@ function exportarSeleccionados(){
   const libro = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(libro, hojaResumenBanco(filas), 'Sheet1');
   XLSX.utils.book_append_sheet(libro, hoja, 'Pagar hoy');
-  XLSX.writeFile(libro, `pagos_a_realizar_${fmtDate(new Date())}.xlsx`);
+  XLSX.writeFile(libro, `pagos_a_realizar_${fmtDate(new Date())}.xlsx`, { cellStyles: true });
 }
 
 document.getElementById('btnExportarCSV').addEventListener('click', exportarExcel);
