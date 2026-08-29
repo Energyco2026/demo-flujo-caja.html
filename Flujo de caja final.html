@@ -393,6 +393,7 @@
         <span style="display:flex; align-items:center; gap:6px;">P.O.: <input type="text" id="filtroPO" list="listaPO" placeholder="Todas (escribe para filtrar)" style="min-width:140px; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px;"><datalist id="listaPO"></datalist></span>
         <span style="display:flex; align-items:center; gap:6px;">Banco: <select id="filtroBanco"></select></span>
         <span style="display:flex; align-items:center; gap:6px;">Concepto: <input type="text" id="filtroConcepto" placeholder="Todos (escribe para filtrar)" style="min-width:200px; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px;"></span>
+        <span style="display:flex; align-items:center; gap:6px;">N.° Factura: <input type="text" id="filtroFactura" placeholder="Buscar por número de factura" style="min-width:180px; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px;"></span>
         <span style="display:flex; align-items:center; gap:6px;">Proveedor: <input type="text" id="filtroProveedor" list="listaProveedores" placeholder="Todas (escribe para filtrar)" style="min-width:220px; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px;"><datalist id="listaProveedores"></datalist></span>
         <span id="totalProveedorFiltrado" class="nums" style="display:none; font-size:12px; font-weight:600; color:var(--bad); background:var(--bad-bg); border-radius:6px; padding:5px 10px;"></span>
         <span style="display:flex; align-items:center; gap:6px;">Cuenta contable: <input type="text" id="filtroCuenta" list="listaCuentas" placeholder="Todas (escribe para filtrar)" style="min-width:220px; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px;"><datalist id="listaCuentas"></datalist></span>
@@ -415,6 +416,7 @@
         <button type="button" id="btnExportarCSV" class="btn-refrescar">⬇ Descargar Excel</button>
         <button type="button" id="btnSeleccionarTodos" class="btn-refrescar">Seleccionar todos</button>
         <span id="contadorSeleccionados" style="font-size:12px; color:var(--muted);">0 seleccionadas</span>
+        <span id="totalSeleccionado" class="nums" style="display:none; font-size:12px; font-weight:600; color:var(--projected); background:var(--projected-bg); border-radius:6px; padding:5px 10px;"></span>
         <button type="button" id="btnDescargarSeleccionados" class="btn-refrescar" disabled style="opacity:.5;">⬇ Descargar seleccionados</button>
       </div>
     </div>
@@ -422,14 +424,14 @@
       <thead>
         <tr>
           <th style="width:32px;"></th>
+          <th>Cuenta contable</th>
           <th>Concepto</th>
           <th>Proveedor</th>
-          <th>Banco</th>
-          <th>P.O.</th>
-          <th>Cuenta contable</th>
-          <th>Monto</th>
-          <th>Total factura</th>
           <th>Fecha factura</th>
+          <th>P.O.</th>
+          <th>Total factura</th>
+          <th>Banco</th>
+          <th>Monto</th>
           <th>Fecha vencimiento</th>
           <th>Fecha pago</th>
           <th>Saldo proyectado (a esa fecha)</th>
@@ -507,6 +509,7 @@
   <div class="detail-dialog">
     <div class="detail-dialog-head">
       <div><div class="panel-title" id="agingDetailTitle">Detalle de antigüedad</div><div class="panel-note" id="agingDetailSummary"></div></div>
+      <input type="text" id="agingDetailBuscar" placeholder="Buscar N.° factura o proveedor" style="min-width:220px; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:6px 9px; margin-left:12px;">
       <button type="button" class="detail-close" id="agingDetailClose">Cerrar</button>
     </div>
     <div class="detail-scroll">
@@ -519,6 +522,7 @@
   <div class="detail-dialog">
     <div class="detail-dialog-head">
       <div><div class="panel-title" id="ventasDetailTitle">Detalle de facturación</div><div class="panel-note" id="ventasDetailSummary"></div></div>
+      <input type="text" id="ventasDetailBuscar" placeholder="Buscar N.° factura o proveedor" style="min-width:220px; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:6px 9px; margin-left:12px;">
       <button type="button" class="detail-close" id="ventasDetailClose">Cerrar</button>
     </div>
     <div class="detail-scroll">
@@ -1117,6 +1121,7 @@ function render(){
   const selPO = document.getElementById('filtroPO');
   const selBanco = document.getElementById('filtroBanco');
   const selConcepto = document.getElementById('filtroConcepto');
+  const selFactura = document.getElementById('filtroFactura');
   const selProv = document.getElementById('filtroProveedor');
   const selCuenta = document.getElementById('filtroCuenta');
   const inpDesde = document.getElementById('filtroFechaDesde');
@@ -1146,6 +1151,7 @@ function render(){
   poblarDatalist(document.getElementById('listaCuentas'), [...new Set(movimientos.map(m => m.cuenta).filter(Boolean))].sort());
   selPO.oninput = render;
   selConcepto.oninput = render;
+  selFactura.oninput = render;
   selProv.oninput = render;
   selCuenta.oninput = render;
   if(valBanco) selBanco.value = valBanco;
@@ -1153,6 +1159,7 @@ function render(){
   const fPO = selPO.value.trim();
   const fBanco = selBanco.value || 'Todas';
   const fConcepto = selConcepto.value.trim();
+  const fFactura = selFactura.value.trim();
   const fProv = selProv.value.trim();
 
   // Total pendiente (proyectado, sin pagar todavía) del proveedor que está
@@ -1206,6 +1213,7 @@ function render(){
     if(!coincideFiltroTexto(poLabel, fPO)) return;
     if(fBanco !== 'Todas' && m.banco !== fBanco) return;
     if(!coincideFiltroTexto(m.concepto, fConcepto)) return;
+    if(!coincideFiltroTexto(m.concepto, fFactura)) return;
     if(!coincideFiltroTexto(m.proveedor, fProv)) return;
     if(!coincideFiltroTexto(m.cuenta, fCuenta)) return;
     if(fDesde && m.fecha < fDesde) return;
@@ -1234,31 +1242,31 @@ function render(){
 
     tr.innerHTML = `
       <td data-label="Sel.">${isProj ? `<input type="checkbox" class="chk-pagar-hoy" data-id="${m.id}" ${movimientosSeleccionados.has(m.id)?'checked':''}>` : ''}</td>
+      <td style="color:var(--muted); font-size:12.5px;" data-label="Cuenta contable">${m.cuenta || '—'}</td>
       <td class="concepto" data-label="Concepto">${m.concepto || '—'}${esVencida ? ' <span class="badge" style="background:var(--bad-bg); color:var(--bad);">VENCIDA</span>' : ''}${(m.origen==='manual' || m.origen==='anticipo_oc_manual') ? ` <button type="button" class="btn-eliminar-manual" data-eliminar-id="${m.id}" title="Eliminar movimiento manual" style="border:none; background:none; color:var(--bad); cursor:pointer; font-size:13px; margin-left:6px; vertical-align:middle;">🗑</button>` : ''}</td>
       <td data-label="Proveedor">${m.proveedor || '—'}</td>
-      <td style="font-size:12.5px;" data-label="Banco">
-        ${isProj
-          ? `<select class="nums" data-banco-id="${m.id}" style="font-size:12px; border:1px solid var(--projected); border-radius:6px; padding:4px 6px; background:#fff; max-width:150px;">${opcionesBanco.join('')}</select>`
-          : (m.banco || '—')}
-        ${m.esBancoManual?'<div style="font-size:10px; color:var(--projected);" title="Banco cambiado manualmente">✏️ cambiado</div>':''}
+      <td class="nums" data-label="Fecha factura">
+        ${m.fechaFactura ? fmtDate(m.fechaFactura) : '<span style="color:var(--muted)">—</span>'}
       </td>
       <td data-label="P.O.">${m.po ? `<span class="badge ${isProj?'proj':'exec'}">${normalizarCodigoProyecto(m.po)}</span>` : (m.analitica ? `<span class="oc-analitica" style="margin-top:0;" title="Código de proyecto (analítica)">${escapeHTML(m.analitica)}</span>` : `<span style="color:var(--muted); font-size:12px;">—</span>`)}
         ${m.poInterno ? `<div style="font-size:10px; color:var(--muted); font-family:'JetBrains Mono',monospace; margin-top:2px;" title="Identificador de la OC en Odoo">PEN ${escapeHTML(String(m.poInterno))}</div>` : ''}
-      </td>
-      <td style="color:var(--muted); font-size:12.5px;" data-label="Cuenta contable">${m.cuenta || '—'}</td>
-      <td class="nums ${m.monto>0?'amt-in':'amt-out'}" data-label="Monto">
-        ${isProj
-          ? `<input type="number" step="0.01" class="nums" data-monto-id="${m.id}" value="${m.monto}" style="width:100px; border:1px solid var(--projected); border-radius:6px; padding:4px 6px; font-size:12.5px;">`
-          : `${m.monto>0?'+':''}${fmtMoney(m.monto)}`}
-        ${m.esMontoManual?'<div style="font-size:10px; color:var(--projected);" title="Monto editado manualmente">✏️ editado</div>':''}
       </td>
       <td class="nums" style="font-size:12px; color:var(--muted);" data-label="Total factura">
         ${m.montoFacturaTotal != null
           ? `${fmtMoney(m.montoFacturaTotal)}${Math.abs(m.montoFacturaTotal) - Math.abs(m.monto) > 0.01 ? `<div style="font-size:10px;">Abonado: ${fmtMoney(Math.abs(m.montoFacturaTotal) - Math.abs(m.monto))}</div>` : ''}`
           : '<span style="color:var(--muted)">—</span>'}
       </td>
-      <td class="nums" data-label="Fecha factura">
-        ${m.fechaFactura ? fmtDate(m.fechaFactura) : '<span style="color:var(--muted)">—</span>'}
+      <td style="font-size:12.5px;" data-label="Banco">
+        ${isProj
+          ? `<select class="nums" data-banco-id="${m.id}" style="font-size:12px; border:1px solid var(--projected); border-radius:6px; padding:4px 6px; background:#fff; max-width:150px;">${opcionesBanco.join('')}</select>`
+          : (m.banco || '—')}
+        ${m.esBancoManual?'<div style="font-size:10px; color:var(--projected);" title="Banco cambiado manualmente">✏️ cambiado</div>':''}
+      </td>
+      <td class="nums ${m.monto>0?'amt-in':'amt-out'}" data-label="Monto">
+        ${isProj
+          ? `<input type="number" step="0.01" class="nums" data-monto-id="${m.id}" value="${m.monto}" style="width:100px; border:1px solid var(--projected); border-radius:6px; padding:4px 6px; font-size:12.5px;">`
+          : `${m.monto>0?'+':''}${fmtMoney(m.monto)}`}
+        ${m.esMontoManual?'<div style="font-size:10px; color:var(--projected);" title="Monto editado manualmente">✏️ editado</div>':''}
       </td>
       <td class="nums" style="color:var(--muted); font-size:12.5px;" data-label="Fecha vencimiento" title="Fecha de vencimiento según Odoo (informativa, no editable)">
         ${m.fechaVencimiento ? fmtDate(m.fechaVencimiento) : '<span style="color:var(--muted)">—</span>'}
@@ -1278,7 +1286,7 @@ function render(){
   });
 
   if(rowsEl.children.length === 0){
-    rowsEl.innerHTML = `<tr><td colspan="11" style="color:var(--muted); font-style:italic; text-align:center; padding:24px;">Sin movimientos para este filtro.</td></tr>`;
+    rowsEl.innerHTML = `<tr><td colspan="12" style="color:var(--muted); font-style:italic; text-align:center; padding:24px;">Sin movimientos para este filtro.</td></tr>`;
   }
 
   document.getElementById('kpiActual').textContent = fmtMoney(saldoActual);
@@ -1538,6 +1546,45 @@ function renderFacturacionRotacion(publicadas){
   });
 }
 
+let agingDetalleActual = [];
+let agingTipoActual = 'CxC';
+
+function renderAgingDetailRows(filtro){
+  const f = (filtro || '').trim();
+  const lista = f
+    ? agingDetalleActual.filter(m => coincideFiltroTexto(m.concepto, f) || coincideFiltroTexto(m.proveedor, f))
+    : agingDetalleActual;
+  document.getElementById('agingDetailRows').innerHTML = lista.length ? lista.map(m=>{
+    const fechaRef = m.fechaVencimiento || m.fechaFactura;
+    const edad = fechaRef ? diasEntre(fechaRef, HOY) : null;
+    const poVisible = m.po || obtenerPOComercialDesdeTexto(m.concepto, {});
+    return `<tr>
+      <td>${escapeHTML(m.concepto || '—')}</td>
+      <td>${escapeHTML(m.proveedor || '—')}</td>
+      <td>${escapeHTML(m.banco || 'Sin banco')}</td>
+      <td>${escapeHTML(poVisible || '—')}</td>
+      <td class="nums">${m.fechaFactura ? fmtDate(m.fechaFactura) : 'Sin fecha'}</td>
+      <td class="nums"><input type="date" class="nums aging-fecha" value="${fmtDate(m.fecha)}" data-id="${m.id}" ${m.estado==='proyectado'?'':'disabled'}></td>
+      <td class="nums">${edad == null ? '—' : edad}</td>
+      <td class="nums ${agingTipoActual==='CxC'?'amt-in':'amt-out'}">${fmtMoney(Math.abs(m.monto))}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="8" class="oc-detail-empty">${f ? 'Sin resultados para esa búsqueda.' : 'No existen movimientos en este rango.'}</td></tr>`;
+  document.querySelectorAll('#agingDetailRows input.aging-fecha').forEach(inp=>{
+    inp.addEventListener('change', ()=>{
+      const id = Number(inp.dataset.id);
+      const m = movimientosCartera.find(x=>x.id===id);
+      if(!m || !inp.value) return;
+      m.fecha = new Date(inp.value + 'T00:00:00');
+      m.esFechaManual = true;
+      guardarFechaManual(id, m.fecha);
+      // El rango de antigüedad no cambia (se calcula con la fecha de factura,
+      // no con la fecha prevista) pero sí debe reflejarse de inmediato en la
+      // pestaña Flujo de caja, ya que es el mismo movimiento.
+      render();
+    });
+  });
+}
+
 function abrirDetalleAntiguedad(tipo, min, max, reconocimiento=false){
   const esTipo = tipo === 'CxC'
     ? m => /Cuentas por Cobrar/i.test(m.cuenta || '')
@@ -1557,39 +1604,17 @@ function abrirDetalleAntiguedad(tipo, min, max, reconocimiento=false){
     return fa-fb || Math.abs(b.monto)-Math.abs(a.monto);
   });
   const total = detalle.reduce((s,m)=>s+Math.abs(m.monto),0);
+  agingDetalleActual = detalle;
+  agingTipoActual = tipo;
   document.getElementById('agingDetailTitle').textContent = `Detalle ${tipo} · ${rangoLabel}`;
   document.getElementById('agingDetailSummary').textContent = `${detalle.length} movimiento${detalle.length===1?'':'s'} · Total ${fmtMoney(total)}`;
-  document.getElementById('agingDetailRows').innerHTML = detalle.length ? detalle.map(m=>{
-    const fechaRef = m.fechaVencimiento || m.fechaFactura;
-    const edad = fechaRef ? diasEntre(fechaRef, HOY) : null;
-    const poVisible = m.po || obtenerPOComercialDesdeTexto(m.concepto, {});
-    return `<tr>
-      <td>${escapeHTML(m.concepto || '—')}</td>
-      <td>${escapeHTML(m.proveedor || '—')}</td>
-      <td>${escapeHTML(m.banco || 'Sin banco')}</td>
-      <td>${escapeHTML(poVisible || '—')}</td>
-      <td class="nums">${m.fechaFactura ? fmtDate(m.fechaFactura) : 'Sin fecha'}</td>
-      <td class="nums"><input type="date" class="nums aging-fecha" value="${fmtDate(m.fecha)}" data-id="${m.id}" ${m.estado==='proyectado'?'':'disabled'}></td>
-      <td class="nums">${edad == null ? '—' : edad}</td>
-      <td class="nums ${tipo==='CxC'?'amt-in':'amt-out'}">${fmtMoney(Math.abs(m.monto))}</td>
-    </tr>`;
-  }).join('') : '<tr><td colspan="8" class="oc-detail-empty">No existen movimientos en este rango.</td></tr>';
-  document.querySelectorAll('#agingDetailRows input.aging-fecha').forEach(inp=>{
-    inp.addEventListener('change', ()=>{
-      const id = Number(inp.dataset.id);
-      const m = movimientosCartera.find(x=>x.id===id);
-      if(!m || !inp.value) return;
-      m.fecha = new Date(inp.value + 'T00:00:00');
-      m.esFechaManual = true;
-      guardarFechaManual(id, m.fecha);
-      // El rango de antigüedad no cambia (se calcula con la fecha de factura,
-      // no con la fecha prevista) pero sí debe reflejarse de inmediato en la
-      // pestaña Flujo de caja, ya que es el mismo movimiento.
-      render();
-    });
-  });
+  const buscador = document.getElementById('agingDetailBuscar');
+  buscador.value = '';
+  renderAgingDetailRows('');
   document.getElementById('agingDetailOverlay').classList.add('open');
 }
+
+document.getElementById('agingDetailBuscar').addEventListener('input', e=>renderAgingDetailRows(e.target.value));
 
 function cerrarDetalleAntiguedad(){ document.getElementById('agingDetailOverlay').classList.remove('open'); }
 document.getElementById('agingDetailClose').addEventListener('click', cerrarDetalleAntiguedad);
@@ -1790,6 +1815,29 @@ document.getElementById('realDetailOverlay').addEventListener('click', e=>{ if(e
 
 // Detalle de Ventas Netas / Compras Netas: reutiliza la misma tabla de
 // facturación ya cargada (facturacion_rotacion), sin volver a consultar Odoo.
+let ventasDetalleActual = [];
+let ventasCategoriaActual = 'cxc';
+
+function renderVentasDetailRows(filtro){
+  const f = (filtro || '').trim();
+  const lista = f
+    ? ventasDetalleActual.filter(fila => coincideFiltroTexto(fila.numero, f) || coincideFiltroTexto(fila.referencia, f) || coincideFiltroTexto(fila.tercero, f))
+    : ventasDetalleActual;
+  document.getElementById('ventasDetailRows').innerHTML = lista.length ? lista.map(fila=>{
+    const esNC = fila.tipo === 'nota_credito';
+    const colorMonto = ventasCategoriaActual==='cxc' ? (esNC ? 'amt-out' : 'amt-in') : (esNC ? 'amt-in' : 'amt-out');
+    return `<tr>
+      <td class="nums">${fila.fecha ? fmtDate(new Date(fila.fecha + 'T00:00:00')) : '—'}</td>
+      <td>${escapeHTML(fila.numero || fila.referencia || '—')}</td>
+      <td>${escapeHTML(fila.tercero || '—')}</td>
+      <td>${esNC ? 'Nota de crédito' : 'Factura'}</td>
+      <td class="nums">${fmtMoney(fila.subtotal)}</td>
+      <td class="nums">${fmtMoney(fila.impuesto)}</td>
+      <td class="nums ${colorMonto}">${fmtMoney(fila.total)}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="7" class="oc-detail-empty">${f ? 'Sin resultados para esa búsqueda.' : 'No hay documentos para este año.'}</td></tr>`;
+}
+
 function abrirDetalleVentas(categoria, anio){
   if(!anio){ return; }
   const etiqueta = categoria === 'cxc' ? 'Ventas' : 'Compras';
@@ -1797,28 +1845,22 @@ function abrirDetalleVentas(categoria, anio){
     .filter(f => f.estado === 'posted' && f.anio === anio && f.categoria === categoria)
     .sort((a,b) => new Date(a.fecha) - new Date(b.fecha));
   const neto = detalle.reduce((s,f)=>s+f.total,0);
+  ventasDetalleActual = detalle;
+  ventasCategoriaActual = categoria;
   document.getElementById('ventasDetailTitle').textContent = `Detalle de ${etiqueta.toLowerCase()} netas · ${anio}`;
   document.getElementById('ventasDetailSummary').textContent =
     `${detalle.length} documento${detalle.length===1?'':'s'} · Neto ${fmtMoney(neto)}`;
-  document.getElementById('ventasDetailRows').innerHTML = detalle.length ? detalle.map(f=>{
-    const esNC = f.tipo === 'nota_credito';
-    const colorMonto = categoria==='cxc' ? (esNC ? 'amt-out' : 'amt-in') : (esNC ? 'amt-in' : 'amt-out');
-    return `<tr>
-      <td class="nums">${f.fecha ? fmtDate(new Date(f.fecha + 'T00:00:00')) : '—'}</td>
-      <td>${escapeHTML(f.numero || f.referencia || '—')}</td>
-      <td>${escapeHTML(f.tercero || '—')}</td>
-      <td>${esNC ? 'Nota de crédito' : 'Factura'}</td>
-      <td class="nums">${fmtMoney(f.subtotal)}</td>
-      <td class="nums">${fmtMoney(f.impuesto)}</td>
-      <td class="nums ${colorMonto}">${fmtMoney(f.total)}</td>
-    </tr>`;
-  }).join('') : `<tr><td colspan="7" class="oc-detail-empty">No hay documentos ${etiqueta.toLowerCase()} para este año.</td></tr>`;
+  const buscador = document.getElementById('ventasDetailBuscar');
+  buscador.value = '';
+  renderVentasDetailRows('');
   document.getElementById('ventasDetailOverlay').classList.add('open');
 }
+document.getElementById('ventasDetailBuscar').addEventListener('input', e=>renderVentasDetailRows(e.target.value));
 function cerrarDetalleVentas(){ document.getElementById('ventasDetailOverlay').classList.remove('open'); }
 document.getElementById('ventasDetailClose').addEventListener('click', cerrarDetalleVentas);
 document.getElementById('ventasDetailOverlay').addEventListener('click', e=>{ if(e.target.id==='ventasDetailOverlay') cerrarDetalleVentas(); });
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') cerrarDetalleVentas(); });
+
 
 
 
@@ -1894,19 +1936,21 @@ async function deshacerPagoManual(id){
 function attachHandlers(){
   const botonSeleccionarTodos = document.getElementById('btnSeleccionarTodos');
   if(botonSeleccionarTodos){
-    // Solo se seleccionan proyectados (los únicos con checkbox), y solo los
-    // que están pasando los filtros activos ahora mismo, no todos los que existen.
-    const idsProyectadosVisibles = filasVisiblesParaExportar.filter(m=>m.estado==='proyectado').map(m=>m.id);
-    const hayVisibles = idsProyectadosVisibles.length > 0;
-    const todosSeleccionados = hayVisibles && idsProyectadosVisibles.every(id=>movimientosSeleccionados.has(id));
-    botonSeleccionarTodos.textContent = todosSeleccionados ? 'Quitar selección' : 'Seleccionar todos';
+    // Solo se seleccionan los proyectados que ya están marcados "Pagado hoy"
+    // (badge verde) y que están pasando los filtros activos ahora mismo.
+    const idsPagadosHoyVisibles = filasVisiblesParaExportar
+      .filter(m => m.estado === 'proyectado' && m.pagadoManual)
+      .map(m => m.id);
+    const hayVisibles = idsPagadosHoyVisibles.length > 0;
+    const todosSeleccionados = hayVisibles && idsPagadosHoyVisibles.every(id=>movimientosSeleccionados.has(id));
+    botonSeleccionarTodos.textContent = todosSeleccionados ? 'Quitar selección' : 'Seleccionar marcados "pagado hoy"';
     botonSeleccionarTodos.disabled = !hayVisibles;
     botonSeleccionarTodos.style.opacity = hayVisibles ? '1' : '.5';
     botonSeleccionarTodos.onclick = ()=>{
       if(todosSeleccionados){
-        idsProyectadosVisibles.forEach(id=>movimientosSeleccionados.delete(id));
+        idsPagadosHoyVisibles.forEach(id=>movimientosSeleccionados.delete(id));
       } else {
-        idsProyectadosVisibles.forEach(id=>movimientosSeleccionados.add(id));
+        idsPagadosHoyVisibles.forEach(id=>movimientosSeleccionados.add(id));
       }
       render();
     };
@@ -2151,8 +2195,10 @@ function renderOC(){
         ${oc.comentariosFormaPago ? `<div class="oc-internal" title="Campo 'Comentarios Formas de Pago' de la OC en Odoo">Pago: ${escapeHTML(oc.comentariosFormaPago)}</div>` : ''}
         <br>
         <span class="oc-analitica">${oc.analitica}</span>
-        <div class="oc-amounts nums">
-          <span>Total ${fmtMoney(oc.total)}</span>
+        <div class="oc-amounts nums" style="flex-wrap:wrap; justify-content:flex-start; gap:2px 14px;">
+          <span title="Sin IVA">Subt. ${fmtMoney(oc.totalSinIva)}</span>
+          <span title="Impuesto sobre el subtotal">IVA ${fmtMoney(oc.total - oc.totalSinIva)}</span>
+          <span style="font-weight:700;">Total ${fmtMoney(oc.total)}</span>
           <span>Pagado ${fmtMoney(pagado)}</span>
         </div>
         <div class="oc-bar-track"><div class="oc-bar-fill ${cerrada?'':'mid'}" style="width:${pct}%"></div></div>
@@ -2525,24 +2571,24 @@ function exportarExcel(){
   }
 
   const datos = filas.map(m => ({
-    Banco: m.banco || 'Sin banco',
+    'Cuenta contable': m.cuenta || '',
     Concepto: m.concepto || '',
     Proveedor: m.proveedor || '',
+    'Fecha factura': m.fechaFactura ? fmtDate(m.fechaFactura) : '',
     'P.O.': m.po || '',
     'N.° PEN': m.poInterno || '',
-    'Cuenta contable': m.cuenta || '',
-    Monto: Number(m.monto.toFixed(2)),
     'Total factura': m.montoFacturaTotal != null ? Number(m.montoFacturaTotal.toFixed(2)) : '',
-    'Fecha factura': m.fechaFactura ? fmtDate(m.fechaFactura) : '',
+    Banco: m.banco || 'Sin banco',
+    Monto: Number(m.monto.toFixed(2)),
     'Fecha vencimiento': m.fechaVencimiento ? fmtDate(m.fechaVencimiento) : '',
     'Fecha pago': fmtDate(m.fecha),
     Estado: m.estado || ''
   }));
   const hoja = XLSX.utils.json_to_sheet(datos, {
-    header: ['Banco','Fecha factura','Fecha vencimiento','Fecha pago','Concepto','Proveedor','P.O.','N.° PEN','Cuenta contable','Monto','Total factura','Estado']
+    header: ['Cuenta contable','Concepto','Proveedor','Fecha factura','P.O.','N.° PEN','Total factura','Banco','Monto','Fecha vencimiento','Fecha pago','Estado']
   });
   hoja['!cols'] = [
-    {wch:24},{wch:15},{wch:15},{wch:15},{wch:42},{wch:34},{wch:18},{wch:16},{wch:34},{wch:15},{wch:15},{wch:14}
+    {wch:34},{wch:42},{wch:34},{wch:15},{wch:18},{wch:16},{wch:15},{wch:24},{wch:15},{wch:15},{wch:15},{wch:14}
   ];
   hoja['!autofilter'] = {ref: hoja['!ref'] || 'A1:L1'};
   const libro = XLSX.utils.book_new();
@@ -2556,6 +2602,17 @@ function actualizarContadorSeleccionados(){
   contador.textContent = `${movimientosSeleccionados.size} seleccionadas`;
   boton.disabled = movimientosSeleccionados.size === 0;
   boton.style.opacity = movimientosSeleccionados.size === 0 ? '.5' : '1';
+
+  const totalEl = document.getElementById('totalSeleccionado');
+  if(movimientosSeleccionados.size === 0){
+    totalEl.style.display = 'none';
+  } else {
+    const totalSel = movimientos
+      .filter(m => movimientosSeleccionados.has(m.id))
+      .reduce((s,m)=>s+m.monto, 0);
+    totalEl.style.display = 'inline-block';
+    totalEl.textContent = `Total seleccionado: ${totalSel<0?'-':'+'}${fmtMoney(Math.abs(totalSel))}`;
+  }
 }
 
 function exportarSeleccionados(){
@@ -2570,24 +2627,24 @@ function exportarSeleccionados(){
   }
 
   const datos = filas.map(m => ({
-    Banco: m.banco || 'Sin banco',
+    'Cuenta contable': m.cuenta || '',
     Concepto: m.concepto || '',
     Proveedor: m.proveedor || '',
+    'Fecha factura': m.fechaFactura ? fmtDate(m.fechaFactura) : '',
     'P.O.': m.po || '',
     'N.° PEN': m.poInterno || '',
-    'Cuenta contable': m.cuenta || '',
-    Monto: Number(m.monto.toFixed(2)),
     'Total factura': m.montoFacturaTotal != null ? Number(m.montoFacturaTotal.toFixed(2)) : '',
-    'Fecha factura': m.fechaFactura ? fmtDate(m.fechaFactura) : '',
+    Banco: m.banco || 'Sin banco',
+    Monto: Number(m.monto.toFixed(2)),
     'Fecha vencimiento': m.fechaVencimiento ? fmtDate(m.fechaVencimiento) : '',
     'Fecha pago': fmtDate(m.fecha),
     Estado: m.estado || ''
   }));
   const hoja = XLSX.utils.json_to_sheet(datos, {
-    header: ['Banco','Fecha factura','Fecha vencimiento','Fecha pago','Concepto','Proveedor','P.O.','N.° PEN','Cuenta contable','Monto','Total factura','Estado']
+    header: ['Cuenta contable','Concepto','Proveedor','Fecha factura','P.O.','N.° PEN','Total factura','Banco','Monto','Fecha vencimiento','Fecha pago','Estado']
   });
   hoja['!cols'] = [
-    {wch:24},{wch:15},{wch:15},{wch:15},{wch:42},{wch:34},{wch:18},{wch:16},{wch:34},{wch:15},{wch:15},{wch:14}
+    {wch:34},{wch:42},{wch:34},{wch:15},{wch:18},{wch:16},{wch:15},{wch:24},{wch:15},{wch:15},{wch:15},{wch:14}
   ];
   const libro = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(libro, hoja, 'Pagar hoy');
