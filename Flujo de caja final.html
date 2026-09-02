@@ -333,6 +333,7 @@
   <button type="button" class="view-tab active" data-view="flujo">Flujo de caja</button>
   <button type="button" class="view-tab" data-view="indices">Rotación CxC / CxP</button>
   <button type="button" class="view-tab" data-view="presupuesto">Presupuesto por Proyecto</button>
+  <button type="button" class="view-tab" data-view="cobranzas">Cobranzas</button>
 </div>
 
 <main id="vistaFlujo">
@@ -564,6 +565,25 @@
   </div>
 </div>
 
+<div class="detail-overlay" id="comentariosOverlay" role="dialog" aria-modal="true" aria-labelledby="comentariosTitle">
+  <div class="detail-dialog" style="width:480px;">
+    <div class="detail-dialog-head">
+      <div><div class="panel-title" id="comentariosTitle">Gestión de cobranza</div><div class="panel-note" id="comentariosSummary"></div></div>
+      <button type="button" class="detail-close" id="comentariosClose">Cerrar</button>
+    </div>
+    <div class="detail-scroll" style="padding:14px 20px;">
+      <div id="comentariosLista" style="display:flex; flex-direction:column; gap:10px; margin-bottom:14px;"></div>
+      <div id="comentariosFormWrap" style="border-top:1px solid var(--line); padding-top:12px;">
+        <textarea id="comentarioNuevoTexto" rows="3" placeholder="Escribe la última gestión (ej. cliente confirmó pago para el 15/09)…" style="width:100%; font-family:'Inter',sans-serif; font-size:13px; padding:8px; border:1px solid var(--line); border-radius:6px; resize:vertical;"></textarea>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+          <span style="font-size:11px; color:var(--muted);">Se publica en el chatter de la factura en Odoo en la siguiente corrida del script.</span>
+          <button type="button" id="comentarioEnviarBtn" style="border:none; background:var(--navy); color:#fff; border-radius:6px; padding:7px 16px; cursor:pointer; font-size:13px; font-weight:600;">Enviar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="detail-overlay" id="manualMovOverlay" role="dialog" aria-modal="true" aria-labelledby="manualMovTitle">
   <div class="detail-dialog" style="width:440px;">
     <div class="detail-dialog-head">
@@ -643,6 +663,72 @@
   </section>
 </main>
 
+<main id="vistaCobranzas" style="display:none;">
+
+  <div class="kpis">
+    <div class="kpi">
+      <div class="kpi-label">Total CxC pendiente</div>
+      <div class="kpi-val nums" id="cobKpiPendiente">—</div>
+      <div class="kpi-manual-note" id="cobKpiPendienteSub"></div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Total vencido</div>
+      <div class="kpi-val nums bad" id="cobKpiVencido">—</div>
+      <div class="kpi-manual-note" id="cobKpiVencidoSub"></div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Cobros próximos 7 días</div>
+      <div class="kpi-val nums good" id="cobKpiProximos7">—</div>
+      <div class="kpi-manual-note" id="cobKpiProximos7Sub"></div>
+    </div>
+    <div class="kpi manual">
+      <div class="kpi-label">Vencidas sin plan de pago</div>
+      <div class="kpi-val nums bad" id="cobKpiSinPlan">—</div>
+      <div class="kpi-manual-note" id="cobKpiSinPlanSub"></div>
+    </div>
+  </div>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Gestión de cobranza</div>
+      <div class="panel-note">Clasificado por días de atraso desde la fecha de vencimiento de Odoo. Clic en una tarjeta para filtrar la tabla de abajo.</div>
+    </div>
+    <div class="oc-grid" style="padding:16px 20px; display:grid; grid-template-columns:repeat(4,1fr); gap:12px;">
+      <div class="indice-card cob-bucket-card" data-bucket="activas" style="cursor:pointer;">
+        <div class="indice-label">Activas vencidas (1-30 días)</div>
+        <div class="indice-value nums" id="cobBucketActivasCount">—</div>
+        <div class="indice-help nums" id="cobBucketActivasMonto">—</div>
+      </div>
+      <div class="indice-card cob-bucket-card" data-bucket="altas" style="cursor:pointer;">
+        <div class="indice-label">Altas (31-90 días)</div>
+        <div class="indice-value nums" id="cobBucketAltasCount">—</div>
+        <div class="indice-help nums" id="cobBucketAltasMonto">—</div>
+      </div>
+      <div class="indice-card cob-bucket-card" data-bucket="criticas" style="cursor:pointer;">
+        <div class="indice-label">Críticas (91-180 días)</div>
+        <div class="indice-value nums" id="cobBucketCriticasCount">—</div>
+        <div class="indice-help nums" id="cobBucketCriticasMonto">—</div>
+      </div>
+      <div class="indice-card cob-bucket-card" data-bucket="historicas" style="cursor:pointer;">
+        <div class="indice-label">Históricas por revisar (+180 días)</div>
+        <div class="indice-value nums" id="cobBucketHistoricasCount">—</div>
+        <div class="indice-help nums" id="cobBucketHistoricasMonto">—</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head sticky-panel-head">
+      <div class="panel-title">Cartera vencida — detalle</div>
+      <div class="panel-note" id="cobFiltroActivo">Mostrando todas las vencidas, de más antigua a más reciente.</div>
+    </div>
+    <div class="table-scroll"><table>
+      <thead><tr><th>Cliente</th><th>Concepto</th><th>Monto</th><th>Fecha vencimiento</th><th>Días vencido</th><th>Plan de pago</th><th></th></tr></thead>
+      <tbody id="cobranzasRows"></tbody>
+    </table></div>
+  </section>
+</main>
+
 
 <footer class="note">
   Datos en vivo desde <b>Supabase</b>, alimentados directo desde Odoo (sin Excel de por medio): la capa gris viene de pagos ya registrados (<code class="nums">account.payment</code>), y la capa naranja de facturas pendientes de pago (<code class="nums">account.move</code>). Al mover una fecha proyectada, se guarda automáticamente.
@@ -705,6 +791,7 @@ function fmtMoney(n){
 
 let movimientos = [];
 let movimientosCartera = [];
+let comentariosCobranza = [];
 let facturacionRotacion = [];
 let anioActualRotacion = null;
 let ordenesCompra = [];
@@ -851,7 +938,7 @@ async function cargarDatos(){
   errorBox.innerHTML = '';
   estado.textContent = 'Cargando datos…';
   try{
-    const [bancosData, movData, ocData, presupuestoData, realDetalleData, compromisosDetalleData, ingresosData, facturacionData, cuotasData] = await Promise.all([
+    const [bancosData, movData, ocData, presupuestoData, realDetalleData, compromisosDetalleData, ingresosData, facturacionData, cuotasData, comentariosCobranzaData] = await Promise.all([
       fetchTabla('bancos'),
       fetchTabla('movimientos', q => q.order('fecha', {ascending: true})),
       fetchTabla('ordenes_compra'),
@@ -861,7 +948,9 @@ async function cargarDatos(){
       fetchTabla('presupuesto_proyecto_ingresos'),
       fetchTabla('facturacion_rotacion', q => q.order('fecha', {ascending: true})),
       fetchTabla('oc_forma_pago_sugerida'),
+      fetchTabla('comentarios_cobranza', q => q.order('fecha', {ascending: true})),
     ]);
+    comentariosCobranza = comentariosCobranzaData;
 
     bancosBase = Object.fromEntries(bancosData.map(b => [b.nombre, Number(b.saldo_base) || 0]));
 
@@ -920,6 +1009,7 @@ async function cargarDatos(){
         editadoEn: m.editado_en || null,
         estado: m.estado,
         origen: m.origen,
+        odooId: m.odoo_id != null ? Number(m.odoo_id) : null,
       }))
       // Las facturas con saldo cero no representan una cuenta pendiente y
       // se excluyen tanto del flujo como de los indicadores de cartera.
@@ -1439,6 +1529,7 @@ function render(){
 
   renderBancos();
   renderIndices();
+  renderCobranzas();
   attachHandlers();
   actualizarContadorSeleccionados();
 }
@@ -1645,6 +1736,102 @@ function renderIndices(){
     `<tr><td>${escapeHTML(x.tercero)}</td><td><span class="badge ${x.tipo==='CxC'?'exec':'proj'}">${x.tipo}</span></td><td class="nums">${fmtMoney(x.saldo)}</td></tr>`
   ).join('') : '<tr><td colspan="3" class="oc-detail-empty">Sin saldos abiertos.</td></tr>';
 }
+
+// Pestaña Cobranzas: seguimiento de cartera CxC vencida, clasificada por
+// días de atraso desde la fecha de vencimiento de Odoo. "Plan de pago" se
+// considera que existe cuando ya se guardó una fecha de pago proyectada
+// manual para esa factura (m.esFechaManual), igual que en Flujo de caja.
+let cobranzasFiltroBucket = null;
+function diasVencidoCxc(m){
+  const ref = m.fechaVencimiento || m.fecha;
+  if(!ref) return 0;
+  return Math.floor((HOY - ref) / 86400000);
+}
+function bucketCobranza(m){
+  const d = diasVencidoCxc(m);
+  if(d <= 0) return null;
+  if(d <= 30) return 'activas';
+  if(d <= 90) return 'altas';
+  if(d <= 180) return 'criticas';
+  return 'historicas';
+}
+function renderCobranzas(){
+  const cxc = movimientos.filter(m => m.estado === 'proyectado' && /Cuentas por Cobrar/i.test(m.cuenta || ''));
+  const vencidas = cxc.filter(m => diasVencidoCxc(m) > 0);
+  const proximos7 = cxc.filter(m => m.fecha >= HOY && m.fecha <= addDays(HOY, 7));
+  const sinPlan = vencidas.filter(m => !m.esFechaManual);
+
+  const totalPendiente = cxc.reduce((s,m)=>s+m.monto, 0);
+  const totalVencido = vencidas.reduce((s,m)=>s+m.monto, 0);
+  const totalProximos7 = proximos7.reduce((s,m)=>s+m.monto, 0);
+  const totalSinPlan = sinPlan.reduce((s,m)=>s+m.monto, 0);
+
+  document.getElementById('cobKpiPendiente').textContent = fmtMoney(totalPendiente);
+  document.getElementById('cobKpiPendienteSub').textContent = `${cxc.length} facturas`;
+  document.getElementById('cobKpiVencido').textContent = fmtMoney(totalVencido);
+  document.getElementById('cobKpiVencidoSub').textContent = `${vencidas.length} facturas`;
+  document.getElementById('cobKpiProximos7').textContent = fmtMoney(totalProximos7);
+  document.getElementById('cobKpiProximos7Sub').textContent = `${proximos7.length} facturas`;
+  document.getElementById('cobKpiSinPlan').textContent = fmtMoney(totalSinPlan);
+  document.getElementById('cobKpiSinPlanSub').textContent = `${sinPlan.length} facturas sin fecha comprometida`;
+
+  const buckets = {activas:[], altas:[], criticas:[], historicas:[]};
+  vencidas.forEach(m=>{ const b = bucketCobranza(m); if(b) buckets[b].push(m); });
+  Object.entries(buckets).forEach(([clave, filas])=>{
+    const nombreEl = clave.charAt(0).toUpperCase() + clave.slice(1);
+    document.getElementById(`cobBucket${nombreEl}Count`).textContent = filas.length;
+    document.getElementById(`cobBucket${nombreEl}Monto`).textContent = fmtMoney(filas.reduce((s,m)=>s+m.monto, 0));
+  });
+  document.querySelectorAll('.cob-bucket-card').forEach(card=>{
+    const activo = cobranzasFiltroBucket === card.dataset.bucket;
+    card.style.outline = activo ? '2px solid var(--navy)' : 'none';
+  });
+
+  const filtroEl = document.getElementById('cobFiltroActivo');
+  const nombresBucket = {activas:'Activas vencidas (1-30 días)', altas:'Altas (31-90 días)', criticas:'Críticas (91-180 días)', historicas:'Históricas por revisar (+180 días)'};
+  const filasTabla = cobranzasFiltroBucket
+    ? vencidas.filter(m => bucketCobranza(m) === cobranzasFiltroBucket)
+    : vencidas;
+  filtroEl.textContent = cobranzasFiltroBucket
+    ? `Mostrando: ${nombresBucket[cobranzasFiltroBucket]} — clic de nuevo en la tarjeta para quitar el filtro.`
+    : 'Mostrando todas las vencidas, de más antigua a más reciente.';
+
+  const tbody = document.getElementById('cobranzasRows');
+  const ordenadas = [...filasTabla].sort((a,b)=>diasVencidoCxc(b) - diasVencidoCxc(a));
+  tbody.innerHTML = ordenadas.length ? ordenadas.map(m=>{
+    const d = diasVencidoCxc(m);
+    const planTxt = m.esFechaManual ? `Sí — ${fmtDate(m.fecha).split('-').reverse().join('/')}` : 'No';
+    const numComentarios = comentariosCobranza.filter(c => Number(c.odoo_move_id) === m.odooId).length;
+    return `<tr>
+      <td>${escapeHTML(m.proveedor || '—')}</td>
+      <td class="concepto">${escapeHTML(m.concepto || '—')}</td>
+      <td class="nums amt-in">${fmtMoney(m.monto)}</td>
+      <td class="nums">${m.fechaVencimiento ? fmtDate(m.fechaVencimiento) : '—'}</td>
+      <td class="nums" style="color:${d>90?'var(--bad)':'inherit'}; font-weight:${d>90?'700':'400'};">${d} días</td>
+      <td style="color:${m.esFechaManual?'var(--good)':'var(--bad)'};">${planTxt}</td>
+      <td style="white-space:nowrap;">
+        <button type="button" class="btn-cob-comentarios" data-id="${m.id}" title="Ver/agregar gestión de cobranza" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:4px 9px; cursor:pointer; font-size:12px; margin-right:4px;">💬 ${numComentarios || ''}</button>
+        <button type="button" class="btn-cob-ir-flujo" data-concepto="${escapeHTML(m.concepto || '')}" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:4px 10px; cursor:pointer; font-size:12px;">Gestionar en Flujo de caja</button>
+      </td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="7" class="oc-detail-empty">Sin cartera vencida en esta selección.</td></tr>';
+
+  document.querySelectorAll('.btn-cob-ir-flujo').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      document.querySelector('.view-tab[data-view="flujo"]').click();
+      document.getElementById('filtroConcepto').value = e.currentTarget.dataset.concepto;
+      render();
+    });
+  });
+  document.querySelectorAll('.btn-cob-comentarios').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      const id = parseInt(e.currentTarget.dataset.id);
+      const m = movimientos.find(x=>x.id===id);
+      if(m) abrirComentarios(m);
+    });
+  });
+}
+
 
 function renderFacturacionRotacion(publicadas){
   const anios = [...new Set(publicadas.map(f=>f.anio))].sort((a,b)=>b-a);
@@ -2046,6 +2233,70 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape') cerrarDetalleVent
 
 
 
+
+// --- Gestión de cobranza: comentarios sincronizados con el chatter de Odoo ---
+let comentariosMovimientoActual = null;
+
+function abrirComentarios(m){
+  comentariosMovimientoActual = m;
+  document.getElementById('comentariosTitle').textContent = `Gestión de cobranza · ${m.proveedor || m.concepto || ''}`;
+  document.getElementById('comentariosSummary').textContent = m.concepto || '';
+  renderListaComentarios();
+  document.getElementById('comentariosFormWrap').style.display = puedeEditar(m) ? '' : 'none';
+  document.getElementById('comentariosOverlay').classList.add('open');
+}
+function cerrarComentarios(){
+  document.getElementById('comentariosOverlay').classList.remove('open');
+  comentariosMovimientoActual = null;
+}
+function renderListaComentarios(){
+  const m = comentariosMovimientoActual;
+  const lista = document.getElementById('comentariosLista');
+  if(!m || !m.odooId){
+    lista.innerHTML = '<div class="oc-detail-empty">Esta factura todavía no tiene un id de Odoo asociado.</div>';
+    return;
+  }
+  const hilo = comentariosCobranza
+    .filter(c => Number(c.odoo_move_id) === m.odooId)
+    .sort((a,b) => new Date(a.fecha) - new Date(b.fecha));
+  if(!hilo.length){
+    lista.innerHTML = '<div class="oc-detail-empty">Sin gestiones registradas todavía.</div>';
+    return;
+  }
+  lista.innerHTML = hilo.map(c => {
+    const esOdoo = c.origen === 'odoo';
+    const pendiente = c.origen === 'dashboard' && !c.sincronizado;
+    return `<div style="background:${esOdoo?'#F4F6FA':'#FFF7EE'}; border-radius:8px; padding:9px 12px;">
+      <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin-bottom:3px;">
+        <span style="font-weight:600; color:var(--ink);">${escapeHTML(c.autor || (esOdoo?'Odoo':'Dashboard'))}</span>
+        <span>${fmtDate(new Date(c.fecha))} ${esOdoo?'· Odoo':pendiente?'· pendiente de publicar en Odoo':'· publicado en Odoo'}</span>
+      </div>
+      <div style="font-size:13px; color:var(--ink); white-space:pre-wrap;">${escapeHTML(c.texto)}</div>
+    </div>`;
+  }).join('');
+}
+async function enviarComentarioCobranza(){
+  const m = comentariosMovimientoActual;
+  const texto = document.getElementById('comentarioNuevoTexto').value.trim();
+  if(!texto || !m || !m.odooId) return;
+  const nuevo = {
+    movimiento_id: m.id,
+    odoo_move_id: m.odooId,
+    autor: nombreUsuario(usuarioActual) || usuarioActual,
+    texto,
+    fecha: new Date().toISOString(),
+    origen: 'dashboard',
+    sincronizado: false,
+  };
+  const { data, error } = await sb.from('comentarios_cobranza').insert(nuevo).select();
+  if(error){ alert('No se pudo guardar el comentario: ' + error.message); return; }
+  comentariosCobranza.push(data[0]);
+  document.getElementById('comentarioNuevoTexto').value = '';
+  renderListaComentarios();
+}
+document.getElementById('comentariosClose').addEventListener('click', cerrarComentarios);
+document.getElementById('comentariosOverlay').addEventListener('click', e=>{ if(e.target.id==='comentariosOverlay') cerrarComentarios(); });
+document.getElementById('comentarioEnviarBtn').addEventListener('click', enviarComentarioCobranza);
 
 function fmtDateCorta(d){
   const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
@@ -2985,9 +3236,18 @@ document.querySelectorAll('.view-tab').forEach(btn=>{
     document.getElementById('vistaFlujo').style.display = vista === 'flujo' ? '' : 'none';
     document.getElementById('vistaIndices').style.display = vista === 'indices' ? '' : 'none';
     document.getElementById('vistaPresupuesto').style.display = vista === 'presupuesto' ? '' : 'none';
+    document.getElementById('vistaCobranzas').style.display = vista === 'cobranzas' ? '' : 'none';
     if(vista === 'indices') renderIndices();
     if(vista === 'presupuesto') renderPresupuesto();
+    if(vista === 'cobranzas') renderCobranzas();
   });
+});
+document.addEventListener('click', e=>{
+  const card = e.target.closest('.cob-bucket-card');
+  if(!card) return;
+  const b = card.dataset.bucket;
+  cobranzasFiltroBucket = (cobranzasFiltroBucket === b) ? null : b;
+  renderCobranzas();
 });
 </script>
 </body>
