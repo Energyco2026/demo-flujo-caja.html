@@ -672,6 +672,25 @@ const CORREOS_AUTORIZADOS = new Set([
   'jagarciauribe@energycontrolsa.com',
   'smaya@energycontrolsa.com'
 ]);
+// Rol "cobranzas": puede editar fecha/banco/monto proyectados y marcar pagado
+// SOLO en movimientos de Cuentas por Cobrar (CxC); todo lo demás del
+// dashboard queda en modo solo lectura para este rol. Agregar aquí el correo
+// del asistente cuando esté creado en Supabase Auth (Authentication > Users).
+const CORREOS_COBRANZAS = new Set([
+  'rperalta@energycontrolsa.com',
+]);
+let rolActual = null; // 'completo' | 'cobranzas'
+
+// Determina si el usuario actual puede editar un movimiento dado.
+// Rol completo: puede editar cualquiera. Rol cobranzas: solo CxC.
+function puedeEditar(m){
+  if(rolActual === 'completo') return true;
+  if(rolActual === 'cobranzas') return /Cuentas por Cobrar/i.test((m && m.cuenta) || '');
+  return false;
+}
+// Para acciones que no son de un movimiento en particular (OC, formas de
+// pago, anticipos, agregar movimiento manual): solo el rol completo puede.
+function esRolCompleto(){ return rolActual === 'completo'; }
 // El flujo operativo inicia en 2026. Los registros de 2025 no se muestran
 // porque ese año no cuenta con una carga completa de Odoo.
 const FECHA_MINIMA = '2026-01-01';
@@ -709,7 +728,7 @@ async function intentarLogin(){
   const password = document.getElementById('loginPassword').value;
   const errorEl = document.getElementById('loginError');
   errorEl.style.display = 'none';
-  if(!CORREOS_AUTORIZADOS.has(email)){
+  if(!CORREOS_AUTORIZADOS.has(email) && !CORREOS_COBRANZAS.has(email)){
     errorEl.textContent = 'Este correo no está autorizado para entrar al dashboard.';
     errorEl.style.display = 'block';
     return;
@@ -720,13 +739,15 @@ async function intentarLogin(){
     errorEl.style.display = 'block';
     return;
   }
-  if(!data.user || !CORREOS_AUTORIZADOS.has((data.user.email || '').toLowerCase())){
+  const emailReal = (data.user?.email || '').toLowerCase();
+  if(!data.user || (!CORREOS_AUTORIZADOS.has(emailReal) && !CORREOS_COBRANZAS.has(emailReal))){
     await sb.auth.signOut();
     errorEl.textContent = 'Este usuario no está autorizado para entrar al dashboard.';
     errorEl.style.display = 'block';
     return;
   }
-  usuarioActual = (data.user.email || '').toLowerCase();
+  usuarioActual = emailReal;
+  rolActual = CORREOS_AUTORIZADOS.has(emailReal) ? 'completo' : 'cobranzas';
   mostrarDashboard();
 }
 
@@ -735,6 +756,11 @@ function mostrarDashboard(){
   document.getElementById('dashboard').style.display = 'block';
   // Por defecto se muestran todas; el usuario puede aislar las vencidas o excluirlas.
   document.getElementById('filtroVencimiento').value = 'todas';
+  // Rol cobranzas: no agrega movimientos manuales (no es parte de su alcance).
+  if(!esRolCompleto()){
+    const btnManual = document.getElementById('btnAgregarManual');
+    if(btnManual) btnManual.style.display = 'none';
+  }
   cargarDatos();
 }
 
@@ -744,7 +770,11 @@ document.getElementById('loginPassword').addEventListener('keydown', e=>{ if(e.k
 // Si ya había una sesión activa (recargaste la página), entra directo
 sb.auth.getSession().then(({data})=>{
   const email = (data.session?.user?.email || '').toLowerCase();
-  if(data.session && CORREOS_AUTORIZADOS.has(email)){ usuarioActual = email; mostrarDashboard(); }
+  if(data.session && (CORREOS_AUTORIZADOS.has(email) || CORREOS_COBRANZAS.has(email))){
+    usuarioActual = email;
+    rolActual = CORREOS_AUTORIZADOS.has(email) ? 'completo' : 'cobranzas';
+    mostrarDashboard();
+  }
   else if(data.session) sb.auth.signOut();
 });
 
@@ -1325,6 +1355,7 @@ function render(){
     const tr = document.createElement('tr');
     tr.className = m.estado + (movimientosSeleccionados.has(m.id) ? ' seleccionada-pago' : '');
     const isProj = m.estado === 'proyectado';
+    const editable = isProj && puedeEditar(m);
 
     const bancosValidos = bancosDePagoValidos();
     const bancoActualEsValido = bancosValidos.includes(m.banco);
@@ -1336,9 +1367,9 @@ function render(){
     ];
 
     tr.innerHTML = `
-      <td data-label="Sel.">${isProj ? `<input type="checkbox" class="chk-pagar-hoy" data-id="${m.id}" ${movimientosSeleccionados.has(m.id)?'checked':''}>` : ''}</td>
+      <td data-label="Sel.">${isProj && editable ? `<input type="checkbox" class="chk-pagar-hoy" data-id="${m.id}" ${movimientosSeleccionados.has(m.id)?'checked':''}>` : ''}</td>
       <td style="color:var(--muted); font-size:12.5px;" data-label="Cuenta contable">${m.cuenta || '—'}</td>
-      <td class="concepto" data-label="Concepto">${m.concepto || '—'}${esVencida ? ' <span class="badge" style="background:var(--bad-bg); color:var(--bad);">VENCIDA</span>' : ''}${(m.origen==='manual' || m.origen==='anticipo_oc_manual') ? ` <button type="button" class="btn-eliminar-manual" data-eliminar-id="${m.id}" title="Eliminar movimiento manual" style="border:none; background:none; color:var(--bad); cursor:pointer; font-size:13px; margin-left:6px; vertical-align:middle;">🗑</button>` : ''}</td>
+      <td class="concepto" data-label="Concepto">${m.concepto || '—'}${esVencida ? ' <span class="badge" style="background:var(--bad-bg); color:var(--bad);">VENCIDA</span>' : ''}${(m.origen==='manual' || m.origen==='anticipo_oc_manual') && editable ? ` <button type="button" class="btn-eliminar-manual" data-eliminar-id="${m.id}" title="Eliminar movimiento manual" style="border:none; background:none; color:var(--bad); cursor:pointer; font-size:13px; margin-left:6px; vertical-align:middle;">🗑</button>` : ''}</td>
       <td data-label="Proveedor">${m.proveedor || '—'}</td>
       <td class="nums" data-label="Fecha factura">
         ${m.fechaFactura ? fmtDate(m.fechaFactura) : '<span style="color:var(--muted)">—</span>'}
@@ -1352,13 +1383,13 @@ function render(){
           : '<span style="color:var(--muted)">—</span>'}
       </td>
       <td style="font-size:12.5px;" data-label="Banco">
-        ${isProj
+        ${editable
           ? `<select class="nums" data-banco-id="${m.id}" style="font-size:12px; border:1px solid var(--projected); border-radius:6px; padding:4px 6px; background:#fff; max-width:150px;">${opcionesBanco.join('')}</select>`
           : (m.banco || '—')}
         ${m.esBancoManual?`<span style="display:inline-flex; align-items:center; gap:4px; margin-top:2px;"><button type="button" class="btn-historial-editado" title="Ver quién lo cambió" style="width:18px; height:18px; padding:0; border:none; background:none; color:var(--projected); cursor:pointer; line-height:1; font-size:11px;">✏️</button><span class="panel-historial-editado" style="display:none; font-size:10px; color:var(--muted);">${etiquetaEdicion(m)}</span></span>`:''}
       </td>
       <td class="nums ${m.monto>0?'amt-in':'amt-out'}" data-label="Monto">
-        ${isProj
+        ${editable
           ? `<input type="number" step="0.01" class="nums" data-monto-id="${m.id}" value="${m.monto}" style="width:100px; border:1px solid var(--projected); border-radius:6px; padding:4px 6px; font-size:12.5px;">`
           : `${m.monto>0?'+':''}${fmtMoney(m.monto)}`}
         ${m.esMontoManual?`<span style="display:inline-flex; align-items:center; gap:4px; margin-top:2px;"><button type="button" class="btn-historial-editado" title="Ver quién lo editó" style="width:18px; height:18px; padding:0; border:none; background:none; color:var(--projected); cursor:pointer; line-height:1; font-size:11px;">✏️</button><span class="panel-historial-editado" style="display:none; font-size:10px; color:var(--muted);">${etiquetaEdicion(m)}</span></span>`:''}
@@ -1367,13 +1398,13 @@ function render(){
         ${m.fechaVencimiento ? fmtDate(m.fechaVencimiento) : '<span style="color:var(--muted)">—</span>'}
       </td>
       <td data-label="Fecha pago">
-        ${isProj?'<div style="font-size:9.5px; color:var(--projected); text-transform:uppercase; letter-spacing:.03em; margin-bottom:3px; font-weight:600;">Fecha de pago (editable)</div>':''}
-        <input type="date" class="nums" value="${fmtDate(m.fecha)}" data-id="${m.id}" ${isProj?'style="border-color:var(--projected);"':'disabled'}>
+        ${editable?'<div style="font-size:9.5px; color:var(--projected); text-transform:uppercase; letter-spacing:.03em; margin-bottom:3px; font-weight:600;">Fecha de pago (editable)</div>':''}
+        <input type="date" class="nums" value="${fmtDate(m.fecha)}" data-id="${m.id}" ${editable?'style="border-color:var(--projected);"':'disabled'}>
         ${m.esFechaManual?`<span style="display:inline-flex; align-items:center; gap:4px;"><button type="button" class="btn-historial-editado" title="Ver quién movió la fecha" style="width:18px; height:18px; padding:0; border:none; background:none; color:var(--projected); cursor:pointer; line-height:1; font-size:11px;">✏️</button><span class="panel-historial-editado" style="display:none; font-size:10px; color:var(--muted);">${etiquetaEdicion(m)}</span></span>`:''}
-        ${isProj ? (m.pagadoManual
+        ${editable ? (m.pagadoManual
           ? `<div class="pago-manual-badge">✓ Pagado hoy (${m.pagadoManual.split('-').reverse().join('/')}) — pendiente en Odoo ${m.editadoPor ? `<button type="button" class="btn-historial-editado" title="Ver quién lo marcó" style="width:18px; height:18px; padding:0; border:none; background:none; color:inherit; cursor:pointer; line-height:1; font-size:11px;">✏️</button><span class="panel-historial-editado" style="display:none; font-size:10px;">${etiquetaEdicion(m)}</span>` : ''} <button class="btn-deshacer" data-undo-id="${m.id}">deshacer</button></div>`
           : `<button class="btn-marcar-pagado" data-marcar-id="${m.id}">Marcar pagado hoy</button>`
-        ) : ''}
+        ) : (m.pagadoManual ? `<div class="pago-manual-badge">✓ Pagado hoy (${m.pagadoManual.split('-').reverse().join('/')}) — pendiente en Odoo</div>` : '')}
       </td>
       <td class="nums balance ${running<0?'neg':''}" data-label="Saldo proyectado (a esa fecha)">${fmtMoney(running)}</td>
     `;
@@ -1659,7 +1690,7 @@ function renderAgingDetailRows(filtro){
       <td>${escapeHTML(m.banco || 'Sin banco')}</td>
       <td>${escapeHTML(poVisible || '—')}</td>
       <td class="nums">${m.fechaFactura ? fmtDate(m.fechaFactura) : 'Sin fecha'}</td>
-      <td class="nums"><input type="date" class="nums aging-fecha" value="${fmtDate(m.fecha)}" data-id="${m.id}" ${m.estado==='proyectado'?'':'disabled'}></td>
+      <td class="nums"><input type="date" class="nums aging-fecha" value="${fmtDate(m.fecha)}" data-id="${m.id}" ${m.estado==='proyectado' && puedeEditar(m)?'':'disabled'}></td>
       <td class="nums">${edad == null ? '—' : edad}</td>
       <td class="nums ${agingTipoActual==='CxC'?'amt-in':'amt-out'}">${fmtMoney(Math.abs(m.monto))}</td>
     </tr>`;
@@ -1709,7 +1740,7 @@ function renderBuscarFacturaCxc(filtro){
       <td>${escapeHTML(m.banco || 'Sin banco')}</td>
       <td>${escapeHTML(poVisible || '—')}</td>
       <td class="nums">${m.fechaFactura ? fmtDate(m.fechaFactura) : 'Sin fecha'}</td>
-      <td class="nums"><input type="date" class="nums buscar-factura-fecha" value="${fmtDate(m.fecha)}" data-id="${m.id}" ${m.estado==='proyectado'?'':'disabled'}></td>
+      <td class="nums"><input type="date" class="nums buscar-factura-fecha" value="${fmtDate(m.fecha)}" data-id="${m.id}" ${m.estado==='proyectado' && puedeEditar(m)?'':'disabled'}></td>
       <td class="nums" style="color:var(--muted);">${m.montoFacturaTotal != null ? fmtMoney(m.montoFacturaTotal) : '—'}</td>
       <td class="nums ${esCxc?'amt-in':'amt-out'}">${fmtMoney(Math.abs(m.monto))}</td>
     </tr>`;
@@ -1873,6 +1904,7 @@ function opcionesRubroReclasificar(proyecto){
 }
 
 function selectorReclasificar(proyecto, rubroClaveActual, onchangeAttr){
+  if(!esRolCompleto()) return '<span style="color:var(--muted); font-size:12px;">Solo lectura</span>';
   const opciones = opcionesRubroReclasificar(proyecto);
   const opcionesHTML = opciones.map(o=>
     `<option value="${escapeHTML(o.rubroClave)}" ${o.rubroClave===rubroClaveActual?'selected':''}>${escapeHTML(o.rubro)}</option>`
@@ -2442,6 +2474,16 @@ function renderOC(){
       ${cuotasHtml}
     `;
 
+    // Rol cobranzas: la sección de OC (anticipos, cuotas de forma de pago)
+    // no es de cobranza — queda enteramente de solo lectura.
+    if(!esRolCompleto()){
+      card.querySelectorAll('.oc-advance-form input, .oc-advance-form select, .oc-advance-form button').forEach(el=>el.disabled = true);
+      card.querySelectorAll('.oc-cuota-row input, .oc-cuota-row button[data-confirmar-cuota]').forEach(el=>{
+        if(el.tagName === 'BUTTON') el.style.display = 'none';
+        else el.disabled = true;
+      });
+    }
+
     card.addEventListener('click', e=>{
       if(e.target.closest('.oc-advance-form')) return;
       if(e.target.closest('.oc-cuotas')) return;
@@ -2451,7 +2493,7 @@ function renderOC(){
 
     grid.appendChild(card);
     const botonAnticipo = card.querySelector('[data-register-advance]');
-    if(botonAnticipo) botonAnticipo.addEventListener('click', ()=>registrarAnticipo(oc, card));
+    if(botonAnticipo && esRolCompleto()) botonAnticipo.addEventListener('click', ()=>registrarAnticipo(oc, card));
 
     card.querySelectorAll('[data-confirmar-cuota]').forEach(btn=>{
       btn.addEventListener('click', e=>{
