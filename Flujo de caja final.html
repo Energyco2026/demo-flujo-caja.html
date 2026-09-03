@@ -575,10 +575,14 @@
       <div id="comentariosLista" style="display:flex; flex-direction:column; gap:10px; margin-bottom:14px;"></div>
       <div id="comentariosFormWrap" style="border-top:1px solid var(--line); padding-top:12px;">
         <textarea id="comentarioNuevoTexto" rows="3" placeholder="Escribe la última gestión (ej. cliente confirmó pago para el 15/09)…" style="width:100%; font-family:'Inter',sans-serif; font-size:13px; padding:8px; border:1px solid var(--line); border-radius:6px; resize:vertical;"></textarea>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
-          <span style="font-size:11px; color:var(--muted);">Se publica en el chatter de la factura en Odoo en la siguiente corrida del script.</span>
-          <button type="button" id="comentarioEnviarBtn" style="border:none; background:var(--navy); color:#fff; border-radius:6px; padding:7px 16px; cursor:pointer; font-size:13px; font-weight:600;">Enviar</button>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; gap:10px;">
+          <label style="font-size:11.5px; color:var(--muted); display:flex; align-items:center; gap:6px;">
+            Próxima gestión:
+            <input type="date" id="comentarioProximaGestion" style="font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:5px; padding:3px 6px;">
+          </label>
+          <button type="button" id="comentarioEnviarBtn" style="border:none; background:var(--navy); color:#fff; border-radius:6px; padding:7px 16px; cursor:pointer; font-size:13px; font-weight:600; white-space:nowrap;">Enviar</button>
         </div>
+        <div style="font-size:11px; color:var(--muted); margin-top:6px;">Se publica en el chatter de la factura en Odoo en la siguiente corrida del script. Si pones fecha de próxima gestión, te llega un correo cuando se cumpla.</div>
       </div>
     </div>
   </div>
@@ -690,6 +694,17 @@
 
   <section class="panel">
     <div class="panel-head">
+      <div class="panel-title">Mi calendario de gestión</div>
+      <div class="panel-note">Próximas gestiones que registraste — vencidas en rojo, de hoy en naranja.</div>
+    </div>
+    <div class="table-scroll"><table>
+      <thead><tr><th>Fecha acordada</th><th>Cliente</th><th>Factura</th><th>Registrado por</th><th>Última gestión</th><th></th></tr></thead>
+      <tbody id="cobCalendarioRows"></tbody>
+    </table></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
       <div class="panel-title">Gestión de cobranza</div>
       <div class="panel-note">Clasificado por días de atraso desde la fecha de vencimiento de Odoo. Clic en una tarjeta para filtrar la tabla de abajo.</div>
     </div>
@@ -722,8 +737,21 @@
       <div class="panel-title">Cartera vencida — detalle</div>
       <div class="panel-note" id="cobFiltroActivo">Mostrando todas las vencidas, de más antigua a más reciente.</div>
     </div>
+    <div style="display:flex; gap:10px; align-items:center; padding:0 20px 12px; flex-wrap:wrap;">
+      <input type="text" id="cobBuscador" placeholder="Buscar cliente o factura…" style="flex:1; min-width:220px; font-family:'Inter',sans-serif; font-size:13px; border:1px solid var(--line); border-radius:6px; padding:7px 10px;">
+      <label style="font-size:12px; color:var(--muted); display:flex; align-items:center; gap:5px; white-space:nowrap;">
+        <input type="checkbox" id="cobSoloVencidas" checked> Solo vencidas
+      </label>
+    </div>
     <div class="table-scroll"><table>
-      <thead><tr><th>Cliente</th><th>Concepto</th><th>Monto</th><th>Fecha vencimiento</th><th>Días vencido</th><th>Plan de pago</th><th></th></tr></thead>
+      <thead><tr>
+        <th class="cob-th-sort" data-col="proveedor" style="cursor:pointer;">Cliente <span class="cob-sort-ico" data-col-ico="proveedor"></span></th>
+        <th class="cob-th-sort" data-col="concepto" style="cursor:pointer;">Concepto <span class="cob-sort-ico" data-col-ico="concepto"></span></th>
+        <th class="cob-th-sort" data-col="monto" style="cursor:pointer;">Monto <span class="cob-sort-ico" data-col-ico="monto"></span></th>
+        <th class="cob-th-sort" data-col="vencimiento" style="cursor:pointer;">Fecha vencimiento <span class="cob-sort-ico" data-col-ico="vencimiento"></span></th>
+        <th class="cob-th-sort" data-col="dias" style="cursor:pointer;">Días vencido <span class="cob-sort-ico" data-col-ico="dias"></span></th>
+        <th>Plan de pago</th><th></th>
+      </tr></thead>
       <tbody id="cobranzasRows"></tbody>
     </table></div>
   </section>
@@ -1742,6 +1770,8 @@ function renderIndices(){
 // considera que existe cuando ya se guardó una fecha de pago proyectada
 // manual para esa factura (m.esFechaManual), igual que en Flujo de caja.
 let cobranzasFiltroBucket = null;
+let cobranzasOrdenColumna = 'dias';
+let cobranzasOrdenAsc = false;
 function diasVencidoCxc(m){
   const ref = m.fechaVencimiento || m.fecha;
   if(!ref) return 0;
@@ -1756,7 +1786,11 @@ function bucketCobranza(m){
   return 'historicas';
 }
 function renderCobranzas(){
-  const cxc = movimientos.filter(m => m.estado === 'proyectado' && /Cuentas por Cobrar/i.test(m.cuenta || ''));
+  const cxc = movimientos.filter(m =>
+    m.estado === 'proyectado' &&
+    /Cuentas por Cobrar/i.test(m.cuenta || '') &&
+    !esReconocimientoIngresos(m)
+  );
   const vencidas = cxc.filter(m => diasVencidoCxc(m) > 0);
   const proximos7 = cxc.filter(m => m.fecha >= HOY && m.fecha <= addDays(HOY, 7));
   const sinPlan = vencidas.filter(m => !m.esFechaManual);
@@ -1787,17 +1821,40 @@ function renderCobranzas(){
     card.style.outline = activo ? '2px solid var(--navy)' : 'none';
   });
 
+  const buscador = document.getElementById('cobBuscador');
+  const soloVencidasChk = document.getElementById('cobSoloVencidas');
+  buscador.oninput = renderCobranzas;
+  soloVencidasChk.onchange = renderCobranzas;
+  const textoBusqueda = buscador.value.trim();
+  const soloVencidas = soloVencidasChk.checked;
+
   const filtroEl = document.getElementById('cobFiltroActivo');
   const nombresBucket = {activas:'Activas vencidas (1-30 días)', altas:'Altas (31-90 días)', criticas:'Críticas (91-180 días)', historicas:'Históricas por revisar (+180 días)'};
-  const filasTabla = cobranzasFiltroBucket
-    ? vencidas.filter(m => bucketCobranza(m) === cobranzasFiltroBucket)
-    : vencidas;
-  filtroEl.textContent = cobranzasFiltroBucket
-    ? `Mostrando: ${nombresBucket[cobranzasFiltroBucket]} — clic de nuevo en la tarjeta para quitar el filtro.`
-    : 'Mostrando todas las vencidas, de más antigua a más reciente.';
+  let filasTabla = soloVencidas ? vencidas : cxc;
+  if(cobranzasFiltroBucket) filasTabla = filasTabla.filter(m => bucketCobranza(m) === cobranzasFiltroBucket);
+  if(textoBusqueda) filasTabla = filasTabla.filter(m => coincideFiltroTexto(m.proveedor, textoBusqueda) || coincideFiltroTexto(m.concepto, textoBusqueda));
+  filtroEl.textContent = (cobranzasFiltroBucket ? `Mostrando: ${nombresBucket[cobranzasFiltroBucket]}. ` : '')
+    + (soloVencidas ? 'Solo vencidas.' : 'Todas las CxC pendientes (vencidas y no vencidas).')
+    + ' Clic en un encabezado para ordenar.';
+
+  const columnas = {
+    proveedor: m => (m.proveedor || ''),
+    concepto: m => (m.concepto || ''),
+    monto: m => m.monto,
+    vencimiento: m => m.fechaVencimiento ? m.fechaVencimiento.getTime() : -Infinity,
+    dias: m => diasVencidoCxc(m),
+  };
+  const extraer = columnas[cobranzasOrdenColumna] || columnas.dias;
+  const ordenadas = [...filasTabla].sort((a,b)=>{
+    const va = extraer(a), vb = extraer(b);
+    const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+    return cobranzasOrdenAsc ? cmp : -cmp;
+  });
+  document.querySelectorAll('.cob-sort-ico').forEach(ic=>{
+    ic.textContent = ic.dataset.colIco === cobranzasOrdenColumna ? (cobranzasOrdenAsc ? '▲' : '▼') : '';
+  });
 
   const tbody = document.getElementById('cobranzasRows');
-  const ordenadas = [...filasTabla].sort((a,b)=>diasVencidoCxc(b) - diasVencidoCxc(a));
   tbody.innerHTML = ordenadas.length ? ordenadas.map(m=>{
     const d = diasVencidoCxc(m);
     const planTxt = m.esFechaManual ? `Sí — ${fmtDate(m.fecha).split('-').reverse().join('/')}` : 'No';
@@ -1807,15 +1864,23 @@ function renderCobranzas(){
       <td class="concepto">${escapeHTML(m.concepto || '—')}</td>
       <td class="nums amt-in">${fmtMoney(m.monto)}</td>
       <td class="nums">${m.fechaVencimiento ? fmtDate(m.fechaVencimiento) : '—'}</td>
-      <td class="nums" style="color:${d>90?'var(--bad)':'inherit'}; font-weight:${d>90?'700':'400'};">${d} días</td>
+      <td class="nums" style="color:${d>90?'var(--bad)':'inherit'}; font-weight:${d>90?'700':'400'};">${d>0 ? d+' días' : '—'}</td>
       <td style="color:${m.esFechaManual?'var(--good)':'var(--bad)'};">${planTxt}</td>
       <td style="white-space:nowrap;">
         <button type="button" class="btn-cob-comentarios" data-id="${m.id}" title="Ver/agregar gestión de cobranza" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:4px 9px; cursor:pointer; font-size:12px; margin-right:4px;">💬 ${numComentarios || ''}</button>
         <button type="button" class="btn-cob-ir-flujo" data-concepto="${escapeHTML(m.concepto || '')}" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:4px 10px; cursor:pointer; font-size:12px;">Gestionar en Flujo de caja</button>
       </td>
     </tr>`;
-  }).join('') : '<tr><td colspan="7" class="oc-detail-empty">Sin cartera vencida en esta selección.</td></tr>';
+  }).join('') : '<tr><td colspan="7" class="oc-detail-empty">Sin resultados en esta selección.</td></tr>';
 
+  document.querySelectorAll('.cob-th-sort').forEach(th=>{
+    th.onclick = ()=>{
+      const col = th.dataset.col;
+      if(cobranzasOrdenColumna === col) cobranzasOrdenAsc = !cobranzasOrdenAsc;
+      else { cobranzasOrdenColumna = col; cobranzasOrdenAsc = true; }
+      renderCobranzas();
+    };
+  });
   document.querySelectorAll('.btn-cob-ir-flujo').forEach(btn=>{
     btn.addEventListener('click', e=>{
       document.querySelector('.view-tab[data-view="flujo"]').click();
@@ -1824,6 +1889,40 @@ function renderCobranzas(){
     });
   });
   document.querySelectorAll('.btn-cob-comentarios').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      const id = parseInt(e.currentTarget.dataset.id);
+      const m = movimientos.find(x=>x.id===id);
+      if(m) abrirComentarios(m);
+    });
+  });
+
+  // "Mi calendario de gestión": la gestión MÁS RECIENTE por factura que
+  // tenga fecha de próxima gestión puesta — vencida u hoy primero.
+  const porFactura = new Map();
+  comentariosCobranza
+    .filter(c => c.fecha_proxima_gestion)
+    .forEach(c=>{
+      const actual = porFactura.get(c.odoo_move_id);
+      if(!actual || new Date(c.fecha) > new Date(actual.fecha)) porFactura.set(c.odoo_move_id, c);
+    });
+  const hoyStr = fmtDate(HOY);
+  const calendario = [...porFactura.values()]
+    .filter(c => c.fecha_proxima_gestion <= hoyStr)
+    .sort((a,b) => a.fecha_proxima_gestion.localeCompare(b.fecha_proxima_gestion));
+  const calRows = document.getElementById('cobCalendarioRows');
+  calRows.innerHTML = calendario.length ? calendario.map(c=>{
+    const m = movimientos.find(x => x.odooId === c.odoo_move_id);
+    const vencida = c.fecha_proxima_gestion < hoyStr;
+    return `<tr>
+      <td class="nums" style="color:${vencida?'var(--bad)':'var(--projected)'}; font-weight:700;">${fmtDate(new Date(c.fecha_proxima_gestion+'T00:00:00')).split('-').reverse().join('/')}</td>
+      <td>${escapeHTML(m?.proveedor || '—')}</td>
+      <td class="concepto">${escapeHTML(m?.concepto || '—')}</td>
+      <td>${escapeHTML(c.autor || '—')}</td>
+      <td>${escapeHTML(c.texto || '—')}</td>
+      <td><button type="button" class="btn-cob-comentarios" data-id="${m?.id || ''}" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:4px 9px; cursor:pointer; font-size:12px;">💬 Ver / gestionar</button></td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="6" class="oc-detail-empty">Sin gestiones pendientes por hoy — al día.</td></tr>';
+  calRows.querySelectorAll('.btn-cob-comentarios').forEach(btn=>{
     btn.addEventListener('click', e=>{
       const id = parseInt(e.currentTarget.dataset.id);
       const m = movimientos.find(x=>x.id===id);
@@ -2272,12 +2371,14 @@ function renderListaComentarios(){
         <span>${fmtDate(new Date(c.fecha))} ${esOdoo?'· Odoo':pendiente?'· pendiente de publicar en Odoo':'· publicado en Odoo'}</span>
       </div>
       <div style="font-size:13px; color:var(--ink); white-space:pre-wrap;">${escapeHTML(c.texto)}</div>
+      ${c.fecha_proxima_gestion ? `<div style="font-size:11px; color:var(--projected); margin-top:5px; font-weight:600;">📅 Próxima gestión: ${fmtDate(new Date(c.fecha_proxima_gestion+'T00:00:00')).split('-').reverse().join('/')}${c.alerta_enviada?' (ya avisada)':''}</div>` : ''}
     </div>`;
   }).join('');
 }
 async function enviarComentarioCobranza(){
   const m = comentariosMovimientoActual;
   const texto = document.getElementById('comentarioNuevoTexto').value.trim();
+  const fechaProxima = document.getElementById('comentarioProximaGestion').value || null;
   if(!texto || !m || !m.odooId) return;
   const nuevo = {
     movimiento_id: m.id,
@@ -2287,12 +2388,15 @@ async function enviarComentarioCobranza(){
     fecha: new Date().toISOString(),
     origen: 'dashboard',
     sincronizado: false,
+    fecha_proxima_gestion: fechaProxima,
   };
   const { data, error } = await sb.from('comentarios_cobranza').insert(nuevo).select();
   if(error){ alert('No se pudo guardar el comentario: ' + error.message); return; }
   comentariosCobranza.push(data[0]);
   document.getElementById('comentarioNuevoTexto').value = '';
+  document.getElementById('comentarioProximaGestion').value = '';
   renderListaComentarios();
+  renderCobranzas();
 }
 document.getElementById('comentariosClose').addEventListener('click', cerrarComentarios);
 document.getElementById('comentariosOverlay').addEventListener('click', e=>{ if(e.target.id==='comentariosOverlay') cerrarComentarios(); });
