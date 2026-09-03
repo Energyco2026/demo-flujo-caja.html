@@ -747,7 +747,8 @@
       <thead><tr>
         <th class="cob-th-sort" data-col="proveedor" style="cursor:pointer;">Cliente <span class="cob-sort-ico" data-col-ico="proveedor"></span></th>
         <th class="cob-th-sort" data-col="concepto" style="cursor:pointer;">Concepto <span class="cob-sort-ico" data-col-ico="concepto"></span></th>
-        <th class="cob-th-sort" data-col="monto" style="cursor:pointer;">Monto <span class="cob-sort-ico" data-col-ico="monto"></span></th>
+        <th>Total factura</th>
+        <th class="cob-th-sort" data-col="monto" style="cursor:pointer;">Saldo pendiente <span class="cob-sort-ico" data-col-ico="monto"></span></th>
         <th class="cob-th-sort" data-col="vencimiento" style="cursor:pointer;">Fecha vencimiento <span class="cob-sort-ico" data-col-ico="vencimiento"></span></th>
         <th class="cob-th-sort" data-col="dias" style="cursor:pointer;">Días vencido <span class="cob-sort-ico" data-col-ico="dias"></span></th>
         <th>Plan de pago</th><th></th>
@@ -1789,7 +1790,8 @@ function renderCobranzas(){
   const cxc = movimientos.filter(m =>
     m.estado === 'proyectado' &&
     /Cuentas por Cobrar/i.test(m.cuenta || '') &&
-    !esReconocimientoIngresos(m)
+    !esReconocimientoIngresos(m) &&
+    m.origen !== 'hito_cobro_manual'
   );
   const vencidas = cxc.filter(m => diasVencidoCxc(m) > 0);
   const proximos7 = cxc.filter(m => m.fecha >= HOY && m.fecha <= addDays(HOY, 7));
@@ -1862,6 +1864,9 @@ function renderCobranzas(){
     return `<tr>
       <td>${escapeHTML(m.proveedor || '—')}</td>
       <td class="concepto">${escapeHTML(m.concepto || '—')}</td>
+      <td class="nums" style="color:var(--muted);">${m.montoFacturaTotal != null
+        ? `${fmtMoney(m.montoFacturaTotal)}${Math.abs(m.montoFacturaTotal) - Math.abs(m.monto) > 0.01 ? `<div style="font-size:10px;">Abonado: ${fmtMoney(Math.abs(m.montoFacturaTotal) - Math.abs(m.monto))}</div>` : ''}`
+        : '—'}</td>
       <td class="nums amt-in">${fmtMoney(m.monto)}</td>
       <td class="nums">${m.fechaVencimiento ? fmtDate(m.fechaVencimiento) : '—'}</td>
       <td class="nums" style="color:${d>90?'var(--bad)':'inherit'}; font-weight:${d>90?'700':'400'};">${d>0 ? d+' días' : '—'}</td>
@@ -1871,7 +1876,7 @@ function renderCobranzas(){
         <button type="button" class="btn-cob-ir-flujo" data-concepto="${escapeHTML(m.concepto || '')}" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:4px 10px; cursor:pointer; font-size:12px;">Gestionar en Flujo de caja</button>
       </td>
     </tr>`;
-  }).join('') : '<tr><td colspan="7" class="oc-detail-empty">Sin resultados en esta selección.</td></tr>';
+  }).join('') : '<tr><td colspan="8" class="oc-detail-empty">Sin resultados en esta selección.</td></tr>';
 
   document.querySelectorAll('.cob-th-sort').forEach(th=>{
     th.onclick = ()=>{
