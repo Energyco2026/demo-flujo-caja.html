@@ -63,6 +63,9 @@
   .kpis{display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:24px;}
   @media(max-width:980px){.kpis{grid-template-columns:repeat(2,1fr);}}
   .kpi.manual{border-color:var(--projected);}
+  .cob-vista-card.activo{border-color:var(--navy); box-shadow:inset 0 0 0 1px var(--navy);}
+  .cob-tab-btn{border:1px solid var(--line); background:#fff; color:var(--ink); border-radius:7px; padding:7px 12px; cursor:pointer; font-family:'Inter',sans-serif; font-size:12.5px;}
+  .cob-tab-btn.activo{background:var(--navy); color:#fff; border-color:var(--navy);}
   .kpi-manual-note{font-size:11px; color:var(--projected); margin-top:4px;}
   .kpi{
     background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px 18px;
@@ -106,6 +109,7 @@
   }
   .badge.exec{background:#E1E4EA; color:#5B6274;}
   .badge.proj{background:var(--projected-bg); color:var(--projected);}
+  .badge.bad{background:var(--bad-bg); color:var(--bad);}
   .amt-in{color:var(--good); font-weight:600;}
   .amt-out{color:var(--bad); font-weight:600;}
   .balance{font-weight:600;}
@@ -565,33 +569,6 @@
   </div>
 </div>
 
-<div class="detail-overlay" id="comentariosOverlay" role="dialog" aria-modal="true" aria-labelledby="comentariosTitle">
-  <div class="detail-dialog" style="width:480px;">
-    <div class="detail-dialog-head">
-      <div><div class="panel-title" id="comentariosTitle">Gestión de cobranza</div><div class="panel-note" id="comentariosSummary"></div></div>
-      <button type="button" class="detail-close" id="comentariosClose">Cerrar</button>
-    </div>
-    <div class="detail-scroll" style="padding:14px 20px;">
-      <div id="historialPagosWrap" style="margin-bottom:16px;">
-        <div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px;">Historial de pagos 2026</div>
-        <div id="historialPagosLista" style="display:flex; flex-direction:column; gap:6px;"></div>
-      </div>
-      <div id="comentariosLista" style="display:flex; flex-direction:column; gap:10px; margin-bottom:14px;"></div>
-      <div id="comentariosFormWrap" style="border-top:1px solid var(--line); padding-top:12px;">
-        <textarea id="comentarioNuevoTexto" rows="3" placeholder="Escribe la última gestión (ej. cliente confirmó pago para el 15/09)…" style="width:100%; font-family:'Inter',sans-serif; font-size:13px; padding:8px; border:1px solid var(--line); border-radius:6px; resize:vertical;"></textarea>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; gap:10px;">
-          <label style="font-size:11.5px; color:var(--muted); display:flex; align-items:center; gap:6px;">
-            Próxima gestión:
-            <input type="date" id="comentarioProximaGestion" style="font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:5px; padding:3px 6px;">
-          </label>
-          <button type="button" id="comentarioEnviarBtn" style="border:none; background:var(--navy); color:#fff; border-radius:6px; padding:7px 16px; cursor:pointer; font-size:13px; font-weight:600; white-space:nowrap;">Enviar</button>
-        </div>
-        <div style="font-size:11px; color:var(--muted); margin-top:6px;">Se publica en el chatter de la factura en Odoo en la siguiente corrida del script. Si pones fecha de próxima gestión, te llega un correo cuando se cumpla.</div>
-      </div>
-    </div>
-  </div>
-</div>
-
 <div class="detail-overlay" id="manualMovOverlay" role="dialog" aria-modal="true" aria-labelledby="manualMovTitle">
   <div class="detail-dialog" style="width:440px;">
     <div class="detail-dialog-head">
@@ -674,27 +651,38 @@
 <main id="vistaCobranzas" style="display:none;">
 
   <div class="kpis">
-    <div class="kpi">
-      <div class="kpi-label">Total CxC pendiente</div>
-      <div class="kpi-val nums" id="cobKpiPendiente">—</div>
-      <div class="kpi-manual-note" id="cobKpiPendienteSub"></div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-label">Total vencido</div>
-      <div class="kpi-val nums bad" id="cobKpiVencido">—</div>
-      <div class="kpi-manual-note" id="cobKpiVencidoSub"></div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-label">Cobros próximos 7 días</div>
-      <div class="kpi-val nums good" id="cobKpiProximos7">—</div>
+    <div class="kpi cob-vista-card" data-vista="proximos7" style="cursor:pointer;">
+      <div class="kpi-label">Ingresos próximos 7 días</div>
+      <div class="kpi-val nums" id="cobKpiProximos7">—</div>
       <div class="kpi-manual-note" id="cobKpiProximos7Sub"></div>
     </div>
-    <div class="kpi manual">
-      <div class="kpi-label">Vencidas sin plan de pago</div>
-      <div class="kpi-val nums bad" id="cobKpiSinPlan">—</div>
-      <div class="kpi-manual-note" id="cobKpiSinPlanSub"></div>
+    <div class="kpi cob-vista-card" data-vista="clientes" style="cursor:pointer;">
+      <div class="kpi-label">Ingresos clientes</div>
+      <div class="kpi-val nums" id="cobKpiClientes">—</div>
+      <div class="kpi-manual-note" id="cobKpiClientesSub"></div>
+    </div>
+    <div class="kpi cob-vista-card" data-vista="hitos" style="cursor:pointer;">
+      <div class="kpi-label">Hitos no facturados</div>
+      <div class="kpi-val nums" id="cobKpiHitos">—</div>
+      <div class="kpi-manual-note" id="cobKpiHitosSub"></div>
+    </div>
+    <div class="kpi cob-vista-card" data-vista="servicios" style="cursor:pointer;">
+      <div class="kpi-label">Facturas por cobrar · Servicios</div>
+      <div class="kpi-val nums" id="cobKpiServicios">—</div>
+      <div class="kpi-manual-note" id="cobKpiServiciosSub"></div>
     </div>
   </div>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Alertas de cobranza</div>
+      <div class="panel-note">Las 5 facturas más urgentes ahora mismo, por días de vencimiento reales.</div>
+    </div>
+    <div class="table-scroll"><table>
+      <thead><tr><th>Cliente</th><th>Factura / Concepto</th><th>Días vencido</th><th>Antigüedad</th><th>Monto</th></tr></thead>
+      <tbody id="cobAlertasRows"></tbody>
+    </table></div>
+  </section>
 
   <section class="panel">
     <div class="panel-head">
@@ -709,8 +697,11 @@
 
   <section class="panel">
     <div class="panel-head">
-      <div class="panel-title">Gestión de cobranza</div>
-      <div class="panel-note">Clasificado por días de atraso desde la fecha de vencimiento de Odoo. Clic en una tarjeta para filtrar la tabla de abajo.</div>
+      <div>
+        <div class="panel-title">Gestión de cobranza</div>
+        <div class="panel-note">Clasificado por días de atraso desde la fecha de vencimiento de Odoo. Clic en una tarjeta para filtrar la tabla de abajo.</div>
+      </div>
+      <button type="button" id="btnVerBitacoraGeneral" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:6px 12px; cursor:pointer; font-size:12px; white-space:nowrap;">Ver bitácora general</button>
     </div>
     <div class="oc-grid" style="padding:16px 20px; display:grid; grid-template-columns:repeat(4,1fr); gap:12px;">
       <div class="indice-card cob-bucket-card" data-bucket="activas" style="cursor:pointer;">
@@ -725,7 +716,7 @@
       </div>
       <div class="indice-card cob-bucket-card" data-bucket="criticas" style="cursor:pointer;">
         <div class="indice-label">Críticas (91-180 días)</div>
-        <div class="indice-value nums" id="cobBucketCriticasCount">—</div>
+        <div class="indice-value nums bad" id="cobBucketCriticasCount">—</div>
         <div class="indice-help nums" id="cobBucketCriticasMonto">—</div>
       </div>
       <div class="indice-card cob-bucket-card" data-bucket="historicas" style="cursor:pointer;">
@@ -738,28 +729,106 @@
 
   <section class="panel">
     <div class="panel-head sticky-panel-head">
-      <div class="panel-title">Cartera vencida — detalle</div>
-      <div class="panel-note" id="cobFiltroActivo">Mostrando todas las vencidas, de más antigua a más reciente.</div>
+      <div class="panel-title">Detalle</div>
+      <div class="panel-note" id="cobFiltroActivo">Ingresos próximos 7 días.</div>
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; padding:0 20px 12px;">
+      <button type="button" class="cob-tab-btn" data-vista="proximos7">Ingresos 7 días</button>
+      <button type="button" class="cob-tab-btn" data-vista="clientes">Ingresos clientes</button>
+      <button type="button" class="cob-tab-btn" data-vista="hitos">Hitos no facturados</button>
+      <button type="button" class="cob-tab-btn" data-vista="servicios">Servicios</button>
+      <button type="button" class="cob-tab-btn" data-vista="activas">Activas vencidas</button>
+      <button type="button" class="cob-tab-btn" data-vista="programadas">Programadas futuras</button>
+      <button type="button" class="cob-tab-btn" data-vista="historicas">Históricas</button>
     </div>
     <div style="display:flex; gap:10px; align-items:center; padding:0 20px 12px; flex-wrap:wrap;">
       <input type="text" id="cobBuscador" placeholder="Buscar cliente o factura…" style="flex:1; min-width:220px; font-family:'Inter',sans-serif; font-size:13px; border:1px solid var(--line); border-radius:6px; padding:7px 10px;">
-      <label style="font-size:12px; color:var(--muted); display:flex; align-items:center; gap:5px; white-space:nowrap;">
-        <input type="checkbox" id="cobSoloVencidas" checked> Solo vencidas
-      </label>
     </div>
     <div class="table-scroll"><table>
-      <thead><tr>
-        <th class="cob-th-sort" data-col="proveedor" style="cursor:pointer;">Cliente <span class="cob-sort-ico" data-col-ico="proveedor"></span></th>
-        <th class="cob-th-sort" data-col="concepto" style="cursor:pointer;">Concepto <span class="cob-sort-ico" data-col-ico="concepto"></span></th>
-        <th class="cob-th-sort" data-col="monto" style="cursor:pointer;">Monto <span class="cob-sort-ico" data-col-ico="monto"></span></th>
-        <th class="cob-th-sort" data-col="vencimiento" style="cursor:pointer;">Fecha vencimiento <span class="cob-sort-ico" data-col-ico="vencimiento"></span></th>
-        <th class="cob-th-sort" data-col="dias" style="cursor:pointer;">Días vencido <span class="cob-sort-ico" data-col-ico="dias"></span></th>
-        <th>Plan de pago</th><th></th>
-      </tr></thead>
+      <thead id="cobranzasHead"><tr><th>Cliente</th><th>Factura / Concepto</th><th>Monto</th></tr></thead>
       <tbody id="cobranzasRows"></tbody>
     </table></div>
   </section>
 </main>
+
+<div class="detail-overlay" id="bitacoraOverlay" role="dialog" aria-modal="true" aria-labelledby="bitacoraTitle">
+  <div class="detail-dialog">
+    <div class="detail-dialog-head">
+      <div><div class="panel-title" id="bitacoraTitle">Gestión de cobranza</div><div class="panel-note" id="bitacoraSubtitle"></div></div>
+      <button type="button" class="detail-close" id="bitacoraClose">Cerrar</button>
+    </div>
+    <div class="detail-scroll" style="padding:16px 20px;">
+  <div style="display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap;">
+    <section class="panel" style="flex:0 0 320px; min-width:280px;">
+      <div class="panel-head">
+        <div class="panel-title">Registrar nueva gestión</div>
+        <div class="panel-note">Se publica en el chatter de Odoo en la siguiente corrida del script.</div>
+      </div>
+      <div style="padding:16px 20px;">
+        <label style="display:block; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px;">Cliente / Factura</label>
+        <select id="bitFacturaSelect" style="width:100%; font-family:'Inter',sans-serif; font-size:12.5px; padding:7px 8px; border:1px solid var(--line); border-radius:6px; background:#fff; margin-bottom:12px; box-sizing:border-box;"></select>
+
+        <label style="display:block; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px;">Canal de contacto</label>
+        <select id="bitCanal" style="width:100%; font-family:'Inter',sans-serif; font-size:12.5px; padding:7px 8px; border:1px solid var(--line); border-radius:6px; background:#fff; margin-bottom:12px; box-sizing:border-box;">
+          <option value="Llamada telefónica">Llamada telefónica</option>
+          <option value="Correo electrónico">Correo electrónico</option>
+          <option value="WhatsApp">WhatsApp</option>
+          <option value="Reunión presencial">Reunión presencial</option>
+        </select>
+
+        <label style="display:block; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px;">Resultado de la gestión</label>
+        <select id="bitResultado" style="width:100%; font-family:'Inter',sans-serif; font-size:12.5px; padding:7px 8px; border:1px solid var(--line); border-radius:6px; background:#fff; margin-bottom:12px; box-sizing:border-box;">
+          <option value="Compromiso de pago">Compromiso de pago</option>
+          <option value="Solicita estado de cuenta">Solicita estado de cuenta</option>
+          <option value="Disputa comercial">Disputa comercial</option>
+          <option value="No contesta / ilocalizable">No contesta / ilocalizable</option>
+          <option value="Otro">Otro</option>
+        </select>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px;">
+          <div>
+            <label style="display:block; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px;">Monto prometido ($)</label>
+            <input type="number" id="bitMontoPrometido" min="0" step="0.01" placeholder="0.00" style="width:100%; font-family:'Inter',sans-serif; font-size:12.5px; padding:7px 8px; border:1px solid var(--line); border-radius:6px; box-sizing:border-box;">
+          </div>
+          <div>
+            <label style="display:block; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px;">Fecha prometida</label>
+            <input type="date" id="bitFechaPrometida" style="width:100%; font-family:'Inter',sans-serif; font-size:12.5px; padding:7px 8px; border:1px solid var(--line); border-radius:6px; box-sizing:border-box;">
+          </div>
+        </div>
+
+        <label style="display:block; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px;">Observación (opcional)</label>
+        <textarea id="bitNotas" rows="3" placeholder="Ej. Cliente se compromete a transferir previa aprobación de planilla…" style="width:100%; font-family:'Inter',sans-serif; font-size:13px; padding:8px; border:1px solid var(--line); border-radius:6px; resize:vertical; box-sizing:border-box; margin-bottom:12px;"></textarea>
+
+        <button type="button" id="bitEnviarBtn" style="width:100%; border:none; background:var(--navy); color:#fff; border-radius:6px; padding:9px 16px; cursor:pointer; font-size:13px; font-weight:600;">Publicar en Odoo y guardar</button>
+        <div id="bitEnviarError" style="font-size:11.5px; color:var(--bad); margin-top:6px;"></div>
+      </div>
+    </section>
+
+    <div style="flex:1; min-width:320px; display:flex; flex-direction:column; gap:16px;">
+      <section class="panel">
+        <div class="panel-head">
+          <div class="panel-title" id="bitAbonosTitulo">Últimos abonos registrados</div>
+          <div class="panel-note" id="bitAbonosNota">Pagos reales de clientes en 2026, todos los proyectos — no hace falta abrir cada factura.</div>
+        </div>
+        <div class="table-scroll"><table>
+          <thead><tr><th>Fecha</th><th>Cliente</th><th>Banco</th><th>Concepto</th><th>Monto</th></tr></thead>
+          <tbody id="bitAbonosRows"></tbody>
+        </table></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div class="panel-title" id="bitGestionesTitulo">Historial de gestiones (chatter)</div>
+          <div class="panel-note" id="bitGestionesNota">Últimas gestiones registradas, todos los clientes — más reciente primero.</div>
+        </div>
+        <div id="bitacoraGeneralLista" style="padding:14px 20px; display:flex; flex-direction:column; gap:10px;"></div>
+      </section>
+    </div>
+  </div>
+    </div>
+  </div>
+</div>
+
 
 
 <footer class="note">
@@ -822,6 +891,9 @@ function fmtMoney(n){
 }
 
 let movimientos = [];
+// Vistas del Agente Financiero (mismo Supabase) para la pestaña Cobranzas.
+let cobIngresos7 = [], cobIngresosClientes = [], cobHitos = [], cobServicios = [];
+let cobVistaActual = 'proximos7';
 let movimientosCartera = [];
 let comentariosCobranza = [];
 let facturacionRotacion = [];
@@ -984,6 +1056,27 @@ async function cargarDatos(){
     ]);
     comentariosCobranza = comentariosCobranzaData;
 
+    // Vistas del Agente Financiero (mismo proyecto Supabase) para Ingresos
+    // clientes/próximos 7 días/Hitos/Servicios — la clasificación de
+    // prioridad (agente_cobranza_activa_priorizada_v3) se dejó de usar
+    // porque no coincidía con los días de vencimiento reales. Se aíslan en
+    // su propio try/catch para que, si alguna vista cambia de nombre, el
+    // resto del dashboard siga cargando con normalidad.
+    try{
+      const [ingresos7, clientes, hitos, servicios] = await Promise.all([
+        fetchTabla('agente_ingresos_proximos_7d_v1'),
+        fetchTabla('agente_ingresos_clientes_v1'),
+        fetchTabla('agente_hitos_no_facturados_v1'),
+        fetchTabla('agente_facturas_servicio_v1'),
+      ]);
+      cobIngresos7 = ingresos7;
+      cobIngresosClientes = clientes;
+      cobHitos = hitos;
+      cobServicios = servicios;
+    } catch(errAgente){
+      console.error('No se pudieron cargar las vistas de Cobranzas del Agente Financiero:', errAgente);
+    }
+
     bancosBase = Object.fromEntries(bancosData.map(b => [b.nombre, Number(b.saldo_base) || 0]));
 
     const poComercialPorId = Object.fromEntries(
@@ -1032,6 +1125,7 @@ async function cargarDatos(){
         // se extrae desde el script para todas las facturas — llega null
         // hasta que se agregue `monto_factura_total` en Supabase.
         montoFacturaTotal: m.monto_factura_total != null ? Number(m.monto_factura_total) : null,
+        terminosPago: m.terminos_pago_cliente || null,
         fechaFactura: m.fecha_factura ? new Date(m.fecha_factura + 'T00:00:00') : null,
         fechaVencimiento: m.fecha_vencimiento ? new Date(m.fecha_vencimiento + 'T00:00:00') : null,
         fecha: new Date((m.fecha_pago_manual || m.fecha) + 'T00:00:00'),
@@ -1312,6 +1406,17 @@ function textos_compatibles_dashboard(izquierda, derecha){
   const tokensA = new Set(a.split(/\s+/).filter(t => t.length >= 5 && !ignorar.has(t)));
   const tokensB = b.split(/\s+/).filter(t => t.length >= 5 && !ignorar.has(t));
   return tokensB.some(t => tokensA.has(t));
+}
+// Comparación estricta para agrupar por CLIENTE (ej. historial de pagos de la
+// Bitácora): a diferencia de textos_compatibles_dashboard, NO acepta una
+// sola palabra genérica en común ("ecuatoriana", "farmaceutica"), porque ahí
+// sí mezclaba clientes distintos que comparten una palabra del rubro. Solo
+// da por igual el nombre completo o uno contenido dentro del otro.
+function mismoClienteEstricto(izquierda, derecha){
+  const a = normalizarTexto(izquierda);
+  const b = normalizarTexto(derecha);
+  if(!a || !b) return false;
+  return a === b || a.includes(b) || b.includes(a);
 }
 function nombreUsuario(correo){
   if(!correo) return '';
@@ -1769,13 +1874,57 @@ function renderIndices(){
   ).join('') : '<tr><td colspan="3" class="oc-detail-empty">Sin saldos abiertos.</td></tr>';
 }
 
-// Pestaña Cobranzas: seguimiento de cartera CxC vencida, clasificada por
-// días de atraso desde la fecha de vencimiento de Odoo. "Plan de pago" se
-// considera que existe cuando ya se guardó una fecha de pago proyectada
-// manual para esa factura (m.esFechaManual), igual que en Flujo de caja.
-let cobranzasFiltroBucket = null;
-let cobranzasOrdenColumna = 'dias';
-let cobranzasOrdenAsc = false;
+// Pestaña Cobranzas. Las 4 tarjetas superiores (Ingresos 7 días/Ingresos
+// clientes/Hitos/Servicios) siguen viniendo de las vistas del Agente
+// Financiero. La "Gestión de cobranza" (Críticas/Altas/Activas vencidas/
+// Históricas) y las pestañas Activas vencidas/Programadas futuras/
+// Históricas se calculan aquí mismo por días de vencimiento reales — se dejó
+// de usar la clasificación del Agente (prioridad_operativa/estado_operativo)
+// porque no coincidía con los días de vencimiento (ej. facturas con 0 días
+// vencidos marcadas como "CRITICA").
+let cobranzasFiltroBucket = null; // 'activas' | 'altas' | 'criticas' | 'historicas' | null
+
+function extraerNumeroFactura(texto){
+  const m = String(texto || '').match(/\d{3}-\d{3}-\d{5,}/);
+  return m ? m[0] : null;
+}
+function buscarMovimientoPorFactura(facturaTxt, cliente){
+  const numero = extraerNumeroFactura(facturaTxt) || String(facturaTxt || '').trim();
+  if(!numero) return null;
+  return movimientosCartera.find(m =>
+    m.estado === 'proyectado' &&
+    /Cuentas por Cobrar/i.test(m.cuenta || '') &&
+    m.concepto && m.concepto.includes(numero) &&
+    (!cliente || textos_compatibles_dashboard(m.proveedor, cliente))
+  ) || null;
+}
+function fmtFechaCorta(s){
+  return s ? String(s).slice(0,10).split('-').reverse().join('/') : '—';
+}
+function botonGestion(fila, facturaTxt, cliente){
+  const m = buscarMovimientoPorFactura(facturaTxt, cliente);
+  if(!m) return '<span style="color:var(--muted); font-size:11px;">Sin vínculo a Odoo</span>';
+  const numComentarios = comentariosCobranza.filter(c => Number(c.odoo_move_id) === m.odooId).length;
+  const planTxt = m.esFechaManual ? `Plan: ${fmtDate(m.fecha).split('-').reverse().join('/')}` : 'Sin plan';
+  return `<span style="color:${m.esFechaManual?'var(--good)':'var(--bad)'}; font-size:11px; margin-right:6px; white-space:nowrap;">${planTxt}</span>
+    <button type="button" class="btn-cob-comentarios" data-mid="${m.id}" title="Ver/agregar gestión de cobranza" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:4px 9px; cursor:pointer; font-size:12px;">💬 ${numComentarios || ''}</button>`;
+}
+// Igual que botonGestion, pero para filas que YA SON el movimiento real
+// (movimientosCartera) — no hace falta buscarlo por número de factura.
+function botonGestionDirecto(m){
+  const numComentarios = comentariosCobranza.filter(c => Number(c.odoo_move_id) === m.odooId).length;
+  const planTxt = m.esFechaManual ? `Plan: ${fmtDate(m.fecha).split('-').reverse().join('/')}` : 'Sin plan';
+  return `<span style="color:${m.esFechaManual?'var(--good)':'var(--bad)'}; font-size:11px; margin-right:6px; white-space:nowrap;">${planTxt}</span>
+    <button type="button" class="btn-cob-comentarios" data-mid="${m.id}" title="Ver/agregar gestión de cobranza" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:4px 9px; cursor:pointer; font-size:12px;">💬 ${numComentarios || ''}</button>`;
+}
+
+function cxcAbiertas(){
+  return movimientosCartera.filter(m =>
+    m.estado === 'proyectado' &&
+    /Cuentas por Cobrar/i.test(m.cuenta || '') &&
+    !esReconocimientoIngresos(m)
+  );
+}
 function diasVencidoCxc(m){
   const ref = m.fechaVencimiento || m.fecha;
   if(!ref) return 0;
@@ -1789,119 +1938,70 @@ function bucketCobranza(m){
   if(d <= 180) return 'criticas';
   return 'historicas';
 }
+const NOMBRES_BUCKET_COBRANZA = {activas:'Activas vencidas (1-30 días)', altas:'Altas (31-90 días)', criticas:'Críticas (91-180 días)', historicas:'Históricas por revisar (+180 días)'};
+
 function renderCobranzas(){
-  const cxc = movimientos.filter(m =>
-    m.estado === 'proyectado' &&
-    /Cuentas por Cobrar/i.test(m.cuenta || '') &&
-    !esReconocimientoIngresos(m)
-  );
+  const sum = (arr, campo='monto') => arr.reduce((s,x)=>s+Number(x[campo]||0), 0);
+
+  // --- Gestión de cobranza: por días de vencimiento reales ---
+  const cxc = cxcAbiertas();
   const vencidas = cxc.filter(m => diasVencidoCxc(m) > 0);
-  const proximos7 = cxc.filter(m => m.fecha >= HOY && m.fecha <= addDays(HOY, 7));
-  const sinPlan = vencidas.filter(m => !m.esFechaManual);
-
-  const totalPendiente = cxc.reduce((s,m)=>s+m.monto, 0);
-  const totalVencido = vencidas.reduce((s,m)=>s+m.monto, 0);
-  const totalProximos7 = proximos7.reduce((s,m)=>s+m.monto, 0);
-  const totalSinPlan = sinPlan.reduce((s,m)=>s+m.monto, 0);
-
-  document.getElementById('cobKpiPendiente').textContent = fmtMoney(totalPendiente);
-  document.getElementById('cobKpiPendienteSub').textContent = `${cxc.length} facturas`;
-  document.getElementById('cobKpiVencido').textContent = fmtMoney(totalVencido);
-  document.getElementById('cobKpiVencidoSub').textContent = `${vencidas.length} facturas`;
-  document.getElementById('cobKpiProximos7').textContent = fmtMoney(totalProximos7);
-  document.getElementById('cobKpiProximos7Sub').textContent = `${proximos7.length} facturas`;
-  document.getElementById('cobKpiSinPlan').textContent = fmtMoney(totalSinPlan);
-  document.getElementById('cobKpiSinPlanSub').textContent = `${sinPlan.length} facturas sin fecha comprometida`;
-
   const buckets = {activas:[], altas:[], criticas:[], historicas:[]};
   vencidas.forEach(m=>{ const b = bucketCobranza(m); if(b) buckets[b].push(m); });
-  Object.entries(buckets).forEach(([clave, filas])=>{
-    const nombreEl = clave.charAt(0).toUpperCase() + clave.slice(1);
-    document.getElementById(`cobBucket${nombreEl}Count`).textContent = filas.length;
-    document.getElementById(`cobBucket${nombreEl}Monto`).textContent = fmtMoney(filas.reduce((s,m)=>s+m.monto, 0));
-  });
+
+  document.getElementById('cobBucketActivasCount').textContent = buckets.activas.length;
+  document.getElementById('cobBucketActivasMonto').textContent = fmtMoney(sum(buckets.activas));
+  document.getElementById('cobBucketAltasCount').textContent = buckets.altas.length;
+  document.getElementById('cobBucketAltasMonto').textContent = fmtMoney(sum(buckets.altas));
+  document.getElementById('cobBucketCriticasCount').textContent = buckets.criticas.length;
+  document.getElementById('cobBucketCriticasMonto').textContent = fmtMoney(sum(buckets.criticas));
+  document.getElementById('cobBucketHistoricasCount').textContent = buckets.historicas.length;
+  document.getElementById('cobBucketHistoricasMonto').textContent = fmtMoney(sum(buckets.historicas));
   document.querySelectorAll('.cob-bucket-card').forEach(card=>{
-    const activo = cobranzasFiltroBucket === card.dataset.bucket;
-    card.style.outline = activo ? '2px solid var(--navy)' : 'none';
+    card.style.outline = cobranzasFiltroBucket === card.dataset.bucket ? '2px solid var(--navy)' : 'none';
   });
 
-  const buscador = document.getElementById('cobBuscador');
-  const soloVencidasChk = document.getElementById('cobSoloVencidas');
-  buscador.oninput = renderCobranzas;
-  soloVencidasChk.onchange = renderCobranzas;
-  const textoBusqueda = buscador.value.trim();
-  const soloVencidas = soloVencidasChk.checked;
-
-  const filtroEl = document.getElementById('cobFiltroActivo');
-  const nombresBucket = {activas:'Activas vencidas (1-30 días)', altas:'Altas (31-90 días)', criticas:'Críticas (91-180 días)', historicas:'Históricas por revisar (+180 días)'};
-  let filasTabla = soloVencidas ? vencidas : cxc;
-  if(cobranzasFiltroBucket) filasTabla = filasTabla.filter(m => bucketCobranza(m) === cobranzasFiltroBucket);
-  if(textoBusqueda) filasTabla = filasTabla.filter(m => coincideFiltroTexto(m.proveedor, textoBusqueda) || coincideFiltroTexto(m.concepto, textoBusqueda));
-  filtroEl.textContent = (cobranzasFiltroBucket ? `Mostrando: ${nombresBucket[cobranzasFiltroBucket]}. ` : '')
-    + (soloVencidas ? 'Solo vencidas.' : 'Todas las CxC pendientes (vencidas y no vencidas).')
-    + ' Clic en un encabezado para ordenar.';
-
-  const columnas = {
-    proveedor: m => (m.proveedor || ''),
-    concepto: m => (m.concepto || ''),
-    monto: m => m.monto,
-    vencimiento: m => m.fechaVencimiento ? m.fechaVencimiento.getTime() : -Infinity,
-    dias: m => diasVencidoCxc(m),
-  };
-  const extraer = columnas[cobranzasOrdenColumna] || columnas.dias;
-  const ordenadas = [...filasTabla].sort((a,b)=>{
-    const va = extraer(a), vb = extraer(b);
-    const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
-    return cobranzasOrdenAsc ? cmp : -cmp;
+  // --- 4 tarjetas superiores, iguales a las de tu Agente Financiero ---
+  document.getElementById('cobKpiProximos7').textContent = fmtMoney(sum(cobIngresos7));
+  document.getElementById('cobKpiProximos7Sub').textContent = `${cobIngresos7.length} registros`;
+  document.getElementById('cobKpiClientes').textContent = fmtMoney(sum(cobIngresosClientes));
+  document.getElementById('cobKpiClientesSub').textContent = `${cobIngresosClientes.length} facturas`;
+  document.getElementById('cobKpiHitos').textContent = fmtMoney(sum(cobHitos));
+  document.getElementById('cobKpiHitosSub').textContent = `${cobHitos.length} hitos`;
+  document.getElementById('cobKpiServicios').textContent = fmtMoney(sum(cobServicios, 'saldo_pendiente'));
+  document.getElementById('cobKpiServiciosSub').textContent = `${cobServicios.length} facturas`;
+  document.querySelectorAll('.cob-vista-card').forEach(card=>{
+    card.classList.toggle('activo', !cobranzasFiltroBucket && card.dataset.vista === cobVistaActual);
   });
-  document.querySelectorAll('.cob-sort-ico').forEach(ic=>{
-    ic.textContent = ic.dataset.colIco === cobranzasOrdenColumna ? (cobranzasOrdenAsc ? '▲' : '▼') : '';
+  document.querySelectorAll('.cob-tab-btn').forEach(btn=>{
+    btn.classList.toggle('activo', !cobranzasFiltroBucket && btn.dataset.vista === cobVistaActual);
   });
 
-  const tbody = document.getElementById('cobranzasRows');
-  tbody.innerHTML = ordenadas.length ? ordenadas.map(m=>{
+  // --- Alertas de cobranza: solo Críticas y Altas. Las Históricas (+180
+  // días) quedan fuera a propósito — son casos viejos donde el saldo todavía
+  // no está confirmado con exactitud, así que no deben aparecer como alerta
+  // accionable hasta revisarlos aparte.
+  let alertas = [...buckets.criticas].sort((a,b)=>b.monto-a.monto);
+  if(alertas.length < 5){
+    alertas = alertas.concat([...buckets.altas].sort((a,b)=>b.monto-a.monto).slice(0, 5-alertas.length));
+  }
+  document.getElementById('cobAlertasRows').innerHTML = alertas.length ? alertas.slice(0,5).map(m=>{
     const d = diasVencidoCxc(m);
-    const planTxt = m.esFechaManual ? `Sí — ${fmtDate(m.fecha).split('-').reverse().join('/')}` : 'No';
-    const numComentarios = comentariosCobranza.filter(c => Number(c.odoo_move_id) === m.odooId).length;
+    const b = bucketCobranza(m);
+    const etiqueta = {activas:'Activas', altas:'Altas', criticas:'Críticas', historicas:'Históricas'}[b] || '—';
     return `<tr>
       <td>${escapeHTML(m.proveedor || '—')}</td>
       <td class="concepto">${escapeHTML(m.concepto || '—')}</td>
+      <td class="nums" style="color:var(--bad); font-weight:700;">${d}</td>
+      <td><span class="badge ${b==='criticas'?'bad':'proj'}">${etiqueta}</span></td>
       <td class="nums amt-in">${fmtMoney(m.monto)}</td>
-      <td class="nums">${m.fechaVencimiento ? fmtDate(m.fechaVencimiento) : '—'}</td>
-      <td class="nums" style="color:${d>90?'var(--bad)':'inherit'}; font-weight:${d>90?'700':'400'};">${d>0 ? d+' días' : '—'}</td>
-      <td style="color:${m.esFechaManual?'var(--good)':'var(--bad)'};">${planTxt}</td>
-      <td style="white-space:nowrap;">
-        <button type="button" class="btn-cob-comentarios" data-id="${m.id}" title="Ver/agregar gestión de cobranza" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:4px 9px; cursor:pointer; font-size:12px; margin-right:4px;">💬 ${numComentarios || ''}</button>
-        <button type="button" class="btn-cob-ir-flujo" data-concepto="${escapeHTML(m.concepto || '')}" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:4px 10px; cursor:pointer; font-size:12px;">Gestionar en Flujo de caja</button>
-      </td>
     </tr>`;
-  }).join('') : '<tr><td colspan="7" class="oc-detail-empty">Sin resultados en esta selección.</td></tr>';
+  }).join('') : '<tr><td colspan="5" class="oc-detail-empty">Sin cobranzas críticas pendientes ahora mismo.</td></tr>';
 
-  document.querySelectorAll('.cob-th-sort').forEach(th=>{
-    th.onclick = ()=>{
-      const col = th.dataset.col;
-      if(cobranzasOrdenColumna === col) cobranzasOrdenAsc = !cobranzasOrdenAsc;
-      else { cobranzasOrdenColumna = col; cobranzasOrdenAsc = true; }
-      renderCobranzas();
-    };
-  });
-  document.querySelectorAll('.btn-cob-ir-flujo').forEach(btn=>{
-    btn.addEventListener('click', e=>{
-      document.querySelector('.view-tab[data-view="flujo"]').click();
-      document.getElementById('filtroConcepto').value = e.currentTarget.dataset.concepto;
-      render();
-    });
-  });
-  document.querySelectorAll('.btn-cob-comentarios').forEach(btn=>{
-    btn.addEventListener('click', e=>{
-      const id = parseInt(e.currentTarget.dataset.id);
-      const m = movimientos.find(x=>x.id===id);
-      if(m) abrirComentarios(m);
-    });
-  });
+  renderCobranzasDetalle();
 
-  // "Mi calendario de gestión": la gestión MÁS RECIENTE por factura que
-  // tenga fecha de próxima gestión puesta — vencida u hoy primero.
+  // --- "Mi calendario de gestión": usa movimientosCartera (histórico
+  // completo) para que también aparezcan gestiones de facturas viejas. ---
   const porFactura = new Map();
   comentariosCobranza
     .filter(c => c.fecha_proxima_gestion)
@@ -1915,7 +2015,7 @@ function renderCobranzas(){
     .sort((a,b) => a.fecha_proxima_gestion.localeCompare(b.fecha_proxima_gestion));
   const calRows = document.getElementById('cobCalendarioRows');
   calRows.innerHTML = calendario.length ? calendario.map(c=>{
-    const m = movimientos.find(x => x.odooId === c.odoo_move_id);
+    const m = movimientosCartera.find(x => x.odooId === c.odoo_move_id);
     const vencida = c.fecha_proxima_gestion < hoyStr;
     return `<tr>
       <td class="nums" style="color:${vencida?'var(--bad)':'var(--projected)'}; font-weight:700;">${fmtDate(new Date(c.fecha_proxima_gestion+'T00:00:00')).split('-').reverse().join('/')}</td>
@@ -1923,13 +2023,134 @@ function renderCobranzas(){
       <td class="concepto">${escapeHTML(m?.concepto || '—')}</td>
       <td>${escapeHTML(c.autor || '—')}</td>
       <td>${escapeHTML(c.texto || '—')}</td>
-      <td><button type="button" class="btn-cob-comentarios" data-id="${m?.id || ''}" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:4px 9px; cursor:pointer; font-size:12px;">💬 Ver / gestionar</button></td>
+      <td><button type="button" class="btn-cob-comentarios" data-mid="${m?.id || ''}" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:4px 9px; cursor:pointer; font-size:12px;">💬 Ver / gestionar</button></td>
     </tr>`;
   }).join('') : '<tr><td colspan="6" class="oc-detail-empty">Sin gestiones pendientes por hoy — al día.</td></tr>';
   calRows.querySelectorAll('.btn-cob-comentarios').forEach(btn=>{
     btn.addEventListener('click', e=>{
-      const id = parseInt(e.currentTarget.dataset.id);
-      const m = movimientos.find(x=>x.id===id);
+      const id = parseInt(e.currentTarget.dataset.mid);
+      const m = movimientosCartera.find(x=>x.id===id);
+      if(m) abrirComentarios(m);
+    });
+  });
+}
+
+function renderCobranzasDetalle(){
+  const head = document.getElementById('cobranzasHead');
+  const body = document.getElementById('cobranzasRows');
+  const buscador = document.getElementById('cobBuscador');
+  buscador.oninput = renderCobranzasDetalle;
+  const texto = buscador.value.trim();
+  const filtroEl = document.getElementById('cobFiltroActivo');
+
+  const cxc = cxcAbiertas();
+  const vencidas = cxc.filter(m => diasVencidoCxc(m) > 0);
+
+  let filas, vistaEfectiva;
+  if(cobranzasFiltroBucket){
+    vistaEfectiva = 'bucket';
+    const clave = cobranzasFiltroBucket;
+    filas = vencidas.filter(m => bucketCobranza(m) === clave);
+    filtroEl.textContent = `Mostrando: ${NOMBRES_BUCKET_COBRANZA[clave] || clave}`;
+  } else {
+    vistaEfectiva = cobVistaActual;
+    const nombresVista = {
+      proximos7:'Ingresos próximos 7 días.', clientes:'Ingresos clientes.', hitos:'Hitos no facturados.',
+      servicios:'Facturas por cobrar · Servicios.', activas:'Activas vencidas.',
+      programadas:'Programadas futuras.', historicas:'Históricas por revisar.',
+    };
+    filtroEl.textContent = nombresVista[cobVistaActual] || '';
+    filas = vistaEfectiva === 'proximos7' ? cobIngresos7
+      : vistaEfectiva === 'clientes' ? cobIngresosClientes
+      : vistaEfectiva === 'hitos' ? cobHitos
+      : vistaEfectiva === 'servicios' ? cobServicios
+      : vistaEfectiva === 'activas' ? vencidas
+      : vistaEfectiva === 'programadas' ? cxc.filter(m => diasVencidoCxc(m) <= 0)
+      : vistaEfectiva === 'historicas' ? vencidas.filter(m => bucketCobranza(m) === 'historicas')
+      : [];
+  }
+
+  if(texto){
+    filas = filas.filter(x =>
+      coincideFiltroTexto(x.cliente ?? x.proveedor, texto) ||
+      coincideFiltroTexto(x.factura_num || x.factura || x.concepto || x.referencia, texto)
+    );
+  }
+
+  if(vistaEfectiva === 'proximos7'){
+    head.innerHTML = '<tr><th>Fecha</th><th>Tipo</th><th>Cliente</th><th>Referencia</th><th>Proyecto</th><th>Monto</th></tr>';
+    body.innerHTML = filas.length ? filas.map(x=>`
+      <tr>
+        <td class="nums">${fmtFechaCorta(x.fecha)}</td>
+        <td><span class="badge ${x.tipo==='HITO'?'proj':'exec'}">${escapeHTML(x.tipo || '')}</span></td>
+        <td>${escapeHTML(x.cliente || '')}</td>
+        <td class="concepto">${escapeHTML(x.referencia || x.concepto || '')}</td>
+        <td>${escapeHTML(x.proyecto_codigo || '—')}</td>
+        <td class="nums amt-in">${fmtMoney(x.monto)}</td>
+      </tr>`).join('') : '<tr><td colspan="6" class="oc-detail-empty">No hay ingresos programados en los próximos 7 días.</td></tr>';
+    return;
+  }
+  if(vistaEfectiva === 'clientes'){
+    head.innerHTML = '<tr><th>Fecha cobro</th><th>Cliente</th><th>Factura</th><th>Proyecto</th><th>Monto</th><th>Gestión</th></tr>';
+    body.innerHTML = filas.length ? filas.map(x=>{
+      const m = buscarMovimientoPorFactura(x.factura_num, x.cliente);
+      return `<tr>
+        <td class="nums">${fmtFechaCorta(x.fecha_cobro)}</td>
+        <td>${escapeHTML(x.cliente || '')}</td>
+        <td class="concepto">${escapeHTML(x.factura_num || x.concepto || '')}${m?.terminosPago ? `<br><span style="color:var(--muted); font-size:11px;">${escapeHTML(m.terminosPago)}</span>` : ''}</td>
+        <td>${escapeHTML(x.proyecto_codigo || '—')}</td>
+        <td class="nums amt-in">${fmtMoney(x.monto)}</td>
+        <td style="white-space:nowrap;">${botonGestion(x, x.factura_num, x.cliente)}</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="6" class="oc-detail-empty">No hay facturas de clientes en gestión activa.</td></tr>';
+  }
+  else if(vistaEfectiva === 'hitos'){
+    head.innerHTML = '<tr><th>Fecha estimada</th><th>Cliente</th><th>Hito</th><th>Proyecto</th><th>Acción sugerida</th><th>Monto</th></tr>';
+    body.innerHTML = filas.length ? filas.map(x=>`
+      <tr>
+        <td class="nums">${fmtFechaCorta(x.fecha_cobro)}</td>
+        <td>${escapeHTML(x.cliente || '')}</td>
+        <td class="concepto">${escapeHTML(x.concepto || '')}</td>
+        <td>${escapeHTML(x.proyecto_codigo || '—')}</td>
+        <td>${escapeHTML(x.accion_sugerida || 'Validar condición del hito')}</td>
+        <td class="nums amt-in">${fmtMoney(x.monto)}</td>
+      </tr>`).join('') : '<tr><td colspan="6" class="oc-detail-empty">No hay hitos no facturados registrados.</td></tr>';
+  }
+  else if(vistaEfectiva === 'servicios'){
+    head.innerHTML = '<tr><th>Vencimiento</th><th>Cliente / Factura</th><th>Orden de venta</th><th>Analítica</th><th>Valor factura</th><th>Pagado</th><th>Saldo pendiente</th></tr>';
+    body.innerHTML = filas.length ? filas.map(x=>`
+      <tr>
+        <td class="nums">${fmtFechaCorta(x.fecha_vencimiento)}<br><span class="badge ${x.estado_cobro==='VENCIDA'?'bad':'proj'}" style="font-size:10px;">${escapeHTML(x.estado_cobro||'')}</span></td>
+        <td>${escapeHTML(x.cliente || '')}<br><span class="concepto" style="color:var(--muted);">${escapeHTML(x.factura || '')}</span></td>
+        <td>${escapeHTML(x.orden_venta || '—')}<br><span style="color:var(--muted); font-size:11px;">${escapeHTML(x.vendedor || '')}</span></td>
+        <td>${escapeHTML(x.analitica || x.proyecto_codigo || '—')}</td>
+        <td class="nums">${fmtMoney(x.monto_total)}</td>
+        <td class="nums">${fmtMoney(x.monto_pagado)}</td>
+        <td class="nums amt-in">${fmtMoney(x.saldo_pendiente)}</td>
+      </tr>`).join('') : '<tr><td colspan="7" class="oc-detail-empty">Todavía no se han sincronizado facturas de servicios.</td></tr>';
+  }
+  else {
+    // activas / programadas / historicas / filtro por tarjeta de bucket —
+    // acá las filas SON movimientosCartera directamente (no hace falta
+    // buscar por número de factura, ya se tiene el movimiento real).
+    head.innerHTML = '<tr><th>Cliente</th><th>Factura / Concepto</th><th>Fecha vencimiento</th><th>Días vencido</th><th>Monto</th><th>Gestión</th></tr>';
+    body.innerHTML = filas.length ? filas.map(m=>{
+      const d = diasVencidoCxc(m);
+      return `<tr>
+        <td>${escapeHTML(m.proveedor || '')}</td>
+        <td class="concepto">${escapeHTML(m.concepto || '')}${m.terminosPago ? `<br><span style="color:var(--muted); font-size:11px;">${escapeHTML(m.terminosPago)}</span>` : ''}</td>
+        <td class="nums">${m.fechaVencimiento ? fmtDate(m.fechaVencimiento).split('-').reverse().join('/') : '—'}</td>
+        <td class="nums" style="color:${d>90?'var(--bad)':'inherit'}; font-weight:${d>90?'700':'400'};">${d>0 ? d : '—'}</td>
+        <td class="nums amt-in">${fmtMoney(m.monto)}</td>
+        <td style="white-space:nowrap;">${botonGestionDirecto(m)}</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="6" class="oc-detail-empty">Sin registros en esta selección.</td></tr>';
+  }
+
+  body.querySelectorAll('.btn-cob-comentarios').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      const id = parseInt(e.currentTarget.dataset.mid);
+      const m = movimientosCartera.find(x=>x.id===id);
       if(m) abrirComentarios(m);
     });
   });
@@ -2337,114 +2558,202 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape') cerrarDetalleVent
 
 
 
-// --- Gestión de cobranza: comentarios sincronizados con el chatter de Odoo ---
-let comentariosMovimientoActual = null;
-
+// --- Gestión de cobranza: se abre como ventana (overlay) al hacer clic en
+// cualquier 💬 del dashboard, filtrada a esa factura. Desde dentro, "Ver
+// todas las gestiones/abonos" lleva al flujo general (sin filtro).
 function abrirComentarios(m){
-  comentariosMovimientoActual = m;
-  document.getElementById('comentariosTitle').textContent = `Gestión de cobranza · ${m.proveedor || m.concepto || ''}`;
-  document.getElementById('comentariosSummary').textContent = m.concepto || '';
-  renderHistorialPagosCliente(m);
-  renderListaComentarios();
-  document.getElementById('comentariosFormWrap').style.display = puedeEditar(m) ? '' : 'none';
-  document.getElementById('comentariosOverlay').classList.add('open');
+  aplicarFiltroBitacora(m);
+  document.getElementById('bitacoraOverlay').classList.add('open');
 }
-// Historial de cobros reales de ese cliente en 2026: pagos ya ejecutados
-// (account.payment inbound, cuenta "Cuentas por Cobrar") que ya están en
-// `movimientos` — no hace falta traer nada nuevo de Odoo. Se compara por
-// nombre de proveedor con la misma tolerancia que usa el resto del
-// dashboard (textos_compatibles_dashboard), por si el nombre viene con
-// ligeras variantes entre facturas y pagos.
-function renderHistorialPagosCliente(m){
-  const wrap = document.getElementById('historialPagosWrap');
-  const lista = document.getElementById('historialPagosLista');
-  if(!m || !m.proveedor){
-    wrap.style.display = 'none';
-    return;
-  }
-  const pagos = movimientos
-    .filter(x =>
-      x.estado === 'ejecutado' &&
-      /Cuentas por Cobrar/i.test(x.cuenta || '') &&
-      x.monto > 0 &&
-      textos_compatibles_dashboard(x.proveedor, m.proveedor) &&
-      fmtDate(x.fecha) >= '2026-01-01' && fmtDate(x.fecha) <= '2026-12-31'
-    )
-    .sort((a,b) => b.fecha - a.fecha);
-  wrap.style.display = '';
-  if(!pagos.length){
-    lista.innerHTML = '<div class="oc-detail-empty">Sin pagos registrados de este cliente en 2026.</div>';
-    return;
-  }
-  const total = pagos.reduce((s,p) => s + p.monto, 0);
-  lista.innerHTML = pagos.map(p => `
-    <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px; background:#F4F6FA; border-radius:8px; padding:7px 12px; font-size:12.5px;">
-      <div>
-        <span style="font-weight:600; color:var(--ink);">${fmtDate(p.fecha).split('-').reverse().join('/')}</span>
-        <span style="color:var(--muted);"> · ${escapeHTML(p.banco || '—')}</span>
-        <div style="color:var(--muted); font-size:11.5px;">${escapeHTML(p.concepto || '')}</div>
-      </div>
-      <div class="amt-in" style="font-weight:700; white-space:nowrap;">${fmtMoney(p.monto)}</div>
-    </div>`).join('')
-    + `<div style="text-align:right; font-size:11.5px; color:var(--muted); margin-top:2px;">Total 2026: <strong style="color:var(--ink);">${fmtMoney(total)}</strong> · ${pagos.length} pago(s)</div>`;
+function abrirBitacoraGeneral(){
+  limpiarFiltroBitacora();
+  document.getElementById('bitacoraTitle').textContent = 'Bitácora de gestión';
+  document.getElementById('bitacoraSubtitle').textContent = 'Todos los clientes';
+  document.getElementById('bitacoraOverlay').classList.add('open');
 }
-function cerrarComentarios(){
-  document.getElementById('comentariosOverlay').classList.remove('open');
-  comentariosMovimientoActual = null;
+function cerrarBitacora(){
+  document.getElementById('bitacoraOverlay').classList.remove('open');
 }
-function renderListaComentarios(){
-  const m = comentariosMovimientoActual;
-  const lista = document.getElementById('comentariosLista');
-  if(!m || !m.odooId){
-    lista.innerHTML = '<div class="oc-detail-empty">Esta factura todavía no tiene un id de Odoo asociado.</div>';
-    return;
+document.getElementById('bitacoraClose').addEventListener('click', cerrarBitacora);
+document.getElementById('bitacoraOverlay').addEventListener('click', e=>{ if(e.target.id==='bitacoraOverlay') cerrarBitacora(); });
+document.getElementById('btnVerBitacoraGeneral').addEventListener('click', abrirBitacoraGeneral);
+
+// Lógica compartida para guardar una gestión, sin importar desde qué
+// formulario venga (hoy solo existe el de la ventana de Bitácora).
+async function guardarGestionCobranza(m, campos){
+  const { canal, resultado, monto, fechaProxima, notas } = campos;
+  if(!m || !m.odooId) return { error: { message: 'Esta factura todavía no tiene un id de Odoo asociado.' } };
+  if(!notas && !monto) return { error: { message: 'Agrega un detalle o un monto prometido antes de enviar.' } };
+
+  // El chatter de Odoo solo recibe texto plano, así que se arma un renglón
+  // legible a partir de los campos estructurados — canal y resultado quedan
+  // también en columnas propias en comentarios_cobranza para poder
+  // filtrar/reportar por esos criterios más adelante.
+  let textoFinal = `[${canal} · ${resultado}]`;
+  if(notas) textoFinal += ` ${notas}`;
+  if(monto){
+    textoFinal += ` — Promesa de pago: ${fmtMoney(monto)}`;
+    if(fechaProxima) textoFinal += ` para el ${fmtDate(new Date(fechaProxima+'T00:00:00')).split('-').reverse().join('/')}`;
   }
-  const hilo = comentariosCobranza
-    .filter(c => Number(c.odoo_move_id) === m.odooId)
-    .sort((a,b) => new Date(a.fecha) - new Date(b.fecha));
-  if(!hilo.length){
-    lista.innerHTML = '<div class="oc-detail-empty">Sin gestiones registradas todavía.</div>';
-    return;
-  }
-  lista.innerHTML = hilo.map(c => {
-    const esOdoo = c.origen === 'odoo';
-    const pendiente = c.origen === 'dashboard' && !c.sincronizado;
-    return `<div style="background:${esOdoo?'#F4F6FA':'#FFF7EE'}; border-radius:8px; padding:9px 12px;">
-      <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin-bottom:3px;">
-        <span style="font-weight:600; color:var(--ink);">${escapeHTML(c.autor || (esOdoo?'Odoo':'Dashboard'))}</span>
-        <span>${fmtDate(new Date(c.fecha))} ${esOdoo?'· Odoo':pendiente?'· pendiente de publicar en Odoo':'· publicado en Odoo'}</span>
-      </div>
-      <div style="font-size:13px; color:var(--ink); white-space:pre-wrap;">${escapeHTML(c.texto)}</div>
-      ${c.fecha_proxima_gestion ? `<div style="font-size:11px; color:var(--projected); margin-top:5px; font-weight:600;">📅 Próxima gestión: ${fmtDate(new Date(c.fecha_proxima_gestion+'T00:00:00')).split('-').reverse().join('/')}${c.alerta_enviada?' (ya avisada)':''}</div>` : ''}
-    </div>`;
-  }).join('');
-}
-async function enviarComentarioCobranza(){
-  const m = comentariosMovimientoActual;
-  const texto = document.getElementById('comentarioNuevoTexto').value.trim();
-  const fechaProxima = document.getElementById('comentarioProximaGestion').value || null;
-  if(!texto || !m || !m.odooId) return;
+
   const nuevo = {
     movimiento_id: m.id,
     odoo_move_id: m.odooId,
     autor: nombreUsuario(usuarioActual) || usuarioActual,
-    texto,
+    texto: textoFinal,
     fecha: new Date().toISOString(),
     origen: 'dashboard',
     sincronizado: false,
     fecha_proxima_gestion: fechaProxima,
+    canal,
+    resultado,
+    monto_prometido: monto,
   };
   const { data, error } = await sb.from('comentarios_cobranza').insert(nuevo).select();
-  if(error){ alert('No se pudo guardar el comentario: ' + error.message); return; }
-  comentariosCobranza.push(data[0]);
-  document.getElementById('comentarioNuevoTexto').value = '';
-  document.getElementById('comentarioProximaGestion').value = '';
-  renderListaComentarios();
+  if(!error) comentariosCobranza.push(data[0]);
+  return { error, data: data ? data[0] : null };
+}
+
+// --- Pestaña Bitácora: registrar gestión desde un selector de factura propio
+// (sin tener que abrir cada factura una por una), más el feed completo de
+// gestiones y de abonos recientes de TODOS los clientes.
+let bitacoraFiltroOdooId = null;
+let bitacoraFiltroCliente = null;
+let bitacoraFiltroFactura = null;
+
+function poblarBitFacturaSelect(){
+  const select = document.getElementById('bitFacturaSelect');
+  const abiertas = movimientosCartera
+    .filter(m => m.estado === 'proyectado' && /Cuentas por Cobrar/i.test(m.cuenta || '') && !esReconocimientoIngresos(m))
+    .sort((a,b) => (a.proveedor||'').localeCompare(b.proveedor||''));
+  const valorPrevio = select.value;
+  select.innerHTML = abiertas.map(m =>
+    `<option value="${m.id}">${escapeHTML(m.proveedor || 'Sin cliente')} — ${escapeHTML(m.concepto || '')} (${fmtMoney(m.monto)})</option>`
+  ).join('');
+  if(valorPrevio && abiertas.some(m => String(m.id) === valorPrevio)) select.value = valorPrevio;
+}
+// Elegir una factura (sea desde el selector o desde un 💬 en otra pestaña)
+// filtra los abonos a esa MISMA FACTURA (por número, no solo por cliente —
+// un cliente puede tener varias facturas abiertas) y las gestiones a ese
+// cliente — así el formulario y lo que ves debajo siempre hablan de lo mismo.
+function aplicarFiltroBitacora(m){
+  bitacoraFiltroOdooId = m.odooId;
+  bitacoraFiltroCliente = m.proveedor;
+  bitacoraFiltroFactura = extraerNumeroFactura(m.concepto) || null;
+  const select = document.getElementById('bitFacturaSelect');
+  if(select.querySelector(`option[value="${m.id}"]`)) select.value = m.id;
+  document.getElementById('bitacoraTitle').textContent = `Gestión de cobranza · ${m.proveedor || m.concepto || ''}`;
+  document.getElementById('bitacoraSubtitle').textContent = m.concepto || '';
+  renderBitacora();
+}
+function limpiarFiltroBitacora(){
+  bitacoraFiltroOdooId = null;
+  bitacoraFiltroCliente = null;
+  bitacoraFiltroFactura = null;
+  document.getElementById('bitacoraTitle').textContent = 'Bitácora de gestión';
+  document.getElementById('bitacoraSubtitle').textContent = 'Todos los clientes';
+  renderBitacora();
+}
+function renderAbonosRecientes(){
+  let pagos = movimientos.filter(x => x.estado === 'ejecutado' && /Cuentas por Cobrar/i.test(x.cuenta || '') && x.monto > 0);
+  if(bitacoraFiltroFactura){
+    // Cruce por número de factura: un abono puede traer varias referencias en
+    // su concepto (transferencias que agrupan más de un pago), así que basta
+    // con que el número aparezca en el texto.
+    pagos = pagos.filter(x => x.concepto && x.concepto.includes(bitacoraFiltroFactura));
+  } else if(bitacoraFiltroCliente){
+    // Sin número de factura reconocible (ej. hitos u otros orígenes) — se
+    // cae de vuelta al cliente completo, mejor que no mostrar nada.
+    pagos = pagos.filter(x => mismoClienteEstricto(x.proveedor, bitacoraFiltroCliente));
+  }
+  pagos = pagos.sort((a,b) => b.fecha - a.fecha).slice(0, 30);
+  document.getElementById('bitAbonosTitulo').textContent = bitacoraFiltroCliente ? `Abonos de ${bitacoraFiltroCliente}` : 'Últimos abonos registrados';
+  document.getElementById('bitAbonosNota').textContent = bitacoraFiltroFactura
+    ? 'Solo pagos de esta factura.'
+    : bitacoraFiltroCliente
+      ? 'Solo pagos de este cliente en 2026+.'
+      : 'Pagos reales de clientes en 2026, todos los proyectos — no hace falta abrir cada factura.';
+  document.getElementById('bitAbonosRows').innerHTML = pagos.length ? pagos.map(p => `
+    <tr>
+      <td class="nums">${fmtDate(p.fecha).split('-').reverse().join('/')}</td>
+      <td>${escapeHTML(p.proveedor || '—')}</td>
+      <td>${escapeHTML(p.banco || '—')}</td>
+      <td class="concepto">${escapeHTML(p.concepto || '—')}</td>
+      <td class="nums amt-in">${fmtMoney(p.monto)}</td>
+    </tr>`).join('') : '<tr><td colspan="5" class="oc-detail-empty">Sin abonos registrados todavía.</td></tr>';
+}
+function renderBitacoraGeneral(){
+  let hilo = [...comentariosCobranza];
+  if(bitacoraFiltroOdooId != null) hilo = hilo.filter(c => Number(c.odoo_move_id) === bitacoraFiltroOdooId);
+  hilo = hilo.sort((a,b) => new Date(b.fecha) - new Date(a.fecha)).slice(0, 80);
+  document.getElementById('bitGestionesTitulo').textContent = bitacoraFiltroCliente ? `Gestiones de ${bitacoraFiltroCliente}` : 'Historial de gestiones (chatter)';
+  document.getElementById('bitGestionesNota').textContent = bitacoraFiltroCliente
+    ? 'Solo gestiones de esta factura.'
+    : 'Últimas gestiones registradas, todos los clientes — más reciente primero.';
+  const lista = document.getElementById('bitacoraGeneralLista');
+  if(!hilo.length){
+    lista.innerHTML = '<div class="oc-detail-empty">Sin gestiones registradas todavía.</div>';
+  } else {
+    lista.innerHTML = hilo.map(c => {
+      const m = movimientosCartera.find(x => x.odooId === c.odoo_move_id);
+      const esOdoo = c.origen === 'odoo';
+      const pendiente = c.origen === 'dashboard' && !c.sincronizado;
+      const chips = [c.canal, c.resultado].filter(Boolean);
+      return `<div style="background:${esOdoo?'#F4F6FA':'#FFF7EE'}; border-radius:8px; padding:9px 12px;">
+        <div style="display:flex; justify-content:space-between; gap:8px; font-size:11px; color:var(--muted); margin-bottom:3px;">
+          <span style="font-weight:600; color:var(--ink);">${escapeHTML(m?.proveedor || 'Cliente sin vínculo')} <span style="font-weight:400; color:var(--muted);">· ${escapeHTML(c.autor || (esOdoo?'Odoo':'Dashboard'))}</span></span>
+          <span style="white-space:nowrap;">${fmtDate(new Date(c.fecha))} ${esOdoo?'· Odoo':pendiente?'· pendiente':'· en Odoo'}</span>
+        </div>
+        ${m?.concepto ? `<div class="concepto" style="font-size:11.5px; color:var(--muted); margin-bottom:4px;">${escapeHTML(m.concepto)}</div>` : ''}
+        ${chips.length ? `<div style="display:flex; gap:5px; flex-wrap:wrap; margin-bottom:5px;">${chips.map(t=>`<span style="font-size:10.5px; font-weight:600; background:#fff; border:1px solid var(--line); border-radius:5px; padding:1px 7px; color:var(--navy);">${escapeHTML(t)}</span>`).join('')}</div>` : ''}
+        <div style="font-size:13px; color:var(--ink); white-space:pre-wrap;">${escapeHTML(c.texto)}</div>
+        ${c.monto_prometido ? `<div style="font-size:11px; color:var(--good); margin-top:5px; font-weight:600;">💵 Monto prometido: ${fmtMoney(c.monto_prometido)}</div>` : ''}
+        ${c.fecha_proxima_gestion ? `<div style="font-size:11px; color:var(--projected); margin-top:3px; font-weight:600;">📅 Fecha comprometida: ${fmtDate(new Date(c.fecha_proxima_gestion+'T00:00:00')).split('-').reverse().join('/')}${c.alerta_enviada?' (ya avisada)':''}</div>` : ''}
+        ${m && !bitacoraFiltroOdooId ? `<div style="margin-top:6px;"><button type="button" class="btn-bit-ver-factura" data-mid="${m.id}" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:3px 9px; cursor:pointer; font-size:11px;">Filtrar por esta factura</button></div>` : ''}
+      </div>`;
+    }).join('');
+  }
+  lista.querySelectorAll('.btn-bit-ver-factura').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      const id = parseInt(e.currentTarget.dataset.mid);
+      const m = movimientosCartera.find(x=>x.id===id);
+      if(m) aplicarFiltroBitacora(m);
+    });
+  });
+}
+function renderBitacora(){
+  poblarBitFacturaSelect();
+  renderAbonosRecientes();
+  renderBitacoraGeneral();
+}
+document.getElementById('bitFacturaSelect').addEventListener('change', e=>{
+  const id = parseInt(e.currentTarget.value);
+  const m = movimientosCartera.find(x => x.id === id);
+  if(m) aplicarFiltroBitacora(m);
+});
+async function enviarGestionBitacora(){
+  const errorEl = document.getElementById('bitEnviarError');
+  errorEl.textContent = '';
+  const id = parseInt(document.getElementById('bitFacturaSelect').value);
+  const m = movimientosCartera.find(x => x.id === id);
+  const montoStr = document.getElementById('bitMontoPrometido').value;
+  const { error } = await guardarGestionCobranza(m, {
+    canal: document.getElementById('bitCanal').value,
+    resultado: document.getElementById('bitResultado').value,
+    monto: montoStr ? Number(montoStr) : null,
+    fechaProxima: document.getElementById('bitFechaPrometida').value || null,
+    notas: document.getElementById('bitNotas').value.trim(),
+  });
+  if(error){ errorEl.textContent = error.message; return; }
+  document.getElementById('bitMontoPrometido').value = '';
+  document.getElementById('bitFechaPrometida').value = '';
+  document.getElementById('bitNotas').value = '';
+  document.getElementById('bitCanal').selectedIndex = 0;
+  document.getElementById('bitResultado').selectedIndex = 0;
+  renderBitacoraGeneral();
   renderCobranzas();
 }
-document.getElementById('comentariosClose').addEventListener('click', cerrarComentarios);
-document.getElementById('comentariosOverlay').addEventListener('click', e=>{ if(e.target.id==='comentariosOverlay') cerrarComentarios(); });
-document.getElementById('comentarioEnviarBtn').addEventListener('click', enviarComentarioCobranza);
+document.getElementById('bitEnviarBtn').addEventListener('click', enviarGestionBitacora);
 
 function fmtDateCorta(d){
   const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
@@ -3395,6 +3704,13 @@ document.addEventListener('click', e=>{
   if(!card) return;
   const b = card.dataset.bucket;
   cobranzasFiltroBucket = (cobranzasFiltroBucket === b) ? null : b;
+  renderCobranzas();
+});
+document.addEventListener('click', e=>{
+  const el = e.target.closest('.cob-vista-card, .cob-tab-btn');
+  if(!el) return;
+  cobVistaActual = el.dataset.vista;
+  cobranzasFiltroBucket = null;
   renderCobranzas();
 });
 </script>
