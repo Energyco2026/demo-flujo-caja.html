@@ -571,15 +571,11 @@
       <div><div class="panel-title" id="comentariosTitle">Gestión de cobranza</div><div class="panel-note" id="comentariosSummary"></div></div>
       <button type="button" class="detail-close" id="comentariosClose">Cerrar</button>
     </div>
-    <div id="comentariosContexto" style="display:flex; gap:14px; flex-wrap:wrap; padding:10px 20px; background:#F7F8FA; border-bottom:1px solid var(--line); font-size:12px;"></div>
-    <div style="padding:10px 20px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:8px;">
-      <label style="font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px;">
-        Fecha de pago comprometida:
-        <input type="date" id="comentarioFechaPago" style="font-family:'Inter',sans-serif; font-size:12.5px; border:1px solid var(--projected); border-radius:5px; padding:4px 7px;">
-      </label>
-      <span id="comentarioFechaPagoNota" style="font-size:11px; color:var(--muted);"></span>
-    </div>
     <div class="detail-scroll" style="padding:14px 20px;">
+      <div id="historialPagosWrap" style="margin-bottom:16px;">
+        <div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px;">Historial de pagos 2026</div>
+        <div id="historialPagosLista" style="display:flex; flex-direction:column; gap:6px;"></div>
+      </div>
       <div id="comentariosLista" style="display:flex; flex-direction:column; gap:10px; margin-bottom:14px;"></div>
       <div id="comentariosFormWrap" style="border-top:1px solid var(--line); padding-top:12px;">
         <textarea id="comentarioNuevoTexto" rows="3" placeholder="Escribe la última gestión (ej. cliente confirmó pago para el 15/09)…" style="width:100%; font-family:'Inter',sans-serif; font-size:13px; padding:8px; border:1px solid var(--line); border-radius:6px; resize:vertical;"></textarea>
@@ -755,8 +751,7 @@
       <thead><tr>
         <th class="cob-th-sort" data-col="proveedor" style="cursor:pointer;">Cliente <span class="cob-sort-ico" data-col-ico="proveedor"></span></th>
         <th class="cob-th-sort" data-col="concepto" style="cursor:pointer;">Concepto <span class="cob-sort-ico" data-col-ico="concepto"></span></th>
-        <th>Total factura</th>
-        <th class="cob-th-sort" data-col="monto" style="cursor:pointer;">Saldo pendiente <span class="cob-sort-ico" data-col-ico="monto"></span></th>
+        <th class="cob-th-sort" data-col="monto" style="cursor:pointer;">Monto <span class="cob-sort-ico" data-col-ico="monto"></span></th>
         <th class="cob-th-sort" data-col="vencimiento" style="cursor:pointer;">Fecha vencimiento <span class="cob-sort-ico" data-col-ico="vencimiento"></span></th>
         <th class="cob-th-sort" data-col="dias" style="cursor:pointer;">Días vencido <span class="cob-sort-ico" data-col-ico="dias"></span></th>
         <th>Plan de pago</th><th></th>
@@ -1798,8 +1793,7 @@ function renderCobranzas(){
   const cxc = movimientos.filter(m =>
     m.estado === 'proyectado' &&
     /Cuentas por Cobrar/i.test(m.cuenta || '') &&
-    !esReconocimientoIngresos(m) &&
-    m.origen !== 'hito_cobro_manual'
+    !esReconocimientoIngresos(m)
   );
   const vencidas = cxc.filter(m => diasVencidoCxc(m) > 0);
   const proximos7 = cxc.filter(m => m.fecha >= HOY && m.fecha <= addDays(HOY, 7));
@@ -1872,9 +1866,6 @@ function renderCobranzas(){
     return `<tr>
       <td>${escapeHTML(m.proveedor || '—')}</td>
       <td class="concepto">${escapeHTML(m.concepto || '—')}</td>
-      <td class="nums" style="color:var(--muted);">${m.montoFacturaTotal != null
-        ? `${fmtMoney(m.montoFacturaTotal)}${Math.abs(m.montoFacturaTotal) - Math.abs(m.monto) > 0.01 ? `<div style="font-size:10px;">Abonado: ${fmtMoney(Math.abs(m.montoFacturaTotal) - Math.abs(m.monto))}</div>` : ''}`
-        : '—'}</td>
       <td class="nums amt-in">${fmtMoney(m.monto)}</td>
       <td class="nums">${m.fechaVencimiento ? fmtDate(m.fechaVencimiento) : '—'}</td>
       <td class="nums" style="color:${d>90?'var(--bad)':'inherit'}; font-weight:${d>90?'700':'400'};">${d>0 ? d+' días' : '—'}</td>
@@ -1884,7 +1875,7 @@ function renderCobranzas(){
         <button type="button" class="btn-cob-ir-flujo" data-concepto="${escapeHTML(m.concepto || '')}" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:4px 10px; cursor:pointer; font-size:12px;">Gestionar en Flujo de caja</button>
       </td>
     </tr>`;
-  }).join('') : '<tr><td colspan="8" class="oc-detail-empty">Sin resultados en esta selección.</td></tr>';
+  }).join('') : '<tr><td colspan="7" class="oc-detail-empty">Sin resultados en esta selección.</td></tr>';
 
   document.querySelectorAll('.cob-th-sort').forEach(th=>{
     th.onclick = ()=>{
@@ -2353,30 +2344,49 @@ function abrirComentarios(m){
   comentariosMovimientoActual = m;
   document.getElementById('comentariosTitle').textContent = `Gestión de cobranza · ${m.proveedor || m.concepto || ''}`;
   document.getElementById('comentariosSummary').textContent = m.concepto || '';
-  const d = diasVencidoCxc(m);
-  const abonado = m.montoFacturaTotal != null ? Math.abs(m.montoFacturaTotal) - Math.abs(m.monto) : null;
-  document.getElementById('comentariosContexto').innerHTML = `
-    <div><div style="color:var(--muted); font-size:10.5px; text-transform:uppercase; letter-spacing:.03em;">Saldo pendiente</div><div style="font-weight:700; font-size:14px;">${fmtMoney(m.monto)}</div></div>
-    ${m.montoFacturaTotal != null ? `<div><div style="color:var(--muted); font-size:10.5px; text-transform:uppercase; letter-spacing:.03em;">Total factura</div><div style="font-weight:700; font-size:14px;">${fmtMoney(m.montoFacturaTotal)}${abonado > 0.01 ? ` <span style="font-weight:400; font-size:11px; color:var(--muted);">(abonado ${fmtMoney(abonado)})</span>` : ''}</div></div>` : ''}
-    <div><div style="color:var(--muted); font-size:10.5px; text-transform:uppercase; letter-spacing:.03em;">Vencimiento</div><div style="font-weight:700; font-size:14px; color:${d>0?'var(--bad)':'inherit'};">${d>0 ? `Vencida hace ${d} días` : (m.fechaVencimiento ? fmtDate(m.fechaVencimiento) : '—')}</div></div>
-  `;
-  const inputFecha = document.getElementById('comentarioFechaPago');
-  inputFecha.value = fmtDate(m.fecha);
-  inputFecha.disabled = !puedeEditar(m);
-  document.getElementById('comentarioFechaPagoNota').textContent = m.esFechaManual ? `Última edición: ${etiquetaEdicion(m)}` : 'Todavía sin plan de pago puesto.';
-  inputFecha.onchange = e=>{
-    const anterior = fmtDate(m.fecha);
-    const nuevaFecha = new Date(e.target.value + 'T00:00:00');
-    m.fecha = nuevaFecha;
-    m.esFechaManual = true;
-    guardarFechaManual(m.id, nuevaFecha, anterior);
-    document.getElementById('comentarioFechaPagoNota').textContent = `Última edición: por ${nombreUsuario(usuarioActual)}`;
-    render();
-    renderCobranzas();
-  };
+  renderHistorialPagosCliente(m);
   renderListaComentarios();
   document.getElementById('comentariosFormWrap').style.display = puedeEditar(m) ? '' : 'none';
   document.getElementById('comentariosOverlay').classList.add('open');
+}
+// Historial de cobros reales de ese cliente en 2026: pagos ya ejecutados
+// (account.payment inbound, cuenta "Cuentas por Cobrar") que ya están en
+// `movimientos` — no hace falta traer nada nuevo de Odoo. Se compara por
+// nombre de proveedor con la misma tolerancia que usa el resto del
+// dashboard (textos_compatibles_dashboard), por si el nombre viene con
+// ligeras variantes entre facturas y pagos.
+function renderHistorialPagosCliente(m){
+  const wrap = document.getElementById('historialPagosWrap');
+  const lista = document.getElementById('historialPagosLista');
+  if(!m || !m.proveedor){
+    wrap.style.display = 'none';
+    return;
+  }
+  const pagos = movimientos
+    .filter(x =>
+      x.estado === 'ejecutado' &&
+      /Cuentas por Cobrar/i.test(x.cuenta || '') &&
+      x.monto > 0 &&
+      textos_compatibles_dashboard(x.proveedor, m.proveedor) &&
+      fmtDate(x.fecha) >= '2026-01-01' && fmtDate(x.fecha) <= '2026-12-31'
+    )
+    .sort((a,b) => b.fecha - a.fecha);
+  wrap.style.display = '';
+  if(!pagos.length){
+    lista.innerHTML = '<div class="oc-detail-empty">Sin pagos registrados de este cliente en 2026.</div>';
+    return;
+  }
+  const total = pagos.reduce((s,p) => s + p.monto, 0);
+  lista.innerHTML = pagos.map(p => `
+    <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px; background:#F4F6FA; border-radius:8px; padding:7px 12px; font-size:12.5px;">
+      <div>
+        <span style="font-weight:600; color:var(--ink);">${fmtDate(p.fecha).split('-').reverse().join('/')}</span>
+        <span style="color:var(--muted);"> · ${escapeHTML(p.banco || '—')}</span>
+        <div style="color:var(--muted); font-size:11.5px;">${escapeHTML(p.concepto || '')}</div>
+      </div>
+      <div class="amt-in" style="font-weight:700; white-space:nowrap;">${fmtMoney(p.monto)}</div>
+    </div>`).join('')
+    + `<div style="text-align:right; font-size:11.5px; color:var(--muted); margin-top:2px;">Total 2026: <strong style="color:var(--ink);">${fmtMoney(total)}</strong> · ${pagos.length} pago(s)</div>`;
 }
 function cerrarComentarios(){
   document.getElementById('comentariosOverlay').classList.remove('open');
