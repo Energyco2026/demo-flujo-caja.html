@@ -688,15 +688,14 @@
     <div class="panel-head sticky-panel-head">
       <div>
         <div class="panel-title">Detalle</div>
-        <div class="panel-note" id="cobFiltroActivo">Ingresos próximos 7 días.</div>
+        <div class="panel-note" id="cobFiltroActivo">Cartera por cliente.</div>
       </div>
       <button type="button" id="btnVerBitacoraGeneral" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:6px 12px; cursor:pointer; font-size:12px; white-space:nowrap;">Ver bitácora general</button>
     </div>
     <div style="display:flex; gap:8px; flex-wrap:wrap; padding:0 20px 12px;">
-      <button type="button" class="cob-tab-btn" data-vista="proximos7">Ingresos 7 días</button>
+      <button type="button" class="cob-tab-btn" data-vista="porcliente">Cartera por cliente</button>
       <button type="button" class="cob-tab-btn" data-vista="hitos">Hitos no facturados</button>
       <button type="button" class="cob-tab-btn" data-vista="servicios">Servicios</button>
-      <button type="button" class="cob-tab-btn" data-vista="porcliente">Cartera por cliente</button>
     </div>
     <div id="carteraClienteResumen" style="display:none; padding:0 20px 16px; flex-direction:column; gap:16px;">
       <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px;">
@@ -935,7 +934,7 @@ function fmtMoney(n){
 let movimientos = [];
 // Vistas del Agente Financiero (mismo Supabase) para la pestaña Cobranzas.
 let cobIngresos7 = [], cobIngresosClientes = [], cobHitos = [], cobServicios = [];
-let cobVistaActual = 'proximos7';
+let cobVistaActual = 'porcliente';
 let movimientosCartera = [];
 let comentariosCobranza = [];
 let facturacionRotacion = [];
@@ -2038,7 +2037,8 @@ function cxcAbiertas(){
   return movimientosCartera.filter(m =>
     m.estado === 'proyectado' &&
     /Cuentas por Cobrar/i.test(m.cuenta || '') &&
-    !esReconocimientoIngresos(m)
+    !esReconocimientoIngresos(m) &&
+    m.origen !== 'hito_cobro_manual'
   );
 }
 // Igual que esReconocimientoIngresos, pero para filas de las vistas del
@@ -2202,6 +2202,7 @@ function renderCarteraPorCliente(){
   const cont = document.getElementById('carteraClienteLista');
   cont.innerHTML = grupos.length ? grupos.map(g=>{
     const abierto = carteraClienteAbiertos.has(g.cliente);
+    const formaPago = g.facturas.find(m=>m.terminosPago)?.terminosPago;
     const filasHtml = g.facturas.slice()
       .sort((a,b)=>(b.fechaFactura?.getTime()||0)-(a.fechaFactura?.getTime()||0))
       .map(m=>{
@@ -2218,7 +2219,10 @@ function renderCarteraPorCliente(){
     return `<div class="cartera-cliente-card" style="background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px 16px;">
       <div class="cartera-cliente-head" data-cliente="${escapeHTML(g.cliente)}" style="display:flex; align-items:center; gap:10px; cursor:pointer;">
         <span style="display:inline-block; width:14px; text-align:center; transition:transform .15s; transform:rotate(${abierto?90:0}deg);">▶</span>
-        <span style="flex:1; font-size:14px; font-weight:600;">${escapeHTML(g.cliente)}</span>
+        <span style="flex:1; min-width:0;">
+          <span style="font-size:14px; font-weight:600;">${escapeHTML(g.cliente)}</span>
+          ${formaPago ? `<br><span style="font-size:11px; color:var(--muted);">${escapeHTML(formaPago)}</span>` : ''}
+        </span>
         <span style="font-size:12px; color:var(--muted);">${g.facturas.length} factura${g.facturas.length===1?'':'s'}</span>
         <span style="width:9px; height:9px; border-radius:50%; background:${colorPorAntiguedad(g.maxDias)};"></span>
         <span style="font-size:15px; font-weight:700; width:100px; text-align:right;">${fmtMoney(g.total)}</span>
@@ -2327,6 +2331,7 @@ function renderServiciosLista(){
   const cont = document.getElementById('serviciosLista');
   cont.innerHTML = grupos.length ? grupos.map(g=>{
     const abierto = serviciosAbiertos.has(g.cliente);
+    const formaPago = g.items.find(x=>x._m?.terminosPago)?._m?.terminosPago;
     const filasHtml = g.items.slice()
       .sort((a,b)=>(b._m.fechaFactura?.getTime()||0)-(a._m.fechaFactura?.getTime()||0))
       .map(x=>{
@@ -2344,7 +2349,10 @@ function renderServiciosLista(){
     return `<div class="servicios-cliente-card" style="background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px 16px;">
       <div class="servicios-cliente-head" data-cliente="${escapeHTML(g.cliente)}" style="display:flex; align-items:center; gap:10px; cursor:pointer;">
         <span style="display:inline-block; width:14px; text-align:center; transition:transform .15s; transform:rotate(${abierto?90:0}deg);">▶</span>
-        <span style="flex:1; font-size:14px; font-weight:600;">${escapeHTML(g.cliente)}</span>
+        <span style="flex:1; min-width:0;">
+          <span style="font-size:14px; font-weight:600;">${escapeHTML(g.cliente)}</span>
+          ${formaPago ? `<br><span style="font-size:11px; color:var(--muted);">${escapeHTML(formaPago)}</span>` : ''}
+        </span>
         <span style="font-size:12px; color:var(--muted);">${g.items.length} factura${g.items.length===1?'':'s'}</span>
         <span style="width:9px; height:9px; border-radius:50%; background:${colorPorAntiguedad(g.maxDias)};"></span>
         <span style="font-size:15px; font-weight:700; width:100px; text-align:right;">${fmtMoney(g.total)}</span>
@@ -3377,7 +3385,7 @@ function aplicarFiltroBitacora(m){
   const select = document.getElementById('bitFacturaSelect');
   if(select.querySelector(`option[value="${m.id}"]`)) select.value = m.id;
   document.getElementById('bitacoraTitle').textContent = `Gestión de cobranza · ${m.proveedor || m.concepto || ''}`;
-  document.getElementById('bitacoraSubtitle').textContent = m.concepto || '';
+  document.getElementById('bitacoraSubtitle').textContent = (m.concepto || '') + (m.terminosPago ? ` — Forma de cobro: ${m.terminosPago}` : '');
   document.getElementById('btnVerEnFlujo').style.display = '';
   renderBitacora();
 }
