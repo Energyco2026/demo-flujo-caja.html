@@ -755,7 +755,10 @@
   <div class="detail-dialog">
     <div class="detail-dialog-head">
       <div><div class="panel-title" id="bitacoraTitle">Gestión de cobranza</div><div class="panel-note" id="bitacoraSubtitle"></div></div>
-      <button type="button" class="detail-close" id="bitacoraClose">Cerrar</button>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button type="button" id="btnVerEnFlujo" style="display:none; border:1px solid var(--line); background:#fff; border-radius:6px; padding:6px 12px; cursor:pointer; font-size:12px; font-weight:600;" title="Cierra esta ventana y filtra el Flujo de caja por esta factura">Ver en flujo general</button>
+        <button type="button" class="detail-close" id="bitacoraClose">Cerrar</button>
+      </div>
     </div>
     <div class="detail-scroll" style="padding:16px 20px;">
   <div style="display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap;">
@@ -1883,20 +1886,74 @@ function renderIndices(){
 // porque no coincidía con los días de vencimiento (ej. facturas con 0 días
 // vencidos marcadas como "CRITICA").
 let cobranzasFiltroBucket = null; // 'activas' | 'altas' | 'criticas' | 'historicas' | null
+// Orden de tablas de Cobranza (se puede cambiar haciendo clic en los
+// encabezados). Se comparte entre "Ingresos clientes", "Ingresos 7 días" e
+// "Históricas" para que las tres se comporten igual.
+let cobOrdenCampo = 'fecha';
+let cobOrdenDir = 1; // 1 = ascendente, -1 = descendente
+
+// Ordena filas de cualquiera de esas tres pestañas. Cada una trae sus datos
+// con nombres de campo distintos, por eso se le pasan funciones que dicen
+// cómo sacar la fecha/cliente/monto de una fila.
+function ordenarFilasCobranza(filas, getFecha, getCliente, getMonto){
+  if(!cobOrdenCampo) return filas;
+  const valor = (x) => {
+    if(cobOrdenCampo === 'fecha'){ const f = getFecha(x); return f ? +f : null; }
+    if(cobOrdenCampo === 'cliente') return (getCliente(x) || '').toLowerCase();
+    if(cobOrdenCampo === 'monto') return Number(getMonto(x)) || 0;
+    return null;
+  };
+  return [...filas].sort((a,b)=>{
+    const va = valor(a), vb = valor(b);
+    if(va == null && vb == null) return 0;
+    if(va == null) return 1;   // sin fecha/valor va al final
+    if(vb == null) return -1;
+    if(va < vb) return -1 * cobOrdenDir;
+    if(va > vb) return 1 * cobOrdenDir;
+    return 0;
+  });
+}
+function thOrdenable(campo, etiqueta){
+  const flecha = cobOrdenCampo === campo ? (cobOrdenDir === 1 ? ' ▲' : ' ▼') : '';
+  return `<th class="th-ordenable" data-sort="${campo}" style="cursor:pointer;" title="Ordenar por ${etiqueta.toLowerCase()}">${etiqueta}${flecha}</th>`;
+}
+function activarOrdenClicable(headEl){
+  headEl.querySelectorAll('.th-ordenable').forEach(th=>{
+    th.addEventListener('click', ()=>{
+      const campo = th.dataset.sort;
+      if(cobOrdenCampo === campo) cobOrdenDir *= -1;
+      else { cobOrdenCampo = campo; cobOrdenDir = 1; }
+      renderCobranzasDetalle();
+    });
+  });
+}
 
 function extraerNumeroFactura(texto){
   const m = String(texto || '').match(/\d{3}-\d{3}-\d{5,}/);
   return m ? m[0] : null;
 }
+// Último bloque de dígitos (el correlativo, sin ceros a la izquierda) — se
+// usa como respaldo cuando una vista del Agente no trae el número de
+// factura en el mismo formato exacto (con establecimiento/punto de
+// emisión) que aparece en el concepto de Odoo, para no perder el vínculo
+// solo por una diferencia de formato.
+function extraerCorrelativoFactura(texto){
+  const m = String(texto || '').match(/(\d{5,})(?!.*\d{5,})/);
+  return m ? String(Number(m[1])) : null;
+}
 function buscarMovimientoPorFactura(facturaTxt, cliente){
-  const numero = extraerNumeroFactura(facturaTxt) || String(facturaTxt || '').trim();
-  if(!numero) return null;
-  return movimientosCartera.find(m =>
-    m.estado === 'proyectado' &&
-    /Cuentas por Cobrar/i.test(m.cuenta || '') &&
-    m.concepto && m.concepto.includes(numero) &&
-    (!cliente || textos_compatibles_dashboard(m.proveedor, cliente))
-  ) || null;
+  const numeroCompleto = extraerNumeroFactura(facturaTxt);
+  const numero = numeroCompleto || String(facturaTxt || '').trim();
+  const correlativo = extraerCorrelativoFactura(facturaTxt);
+  if(!numero && !correlativo) return null;
+  return movimientosCartera.find(m => {
+    if(m.estado !== 'proyectado' || !/Cuentas por Cobrar/i.test(m.cuenta || '')) return false;
+    if(cliente && !textos_compatibles_dashboard(m.proveedor, cliente)) return false;
+    const concepto = m.concepto || '';
+    if(numero && concepto.includes(numero)) return true;
+    if(correlativo && extraerCorrelativoFactura(concepto) === correlativo) return true;
+    return false;
+  }) || null;
 }
 function fmtFechaCorta(s){
   return s ? String(s).slice(0,10).split('-').reverse().join('/') : '—';
@@ -1916,6 +1973,26 @@ function botonGestionDirecto(m){
   const planTxt = m.esFechaManual ? `Plan: ${fmtDate(m.fecha).split('-').reverse().join('/')}` : 'Sin plan';
   return `<span style="color:${m.esFechaManual?'var(--good)':'var(--bad)'}; font-size:11px; margin-right:6px; white-space:nowrap;">${planTxt}</span>
     <button type="button" class="btn-cob-comentarios" data-mid="${m.id}" title="Ver/agregar gestión de cobranza" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:4px 9px; cursor:pointer; font-size:12px;">💬 ${numComentarios || ''}</button>`;
+}
+// Igual que botonGestionDirecto, pero para cuando el movimiento pudo no
+// encontrarse (ya viene resuelto desde afuera, en vez de buscarlo de nuevo).
+function botonGestionOMovimiento(m){
+  if(!m) return '<span style="color:var(--muted); font-size:11px;">Sin vínculo a Odoo</span>';
+  return botonGestionDirecto(m);
+}
+// --- Columnas separadas "Fecha compromiso" / "Comentario", usadas por la
+// secuencia unificada de columnas en Ingresos clientes, Ingresos 7 días,
+// Servicios, Históricas, Activas vencidas y Programadas futuras.
+function textoFechaCompromiso(m){
+  if(!m) return '<span style="color:var(--muted); font-size:12px;">—</span>';
+  return m.esFechaManual
+    ? `<span style="color:var(--good); font-size:12px;">${fmtDate(m.fecha).split('-').reverse().join('/')}</span>`
+    : '<span style="color:var(--bad); font-size:12px;">Sin plan</span>';
+}
+function botonComentario(m){
+  if(!m) return '<span style="color:var(--muted); font-size:11px;">Sin vínculo a Odoo</span>';
+  const numComentarios = comentariosCobranza.filter(c => Number(c.odoo_move_id) === m.odooId).length;
+  return `<button type="button" class="btn-cob-comentarios" data-mid="${m.id}" title="Ver/agregar gestión de cobranza" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:4px 9px; cursor:pointer; font-size:12px;">💬 ${numComentarios || ''}</button>`;
 }
 
 function cxcAbiertas(){
@@ -2069,6 +2146,10 @@ function renderCobranzasDetalle(){
       : vistaEfectiva === 'historicas' ? vencidas.filter(m => bucketCobranza(m) === 'historicas')
       : [];
   }
+  // "Históricas" se puede llegar tanto desde la pestaña de arriba como
+  // haciendo clic en la tarjeta KPI "Históricas por revisar (+180 días)" —
+  // en los dos casos se quiere el mismo formato de tabla.
+  const esHistoricas = vistaEfectiva === 'historicas' || (vistaEfectiva === 'bucket' && cobranzasFiltroBucket === 'historicas');
 
   if(texto){
     filas = filas.filter(x =>
@@ -2078,31 +2159,82 @@ function renderCobranzasDetalle(){
   }
 
   if(vistaEfectiva === 'proximos7'){
-    head.innerHTML = '<tr><th>Fecha</th><th>Tipo</th><th>Cliente</th><th>Referencia</th><th>Proyecto</th><th>Monto</th></tr>';
-    body.innerHTML = filas.length ? filas.map(x=>`
+    filas = filas.map(x => Object.assign({}, x, {
+      _m: x.tipo === 'HITO' ? null : buscarMovimientoPorFactura(x.referencia, x.cliente)
+    }));
+    // Si una factura ya no aparece como Cuenta por Cobrar abierta en Odoo
+    // (porque se pagó o se canceló), el script de sincronización ya no la
+    // trae en el próximo corte — se quita de la lista en vez de mostrarla
+    // con "Sin vínculo a Odoo" y un saldo pendiente que ya no es real. Los
+    // HITO se conservan siempre porque, por diseño, aún no tienen factura.
+    filas = filas.filter(x => x.tipo === 'HITO' || x._m);
+    filas = ordenarFilasCobranza(filas, x => x._m?.fechaFactura, x => x.cliente, x => x.monto);
+    head.innerHTML = `<tr>
+      ${thOrdenable('fecha','Fecha factura')}
+      <th>Concepto</th>
+      <th>N.° Factura</th>
+      <th>Analítica / PO</th>
+      ${thOrdenable('monto','Valor pendiente')}
+      <th>Fecha compromiso</th>
+      <th>Comentario</th>
+    </tr>`;
+    body.innerHTML = filas.length ? filas.map(x=>{
+      const esHito = x.tipo === 'HITO';
+      const m = x._m;
+      const fechaFacturaTxt = m?.fechaFactura ? fmtDate(m.fechaFactura).split('-').reverse().join('/') : '—';
+      const numFactura = extraerNumeroFactura(x.referencia) || (esHito ? '—' : (x.referencia || '—'));
+      const comentarioTxt = esHito
+        ? '<span style="color:var(--muted); font-size:11px;">Aún no facturado</span>'
+        : botonComentario(m);
+      return `
       <tr>
-        <td class="nums">${fmtFechaCorta(x.fecha)}</td>
-        <td><span class="badge ${x.tipo==='HITO'?'proj':'exec'}">${escapeHTML(x.tipo || '')}</span></td>
-        <td>${escapeHTML(x.cliente || '')}</td>
-        <td class="concepto">${escapeHTML(x.referencia || x.concepto || '')}</td>
+        <td class="nums">${fechaFacturaTxt}</td>
+        <td class="concepto">${escapeHTML(x.cliente || '')} — ${escapeHTML(x.concepto || x.referencia || '')}<br><span class="badge ${esHito?'proj':'exec'}" style="font-size:10px;">${escapeHTML(x.tipo || '')}</span></td>
+        <td>${escapeHTML(numFactura)}</td>
         <td>${escapeHTML(x.proyecto_codigo || '—')}</td>
         <td class="nums amt-in">${fmtMoney(x.monto)}</td>
-      </tr>`).join('') : '<tr><td colspan="6" class="oc-detail-empty">No hay ingresos programados en los próximos 7 días.</td></tr>';
+        <td>${esHito ? fmtFechaCorta(x.fecha) : `<span style="color:${m?.esFechaManual?'var(--good)':'var(--bad)'}; font-size:12px;">${fmtFechaCorta(x.fecha)}</span>`}</td>
+        <td style="white-space:nowrap;">${comentarioTxt}</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="7" class="oc-detail-empty">No hay ingresos programados en los próximos 7 días.</td></tr>';
+    activarOrdenClicable(head);
     return;
   }
   if(vistaEfectiva === 'clientes'){
-    head.innerHTML = '<tr><th>Fecha cobro</th><th>Cliente</th><th>Factura</th><th>Proyecto</th><th>Monto</th><th>Gestión</th></tr>';
+    // Se resuelve el movimiento real de Odoo UNA sola vez por fila. De ahí
+    // sale la fecha de EMISIÓN de la factura (fecha_factura en Odoo).
+    filas = filas.map(x => Object.assign({}, x, { _m: buscarMovimientoPorFactura(x.factura_num, x.cliente) }));
+    // Si ya no hay vínculo activo, la factura dejó de ser una CxC abierta en
+    // Odoo (se pagó o se canceló) — se excluye para no mostrar un saldo
+    // pendiente que ya no existe (ver factura Kraljevi/Febres Cordero: en
+    // Odoo aparecen como PAGADO pero esta vista del Agente no se había
+    // actualizado).
+    filas = filas.filter(x => x._m);
+    filas = ordenarFilasCobranza(filas, x => x._m?.fechaFactura, x => x.cliente, x => x.monto);
+
+    head.innerHTML = `<tr>
+      ${thOrdenable('fecha','Fecha factura')}
+      <th>Concepto</th>
+      <th>N.° Factura</th>
+      <th>Analítica / PO</th>
+      ${thOrdenable('monto','Valor pendiente')}
+      <th>Fecha compromiso</th>
+      <th>Comentario</th>
+    </tr>`;
     body.innerHTML = filas.length ? filas.map(x=>{
-      const m = buscarMovimientoPorFactura(x.factura_num, x.cliente);
+      const m = x._m;
+      const fechaTxt = m?.fechaFactura ? fmtDate(m.fechaFactura).split('-').reverse().join('/') : '—';
       return `<tr>
-        <td class="nums">${fmtFechaCorta(x.fecha_cobro)}</td>
-        <td>${escapeHTML(x.cliente || '')}</td>
-        <td class="concepto">${escapeHTML(x.factura_num || x.concepto || '')}${m?.terminosPago ? `<br><span style="color:var(--muted); font-size:11px;">${escapeHTML(m.terminosPago)}</span>` : ''}</td>
+        <td class="nums">${fechaTxt}</td>
+        <td class="concepto">${escapeHTML(x.cliente || '')} — ${escapeHTML(x.concepto || '')}${m?.terminosPago ? `<br><span style="color:var(--muted); font-size:11px;">${escapeHTML(m.terminosPago)}</span>` : ''}</td>
+        <td>${escapeHTML(x.factura_num || '—')}</td>
         <td>${escapeHTML(x.proyecto_codigo || '—')}</td>
         <td class="nums amt-in">${fmtMoney(x.monto)}</td>
-        <td style="white-space:nowrap;">${botonGestion(x, x.factura_num, x.cliente)}</td>
+        <td>${textoFechaCompromiso(m)}</td>
+        <td style="white-space:nowrap;">${botonComentario(m)}</td>
       </tr>`;
-    }).join('') : '<tr><td colspan="6" class="oc-detail-empty">No hay facturas de clientes en gestión activa.</td></tr>';
+    }).join('') : '<tr><td colspan="7" class="oc-detail-empty">No hay facturas de clientes en gestión activa.</td></tr>';
+    activarOrdenClicable(head);
   }
   else if(vistaEfectiva === 'hitos'){
     head.innerHTML = '<tr><th>Fecha estimada</th><th>Cliente</th><th>Hito</th><th>Proyecto</th><th>Acción sugerida</th><th>Monto</th></tr>';
@@ -2117,34 +2249,90 @@ function renderCobranzasDetalle(){
       </tr>`).join('') : '<tr><td colspan="6" class="oc-detail-empty">No hay hitos no facturados registrados.</td></tr>';
   }
   else if(vistaEfectiva === 'servicios'){
-    head.innerHTML = '<tr><th>Vencimiento</th><th>Cliente / Factura</th><th>Orden de venta</th><th>Analítica</th><th>Valor factura</th><th>Pagado</th><th>Saldo pendiente</th></tr>';
-    body.innerHTML = filas.length ? filas.map(x=>`
-      <tr>
-        <td class="nums">${fmtFechaCorta(x.fecha_vencimiento)}<br><span class="badge ${x.estado_cobro==='VENCIDA'?'bad':'proj'}" style="font-size:10px;">${escapeHTML(x.estado_cobro||'')}</span></td>
-        <td>${escapeHTML(x.cliente || '')}<br><span class="concepto" style="color:var(--muted);">${escapeHTML(x.factura || '')}</span></td>
-        <td>${escapeHTML(x.orden_venta || '—')}<br><span style="color:var(--muted); font-size:11px;">${escapeHTML(x.vendedor || '')}</span></td>
+    // Igual que en las otras pestañas: se busca el movimiento real en Odoo
+    // por número de factura para poder mostrar la fecha de factura, la
+    // forma de cobro y el botón de comentario. Si ya no hay vínculo activo,
+    // la factura ya se pagó o se canceló en Odoo y se excluye del listado.
+    filas = filas.map(x => Object.assign({}, x, { _m: buscarMovimientoPorFactura(x.factura, x.cliente) }));
+    filas = filas.filter(x => x._m);
+    head.innerHTML = `<tr>
+      <th>Fecha factura</th>
+      <th>Concepto</th>
+      <th>N.° Factura</th>
+      <th>Analítica / PO</th>
+      <th>Valor pendiente</th>
+      <th>Fecha compromiso</th>
+      <th>Comentario</th>
+    </tr>`;
+    body.innerHTML = filas.length ? filas.map(x=>{
+      const m = x._m;
+      const fechaTxt = m?.fechaFactura ? fmtDate(m.fechaFactura).split('-').reverse().join('/') : '—';
+      return `<tr>
+        <td class="nums">${fechaTxt}<br><span class="badge ${x.estado_cobro==='VENCIDA'?'bad':'proj'}" style="font-size:10px;">${escapeHTML(x.estado_cobro||'')}</span></td>
+        <td class="concepto">${escapeHTML(x.cliente || '')} — ${escapeHTML(x.orden_venta || 'Servicio')}<br><span style="color:var(--muted); font-size:11px;">Vend.: ${escapeHTML(x.vendedor || '—')} · Factura ${fmtMoney(x.monto_total)} · Pagado ${fmtMoney(x.monto_pagado)}</span>${m?.terminosPago ? `<br><span style="color:var(--muted); font-size:11px;">${escapeHTML(m.terminosPago)}</span>` : ''}</td>
+        <td>${escapeHTML(x.factura || '—')}</td>
         <td>${escapeHTML(x.analitica || x.proyecto_codigo || '—')}</td>
-        <td class="nums">${fmtMoney(x.monto_total)}</td>
-        <td class="nums">${fmtMoney(x.monto_pagado)}</td>
         <td class="nums amt-in">${fmtMoney(x.saldo_pendiente)}</td>
-      </tr>`).join('') : '<tr><td colspan="7" class="oc-detail-empty">Todavía no se han sincronizado facturas de servicios.</td></tr>';
+        <td>${textoFechaCompromiso(m)}</td>
+        <td style="white-space:nowrap;">${botonComentario(m)}</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="7" class="oc-detail-empty">Todavía no se han sincronizado facturas de servicios.</td></tr>';
   }
-  else {
-    // activas / programadas / historicas / filtro por tarjeta de bucket —
-    // acá las filas SON movimientosCartera directamente (no hace falta
-    // buscar por número de factura, ya se tiene el movimiento real).
-    head.innerHTML = '<tr><th>Cliente</th><th>Factura / Concepto</th><th>Fecha vencimiento</th><th>Días vencido</th><th>Monto</th><th>Gestión</th></tr>';
+  else if(esHistoricas){
+    // Mismo formato unificado que el resto de pestañas de Cobranzas. Se
+    // agrega los días vencidos como dato adicional bajo la fecha, porque en
+    // Históricas sigue siendo relevante saber qué tan atrasada está cada una.
+    filas = ordenarFilasCobranza(filas, m => m.fechaFactura, m => m.proveedor, m => m.monto);
+    head.innerHTML = `<tr>
+      ${thOrdenable('fecha','Fecha factura')}
+      <th>Concepto</th>
+      <th>N.° Factura</th>
+      <th>Analítica / PO</th>
+      ${thOrdenable('monto','Valor pendiente')}
+      <th>Fecha compromiso</th>
+      <th>Comentario</th>
+    </tr>`;
     body.innerHTML = filas.length ? filas.map(m=>{
       const d = diasVencidoCxc(m);
+      const fechaTxt = m.fechaFactura ? fmtDate(m.fechaFactura).split('-').reverse().join('/') : '—';
       return `<tr>
-        <td>${escapeHTML(m.proveedor || '')}</td>
-        <td class="concepto">${escapeHTML(m.concepto || '')}${m.terminosPago ? `<br><span style="color:var(--muted); font-size:11px;">${escapeHTML(m.terminosPago)}</span>` : ''}</td>
-        <td class="nums">${m.fechaVencimiento ? fmtDate(m.fechaVencimiento).split('-').reverse().join('/') : '—'}</td>
-        <td class="nums" style="color:${d>90?'var(--bad)':'inherit'}; font-weight:${d>90?'700':'400'};">${d>0 ? d : '—'}</td>
+        <td class="nums">${fechaTxt}${d>0 ? `<br><span class="badge bad" style="font-size:10px;">${d} días vencido</span>` : ''}</td>
+        <td class="concepto">${escapeHTML(m.proveedor || '')} — ${escapeHTML(m.concepto || '')}${m.terminosPago ? `<br><span style="color:var(--muted); font-size:11px;">${escapeHTML(m.terminosPago)}</span>` : ''}</td>
+        <td>${escapeHTML(extraerNumeroFactura(m.concepto) || '—')}</td>
+        <td>${escapeHTML(m.analitica || '—')}</td>
         <td class="nums amt-in">${fmtMoney(m.monto)}</td>
-        <td style="white-space:nowrap;">${botonGestionDirecto(m)}</td>
+        <td>${textoFechaCompromiso(m)}</td>
+        <td style="white-space:nowrap;">${botonComentario(m)}</td>
       </tr>`;
-    }).join('') : '<tr><td colspan="6" class="oc-detail-empty">Sin registros en esta selección.</td></tr>';
+    }).join('') : '<tr><td colspan="7" class="oc-detail-empty">Sin históricas por revisar.</td></tr>';
+    activarOrdenClicable(head);
+  }
+  else {
+    // activas / programadas / filtro por tarjeta de bucket (altas/críticas)
+    // — acá las filas SON movimientosCartera directamente (no hace falta
+    // buscar por número de factura, ya se tiene el movimiento real).
+    head.innerHTML = `<tr>
+      <th>Fecha factura</th>
+      <th>Concepto</th>
+      <th>N.° Factura</th>
+      <th>Analítica / PO</th>
+      <th>Valor pendiente</th>
+      <th>Fecha compromiso</th>
+      <th>Comentario</th>
+    </tr>`;
+    body.innerHTML = filas.length ? filas.map(m=>{
+      const d = diasVencidoCxc(m);
+      const fechaTxt = m.fechaFactura ? fmtDate(m.fechaFactura).split('-').reverse().join('/') : '—';
+      return `<tr>
+        <td class="nums">${fechaTxt}</td>
+        <td class="concepto">${escapeHTML(m.proveedor || '')} — ${escapeHTML(m.concepto || '')}<br><span style="color:var(--muted); font-size:11px;">Vence: ${m.fechaVencimiento ? fmtDate(m.fechaVencimiento).split('-').reverse().join('/') : '—'}${d>0 ? ` · <span style="color:${d>90?'var(--bad)':'inherit'}; font-weight:${d>90?'700':'400'};">${d} días vencido</span>` : ''}</span>${m.terminosPago ? `<br><span style="color:var(--muted); font-size:11px;">${escapeHTML(m.terminosPago)}</span>` : ''}</td>
+        <td>${escapeHTML(extraerNumeroFactura(m.concepto) || '—')}</td>
+        <td>${escapeHTML(m.analitica || '—')}</td>
+        <td class="nums amt-in">${fmtMoney(m.monto)}</td>
+        <td>${textoFechaCompromiso(m)}</td>
+        <td style="white-space:nowrap;">${botonComentario(m)}</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="7" class="oc-detail-empty">Sin registros en esta selección.</td></tr>';
   }
 
   body.querySelectorAll('.btn-cob-comentarios').forEach(btn=>{
@@ -2644,6 +2832,7 @@ function aplicarFiltroBitacora(m){
   if(select.querySelector(`option[value="${m.id}"]`)) select.value = m.id;
   document.getElementById('bitacoraTitle').textContent = `Gestión de cobranza · ${m.proveedor || m.concepto || ''}`;
   document.getElementById('bitacoraSubtitle').textContent = m.concepto || '';
+  document.getElementById('btnVerEnFlujo').style.display = '';
   renderBitacora();
 }
 function limpiarFiltroBitacora(){
@@ -2652,8 +2841,25 @@ function limpiarFiltroBitacora(){
   bitacoraFiltroFactura = null;
   document.getElementById('bitacoraTitle').textContent = 'Bitácora de gestión';
   document.getElementById('bitacoraSubtitle').textContent = 'Todos los clientes';
+  document.getElementById('btnVerEnFlujo').style.display = 'none';
   renderBitacora();
 }
+// "Ver en flujo general": cierra la ventana de gestión, cambia a la pestaña
+// "Flujo de caja" y filtra la tabla de Movimientos por el número de esta
+// factura (usando el mismo campo N.° Factura que ya existe ahí) — así se
+// puede confirmar de un vistazo si la fecha que se acaba de mover en
+// Cobranzas quedó reflejada en el flujo general.
+function verGestionEnFlujoGeneral(){
+  const factura = bitacoraFiltroFactura;
+  if(!factura) return;
+  cerrarBitacora();
+  document.querySelector('.view-tab[data-view="flujo"]').click();
+  const inputFactura = document.getElementById('filtroFactura');
+  inputFactura.value = factura;
+  render();
+  document.getElementById('vistaFlujo').scrollIntoView({behavior:'smooth', block:'start'});
+}
+document.getElementById('btnVerEnFlujo').addEventListener('click', verGestionEnFlujoGeneral);
 function renderAbonosRecientes(){
   let pagos = movimientos.filter(x => x.estado === 'ejecutado' && /Cuentas por Cobrar/i.test(x.cuenta || '') && x.monto > 0);
   if(bitacoraFiltroFactura){
