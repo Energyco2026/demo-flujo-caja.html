@@ -2002,6 +2002,14 @@ function cxcAbiertas(){
     !esReconocimientoIngresos(m)
   );
 }
+// Igual que esReconocimientoIngresos, pero para filas de las vistas del
+// Agente Financiero (Ingresos clientes/7 días/Servicios) que no siempre
+// resuelven un movimiento vinculado — se prueba directo contra el texto de
+// factura/concepto y el nombre del cliente, sin depender de _m.
+function esReconocimientoPorTexto(textoFactura, cliente){
+  if(/\b001-003-000009\d{3}\b/i.test(String(textoFactura || ''))) return true;
+  return /GARCIA\s+URIBE\s+JORGE\s+ANDRES/i.test(String(cliente || ''));
+}
 function diasVencidoCxc(m){
   const ref = m.fechaVencimiento || m.fecha;
   if(!ref) return 0;
@@ -2168,6 +2176,10 @@ function renderCobranzasDetalle(){
     // con "Sin vínculo a Odoo" y un saldo pendiente que ya no es real. Los
     // HITO se conservan siempre porque, por diseño, aún no tienen factura.
     filas = filas.filter(x => x.tipo === 'HITO' || x._m);
+    // Las facturas de "Reconocimiento de ingreso/egreso" no son cuentas por
+    // cobrar reales — solo deben verse en Rotación CxC/CxP, nunca en
+    // seguimiento de cobranzas.
+    filas = filas.filter(x => !esReconocimientoPorTexto(x.referencia, x.cliente) && !(x._m && esReconocimientoIngresos(x._m)));
     filas = ordenarFilasCobranza(filas, x => x._m?.fechaFactura, x => x.cliente, x => x.monto);
     head.innerHTML = `<tr>
       ${thOrdenable('fecha','Fecha factura')}
@@ -2210,6 +2222,9 @@ function renderCobranzasDetalle(){
     // Odoo aparecen como PAGADO pero esta vista del Agente no se había
     // actualizado).
     filas = filas.filter(x => x._m);
+    // Las facturas de "Reconocimiento de ingreso/egreso" no son cuentas por
+    // cobrar reales — solo deben verse en Rotación CxC/CxP.
+    filas = filas.filter(x => !esReconocimientoPorTexto(x.factura_num, x.cliente) && !esReconocimientoIngresos(x._m));
     filas = ordenarFilasCobranza(filas, x => x._m?.fechaFactura, x => x.cliente, x => x.monto);
 
     head.innerHTML = `<tr>
@@ -2255,6 +2270,9 @@ function renderCobranzasDetalle(){
     // la factura ya se pagó o se canceló en Odoo y se excluye del listado.
     filas = filas.map(x => Object.assign({}, x, { _m: buscarMovimientoPorFactura(x.factura, x.cliente) }));
     filas = filas.filter(x => x._m);
+    // Las facturas de "Reconocimiento de ingreso/egreso" no son cuentas por
+    // cobrar reales — solo deben verse en Rotación CxC/CxP.
+    filas = filas.filter(x => !esReconocimientoPorTexto(x.factura, x.cliente) && !esReconocimientoIngresos(x._m));
     head.innerHTML = `<tr>
       <th>Fecha factura</th>
       <th>Concepto</th>
