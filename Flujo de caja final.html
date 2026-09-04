@@ -741,7 +741,24 @@
       <button type="button" class="cob-tab-btn" data-vista="programadas">Programadas futuras</button>
       <button type="button" class="cob-tab-btn" data-vista="historicas">Históricas</button>
       <button type="button" class="cob-tab-btn" data-vista="antiguedad">Por antigüedad de factura</button>
+      <button type="button" class="cob-tab-btn" data-vista="porcliente">Cartera por cliente</button>
     </div>
+    <div id="carteraClienteResumen" style="display:none; padding:0 20px 16px; flex-direction:column; gap:16px;">
+      <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px;">
+        <div class="indice-card"><div class="indice-label">Cartera total</div><div class="indice-value nums" id="cciTotal">—</div><div class="indice-help nums" id="cciTotalHelp">—</div></div>
+        <div class="indice-card"><div class="indice-label">Vencido</div><div class="indice-value nums bad" id="cciVencido">—</div><div class="indice-help nums" id="cciVencidoHelp">—</div></div>
+        <div class="indice-card"><div class="indice-label">Antigüedad promedio (ponderada por saldo)</div><div class="indice-value nums" id="cciAntProm">—</div><div class="indice-help">Días desde factura</div></div>
+        <div class="indice-card"><div class="indice-label">Facturas con fecha compromiso</div><div class="indice-value nums" id="cciGestion">—</div><div class="indice-help nums" id="cciGestionHelp">—</div></div>
+      </div>
+      <div style="position:relative; width:100%; height:160px;"><canvas id="carteraAgingChart"></canvas></div>
+    </div>
+    <div style="display:none; gap:10px; align-items:center; padding:0 20px 12px;" id="carteraClienteOrdenBar">
+      <span style="font-size:12px; color:var(--muted);">Ordenar por:</span>
+      <button type="button" class="cartera-cliente-orden-btn" data-orden="saldo" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:5px 10px; cursor:pointer; font-size:12px;">Saldo</button>
+      <button type="button" class="cartera-cliente-orden-btn" data-orden="cliente" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:5px 10px; cursor:pointer; font-size:12px;">Cliente</button>
+      <button type="button" class="cartera-cliente-orden-btn" data-orden="antiguedad" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:5px 10px; cursor:pointer; font-size:12px;">Más antiguo</button>
+    </div>
+    <div id="carteraClienteLista" style="display:none; flex-direction:column; gap:8px; padding:0 20px 16px;"></div>
     <div id="cobAntiguedadBuckets" style="display:none; gap:10px; padding:0 20px 12px; flex-wrap:wrap;">
       <div class="indice-card cob-antiguedad-card" data-rango="0-7" style="cursor:pointer; flex:1; min-width:120px;">
         <div class="indice-label">0-7 días</div>
@@ -772,7 +789,7 @@
     <div style="display:flex; gap:10px; align-items:center; padding:0 20px 12px; flex-wrap:wrap;">
       <input type="text" id="cobBuscador" placeholder="Buscar cliente o factura…" style="flex:1; min-width:220px; font-family:'Inter',sans-serif; font-size:13px; border:1px solid var(--line); border-radius:6px; padding:7px 10px;">
     </div>
-    <div class="table-scroll"><table>
+    <div class="table-scroll" id="cobranzasTablaWrap"><table>
       <thead id="cobranzasHead"><tr><th>Cliente</th><th>Factura / Concepto</th><th>Monto</th></tr></thead>
       <tbody id="cobranzasRows"></tbody>
     </table></div>
@@ -2096,6 +2113,119 @@ document.addEventListener('click', e=>{
   renderCobAntiguedadBuckets();
 });
 
+// --- "Cartera por cliente": agrupa la cartera abierta real (cxcAbiertas,
+// que ya excluye pagadas/canceladas y reconocimiento de ingresos) por
+// cliente, para poder gestionar el saldo completo de un cliente de una
+// sola vez en vez de factura por factura.
+let carteraAgingChart = null;
+let carteraClienteOrden = 'saldo'; // 'saldo' | 'cliente' | 'antiguedad'
+let carteraClienteAbiertos = new Set();
+function colorPorAntiguedad(dias){
+  if(dias == null) return '#9a9992';
+  if(dias > 90) return '#d03b3b';
+  if(dias > 60) return '#eb6834';
+  if(dias > 30) return '#fab219';
+  if(dias > 7) return '#639922';
+  return '#0ca30c';
+}
+function carteraAgrupadaPorCliente(){
+  const cxc = cxcAbiertas();
+  const grupos = {};
+  cxc.forEach(m=>{
+    const key = m.proveedor || '(Sin cliente)';
+    (grupos[key] = grupos[key] || []).push(m);
+  });
+  return Object.entries(grupos).map(([cliente, facturas])=>{
+    const total = facturas.reduce((s,m)=>s+Math.abs(m.monto),0);
+    const dias = facturas.map(m=>diasDesdeFactura(m)).filter(d=>d!=null);
+    const maxDias = dias.length ? Math.max(...dias) : null;
+    return {cliente, facturas, total, maxDias};
+  });
+}
+function renderResumenEjecutivoCartera(){
+  const cxc = cxcAbiertas();
+  const total = cxc.reduce((s,m)=>s+Math.abs(m.monto),0);
+  const vencido = cxc.filter(m=>diasVencidoCxc(m)>0).reduce((s,m)=>s+Math.abs(m.monto),0);
+  const conFecha = cxc.filter(m=>m.fechaFactura);
+  const sumaPonderada = conFecha.reduce((s,m)=>s+Math.abs(m.monto)*diasDesdeFactura(m),0);
+  const sumaMontos = conFecha.reduce((s,m)=>s+Math.abs(m.monto),0);
+  const antProm = sumaMontos ? Math.round(sumaPonderada/sumaMontos) : 0;
+  const conGestion = cxc.filter(m=>m.esFechaManual).length;
+  document.getElementById('cciTotal').textContent = fmtMoney(total);
+  document.getElementById('cciTotalHelp').textContent = `${cxc.length} factura${cxc.length===1?'':'s'} abierta${cxc.length===1?'':'s'}`;
+  document.getElementById('cciVencido').textContent = fmtMoney(vencido);
+  document.getElementById('cciVencidoHelp').textContent = total ? `${Math.round(vencido/total*100)}% de la cartera` : '—';
+  document.getElementById('cciAntProm').textContent = `${antProm} días`;
+  document.getElementById('cciGestion').textContent = cxc.length ? `${Math.round(conGestion/cxc.length*100)}%` : '—';
+  document.getElementById('cciGestionHelp').textContent = `${conGestion} de ${cxc.length} con fecha compromiso`;
+  const datos = RANGOS_ANTIGUEDAD.map(r => cxc.filter(m=>bucketAntiguedad(diasDesdeFactura(m))===r.clave).reduce((s,m)=>s+Math.abs(m.monto),0));
+  const canvas = document.getElementById('carteraAgingChart');
+  if(canvas){
+    if(carteraAgingChart) carteraAgingChart.destroy();
+    carteraAgingChart = new Chart(canvas, {
+      type: 'bar',
+      data: { labels: ['0-7 días','8-30 días','30-60 días','60-90 días','Más de 90 días'],
+        datasets: [{ data: datos, backgroundColor: ['#0ca30c','#639922','#fab219','#eb6834','#d03b3b'], borderRadius: 4 }] },
+      options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label: c => fmtMoney(c.raw) } } },
+        scales:{ x:{ ticks:{ callback: v => fmtMoney(v) } } } }
+    });
+  }
+}
+function renderCarteraPorCliente(){
+  const grupos = carteraAgrupadaPorCliente();
+  grupos.sort((a,b) => carteraClienteOrden === 'cliente' ? a.cliente.localeCompare(b.cliente)
+    : carteraClienteOrden === 'antiguedad' ? (b.maxDias||0) - (a.maxDias||0)
+    : b.total - a.total);
+  const cont = document.getElementById('carteraClienteLista');
+  cont.innerHTML = grupos.length ? grupos.map(g=>{
+    const abierto = carteraClienteAbiertos.has(g.cliente);
+    const filasHtml = g.facturas.slice()
+      .sort((a,b)=>(b.fechaFactura?.getTime()||0)-(a.fechaFactura?.getTime()||0))
+      .map(m=>{
+        const dias = diasDesdeFactura(m);
+        return `<div style="display:flex; align-items:center; gap:10px; padding:6px 8px;">
+          <span style="width:8px; height:8px; border-radius:50%; background:${colorPorAntiguedad(dias)}; flex-shrink:0;"></span>
+          <span style="flex:1; font-size:13px;">${escapeHTML(extraerNumeroFactura(m.concepto) || m.concepto || '')}</span>
+          <span style="font-size:12px; color:var(--muted); width:90px;">${m.fechaFactura ? fmtDate(m.fechaFactura).split('-').reverse().join('/') : '—'}</span>
+          <span style="font-size:12px; color:var(--muted); width:70px;">${dias != null ? dias+' días' : '—'}</span>
+          <span style="font-size:13px; width:90px; text-align:right;">${fmtMoney(m.monto)}</span>
+          <span style="white-space:nowrap;">${botonComentario(m)}</span>
+        </div>`;
+      }).join('');
+    return `<div class="cartera-cliente-card" style="background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px 16px;">
+      <div class="cartera-cliente-head" data-cliente="${escapeHTML(g.cliente)}" style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+        <span style="display:inline-block; width:14px; text-align:center; transition:transform .15s; transform:rotate(${abierto?90:0}deg);">▶</span>
+        <span style="flex:1; font-size:14px; font-weight:600;">${escapeHTML(g.cliente)}</span>
+        <span style="font-size:12px; color:var(--muted);">${g.facturas.length} factura${g.facturas.length===1?'':'s'}</span>
+        <span style="width:9px; height:9px; border-radius:50%; background:${colorPorAntiguedad(g.maxDias)};"></span>
+        <span style="font-size:15px; font-weight:700; width:100px; text-align:right;">${fmtMoney(g.total)}</span>
+      </div>
+      <div class="cartera-cliente-body" style="display:${abierto?'flex':'none'}; flex-direction:column; gap:4px; margin-top:10px; padding-top:10px; border-top:1px solid var(--line);">
+        ${filasHtml}
+      </div>
+    </div>`;
+  }).join('') : '<div class="oc-detail-empty">Sin cartera abierta.</div>';
+}
+document.addEventListener('click', e=>{
+  const head = e.target.closest('.cartera-cliente-head');
+  if(!head) return;
+  const cliente = head.dataset.cliente;
+  if(carteraClienteAbiertos.has(cliente)) carteraClienteAbiertos.delete(cliente);
+  else carteraClienteAbiertos.add(cliente);
+  renderCarteraPorCliente();
+});
+document.addEventListener('click', e=>{
+  const btn = e.target.closest('.cartera-cliente-orden-btn');
+  if(!btn) return;
+  carteraClienteOrden = btn.dataset.orden;
+  document.querySelectorAll('.cartera-cliente-orden-btn').forEach(b=>{
+    b.style.background = b === btn ? 'var(--navy)' : '#fff';
+    b.style.color = b === btn ? '#fff' : 'inherit';
+  });
+  renderCarteraPorCliente();
+});
+
 function renderCobranzas(){
   const sum = (arr, campo='monto') => arr.reduce((s,x)=>s+Number(x[campo]||0), 0);
 
@@ -2118,6 +2248,17 @@ function renderCobranzas(){
   });
   document.getElementById('cobAntiguedadBuckets').style.display = cobVistaActual === 'antiguedad' ? 'flex' : 'none';
   renderCobAntiguedadBuckets();
+
+  const esVistaPorCliente = cobVistaActual === 'porcliente';
+  document.getElementById('carteraClienteResumen').style.display = esVistaPorCliente ? 'flex' : 'none';
+  document.getElementById('carteraClienteOrdenBar').style.display = esVistaPorCliente ? 'flex' : 'none';
+  document.getElementById('carteraClienteLista').style.display = esVistaPorCliente ? 'flex' : 'none';
+  document.getElementById('cobranzasTablaWrap').style.display = esVistaPorCliente ? 'none' : '';
+  document.getElementById('cobBuscador').closest('div').style.display = esVistaPorCliente ? 'none' : 'flex';
+  if(esVistaPorCliente){
+    renderResumenEjecutivoCartera();
+    renderCarteraPorCliente();
+  }
 
   // --- 4 tarjetas superiores, iguales a las de tu Agente Financiero ---
   document.getElementById('cobKpiProximos7').textContent = fmtMoney(sum(cobIngresos7));
