@@ -740,6 +740,34 @@
       <button type="button" class="cob-tab-btn" data-vista="activas">Activas vencidas</button>
       <button type="button" class="cob-tab-btn" data-vista="programadas">Programadas futuras</button>
       <button type="button" class="cob-tab-btn" data-vista="historicas">Históricas</button>
+      <button type="button" class="cob-tab-btn" data-vista="antiguedad">Por antigüedad de factura</button>
+    </div>
+    <div id="cobAntiguedadBuckets" style="display:none; gap:10px; padding:0 20px 12px; flex-wrap:wrap;">
+      <div class="indice-card cob-antiguedad-card" data-rango="0-7" style="cursor:pointer; flex:1; min-width:120px;">
+        <div class="indice-label">0-7 días</div>
+        <div class="indice-value nums" id="cobAnt0_7Count">—</div>
+        <div class="indice-help nums" id="cobAnt0_7Monto">—</div>
+      </div>
+      <div class="indice-card cob-antiguedad-card" data-rango="8-30" style="cursor:pointer; flex:1; min-width:120px;">
+        <div class="indice-label">8-30 días</div>
+        <div class="indice-value nums" id="cobAnt8_30Count">—</div>
+        <div class="indice-help nums" id="cobAnt8_30Monto">—</div>
+      </div>
+      <div class="indice-card cob-antiguedad-card" data-rango="30-60" style="cursor:pointer; flex:1; min-width:120px;">
+        <div class="indice-label">30-60 días</div>
+        <div class="indice-value nums" id="cobAnt30_60Count">—</div>
+        <div class="indice-help nums" id="cobAnt30_60Monto">—</div>
+      </div>
+      <div class="indice-card cob-antiguedad-card" data-rango="60-90" style="cursor:pointer; flex:1; min-width:120px;">
+        <div class="indice-label">60-90 días</div>
+        <div class="indice-value nums" id="cobAnt60_90Count">—</div>
+        <div class="indice-help nums" id="cobAnt60_90Monto">—</div>
+      </div>
+      <div class="indice-card cob-antiguedad-card" data-rango="+90" style="cursor:pointer; flex:1; min-width:120px;">
+        <div class="indice-label">Más de 90 días</div>
+        <div class="indice-value nums bad" id="cobAnt90masCount">—</div>
+        <div class="indice-help nums" id="cobAnt90masMonto">—</div>
+      </div>
     </div>
     <div style="display:flex; gap:10px; align-items:center; padding:0 20px 12px; flex-wrap:wrap;">
       <input type="text" id="cobBuscador" placeholder="Buscar cliente o factura…" style="flex:1; min-width:220px; font-family:'Inter',sans-serif; font-size:13px; border:1px solid var(--line); border-radius:6px; padding:7px 10px;">
@@ -2024,6 +2052,49 @@ function bucketCobranza(m){
   return 'historicas';
 }
 const NOMBRES_BUCKET_COBRANZA = {activas:'Activas vencidas (1-30 días)', altas:'Altas (31-90 días)', criticas:'Críticas (91-180 días)', historicas:'Históricas por revisar (+180 días)'};
+// --- "Por antigüedad de factura": a diferencia de los buckets de arriba
+// (que cuentan días de ATRASO desde el vencimiento), esta clasificación
+// cuenta días desde la FECHA DE FACTURA (emisión) — pedido explícito para
+// tener una vista tipo "rotación" dentro de Cobranzas, no solo en la
+// pestaña Rotación CxC/CxP.
+let cobAntiguedadFiltro = null;
+const RANGOS_ANTIGUEDAD = [
+  {clave:'0-7', id:'0_7', min:0, max:7},
+  {clave:'8-30', id:'8_30', min:8, max:30},
+  {clave:'30-60', id:'30_60', min:31, max:60},
+  {clave:'60-90', id:'60_90', min:61, max:90},
+  {clave:'+90', id:'90mas', min:91, max:Infinity},
+];
+function diasDesdeFactura(m){
+  return m.fechaFactura ? diasEntre(m.fechaFactura, HOY) : null;
+}
+function bucketAntiguedad(dias){
+  if(dias == null) return null;
+  const r = RANGOS_ANTIGUEDAD.find(r => dias >= r.min && dias <= r.max);
+  return r ? r.clave : null;
+}
+function renderCobAntiguedadBuckets(){
+  const cxc = cxcAbiertas();
+  RANGOS_ANTIGUEDAD.forEach(r=>{
+    const lista = cxc.filter(m => bucketAntiguedad(diasDesdeFactura(m)) === r.clave);
+    const total = lista.reduce((s,m)=>s+Math.abs(m.monto),0);
+    const elCount = document.getElementById(`cobAnt${r.id}Count`);
+    const elMonto = document.getElementById(`cobAnt${r.id}Monto`);
+    if(elCount) elCount.textContent = lista.length;
+    if(elMonto) elMonto.textContent = fmtMoney(total);
+  });
+  document.querySelectorAll('.cob-antiguedad-card').forEach(card=>{
+    card.style.outline = card.dataset.rango === cobAntiguedadFiltro ? '2px solid var(--navy)' : 'none';
+  });
+}
+document.addEventListener('click', e=>{
+  const card = e.target.closest('.cob-antiguedad-card');
+  if(!card) return;
+  const clave = card.dataset.rango;
+  cobAntiguedadFiltro = (cobAntiguedadFiltro === clave) ? null : clave;
+  renderCobranzasDetalle();
+  renderCobAntiguedadBuckets();
+});
 
 function renderCobranzas(){
   const sum = (arr, campo='monto') => arr.reduce((s,x)=>s+Number(x[campo]||0), 0);
@@ -2045,6 +2116,8 @@ function renderCobranzas(){
   document.querySelectorAll('.cob-bucket-card').forEach(card=>{
     card.style.outline = cobranzasFiltroBucket === card.dataset.bucket ? '2px solid var(--navy)' : 'none';
   });
+  document.getElementById('cobAntiguedadBuckets').style.display = cobVistaActual === 'antiguedad' ? 'flex' : 'none';
+  renderCobAntiguedadBuckets();
 
   // --- 4 tarjetas superiores, iguales a las de tu Agente Financiero ---
   document.getElementById('cobKpiProximos7').textContent = fmtMoney(sum(cobIngresos7));
@@ -2143,6 +2216,7 @@ function renderCobranzasDetalle(){
       proximos7:'Ingresos próximos 7 días.', clientes:'Ingresos clientes.', hitos:'Hitos no facturados.',
       servicios:'Facturas por cobrar · Servicios.', activas:'Activas vencidas.',
       programadas:'Programadas futuras.', historicas:'Históricas por revisar.',
+      antiguedad: cobAntiguedadFiltro ? `Por antigüedad de factura · ${RANGOS_ANTIGUEDAD.find(r=>r.clave===cobAntiguedadFiltro)?.clave || ''} días` : 'Por antigüedad de factura (todas).',
     };
     filtroEl.textContent = nombresVista[cobVistaActual] || '';
     filas = vistaEfectiva === 'proximos7' ? cobIngresos7
@@ -2152,6 +2226,9 @@ function renderCobranzasDetalle(){
       : vistaEfectiva === 'activas' ? vencidas
       : vistaEfectiva === 'programadas' ? cxc.filter(m => diasVencidoCxc(m) <= 0)
       : vistaEfectiva === 'historicas' ? vencidas.filter(m => bucketCobranza(m) === 'historicas')
+      : vistaEfectiva === 'antiguedad' ? [...cxc]
+          .filter(m => !cobAntiguedadFiltro || bucketAntiguedad(diasDesdeFactura(m)) === cobAntiguedadFiltro)
+          .sort((a,b) => (a.fechaFactura?.getTime() || 0) - (b.fechaFactura?.getTime() || 0))
       : [];
   }
   // "Históricas" se puede llegar tanto desde la pestaña de arriba como
@@ -2170,12 +2247,11 @@ function renderCobranzasDetalle(){
     filas = filas.map(x => Object.assign({}, x, {
       _m: x.tipo === 'HITO' ? null : buscarMovimientoPorFactura(x.referencia, x.cliente)
     }));
-    // Si una factura ya no aparece como Cuenta por Cobrar abierta en Odoo
-    // (porque se pagó o se canceló), el script de sincronización ya no la
-    // trae en el próximo corte — se quita de la lista en vez de mostrarla
-    // con "Sin vínculo a Odoo" y un saldo pendiente que ya no es real. Los
-    // HITO se conservan siempre porque, por diseño, aún no tienen factura.
-    filas = filas.filter(x => x.tipo === 'HITO' || x._m);
+    // NOTA: a diferencia de "Ingresos clientes"/"Servicios", aquí NO se
+    // ocultan las filas sin vínculo a Odoo — se comprobó que "referencia" en
+    // esta vista no siempre trae el mismo formato de número de factura, y
+    // ocultarlas borraba filas activas además de las pagadas. Se muestran
+    // con aviso hasta confirmar el campo correcto con la fuente de datos.
     // Las facturas de "Reconocimiento de ingreso/egreso" no son cuentas por
     // cobrar reales — solo deben verse en Rotación CxC/CxP, nunca en
     // seguimiento de cobranzas.
@@ -2340,10 +2416,14 @@ function renderCobranzasDetalle(){
     </tr>`;
     body.innerHTML = filas.length ? filas.map(m=>{
       const d = diasVencidoCxc(m);
+      const diasFact = diasDesdeFactura(m);
       const fechaTxt = m.fechaFactura ? fmtDate(m.fechaFactura).split('-').reverse().join('/') : '—';
+      const infoSecundaria = vistaEfectiva === 'antiguedad'
+        ? `${diasFact != null ? `${diasFact} días desde factura` : 'Sin fecha de factura'}`
+        : `Vence: ${m.fechaVencimiento ? fmtDate(m.fechaVencimiento).split('-').reverse().join('/') : '—'}${d>0 ? ` · <span style="color:${d>90?'var(--bad)':'inherit'}; font-weight:${d>90?'700':'400'};">${d} días vencido</span>` : ''}`;
       return `<tr>
         <td class="nums">${fechaTxt}</td>
-        <td class="concepto">${escapeHTML(m.proveedor || '')} — ${escapeHTML(m.concepto || '')}<br><span style="color:var(--muted); font-size:11px;">Vence: ${m.fechaVencimiento ? fmtDate(m.fechaVencimiento).split('-').reverse().join('/') : '—'}${d>0 ? ` · <span style="color:${d>90?'var(--bad)':'inherit'}; font-weight:${d>90?'700':'400'};">${d} días vencido</span>` : ''}</span>${m.terminosPago ? `<br><span style="color:var(--muted); font-size:11px;">${escapeHTML(m.terminosPago)}</span>` : ''}</td>
+        <td class="concepto">${escapeHTML(m.proveedor || '')} — ${escapeHTML(m.concepto || '')}<br><span style="color:var(--muted); font-size:11px;">${infoSecundaria}</span>${m.terminosPago ? `<br><span style="color:var(--muted); font-size:11px;">${escapeHTML(m.terminosPago)}</span>` : ''}</td>
         <td>${escapeHTML(extraerNumeroFactura(m.concepto) || '—')}</td>
         <td>${escapeHTML(m.analitica || '—')}</td>
         <td class="nums amt-in">${fmtMoney(m.monto)}</td>
@@ -3935,7 +4015,10 @@ document.addEventListener('click', e=>{
   if(!el) return;
   cobVistaActual = el.dataset.vista;
   cobranzasFiltroBucket = null;
+  cobAntiguedadFiltro = null;
+  document.getElementById('cobAntiguedadBuckets').style.display = cobVistaActual === 'antiguedad' ? 'flex' : 'none';
   renderCobranzas();
+  if(cobVistaActual === 'antiguedad') renderCobAntiguedadBuckets();
 });
 </script>
 </body>
