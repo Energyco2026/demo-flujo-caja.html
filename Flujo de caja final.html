@@ -2272,8 +2272,16 @@ let serviciosOrden = 'saldo';
 let serviciosAbiertos = new Set();
 let serviciosFiltroRango = null;
 let serviciosBusqueda = '';
+// La vista agente_facturas_servicio_v1 NO viene filtrada por vendedor — trae
+// facturas de todos los vendedores (Administrator, Ximena Coronel, etc.).
+// "Servicios" de este dashboard significa específicamente lo que vende
+// Mar Isabel (María Isabel Piñeyro en Odoo), así que se filtra explícito acá.
+function esVendedoraServicios(vendedor){
+  return /mar[ií]a?\s*isabel/i.test(String(vendedor || ''));
+}
 function serviciosBase(){
   return cobServicios
+    .filter(x => esVendedoraServicios(x.vendedor))
     .map(x => Object.assign({}, x, { _m: buscarMovimientoPorFactura(x.factura, x.cliente) }))
     .filter(x => x._m && x._m.origen !== 'hito_cobro_manual' && !esReconocimientoPorTexto(x.factura, x.cliente) && !esReconocimientoIngresos(x._m));
 }
