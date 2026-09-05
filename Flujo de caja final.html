@@ -2106,10 +2106,27 @@ document.addEventListener('click', e=>{
   renderCobAntiguedadBuckets();
 });
 
-// --- "Cartera por cliente": agrupa la cartera abierta real (cxcAbiertas,
-// que ya excluye pagadas/canceladas y reconocimiento de ingresos) por
-// cliente, para poder gestionar el saldo completo de un cliente de una
-// sola vez en vez de factura por factura.
+// --- Sectorización mutuamente excluyente de Cobranzas ---
+// Fuente única de verdad para montos/estado: movimientosCartera (cxcAbiertas).
+// La vista del Agente Financiero (agente_facturas_servicio_v1) solo se usa
+// para IDENTIFICAR qué números de factura son de la vendedora Mar Isabel
+// (dato de vendedor que no existe todavía en movimientos/Odoo sync); el
+// monto y el estado de esas facturas se toman siempre de movimientosCartera,
+// nunca del saldo_pendiente propio de la vista del agente.
+function serviciosIdsSet(){
+  return new Set(serviciosBase().map(x => x._m.id));
+}
+// "Cartera por cliente" = todo lo facturado que NO es servicio (Mar Isabel).
+// Así Cliente y Servicio quedan sectorizados sin solaparse ni duplicar montos.
+function cxcAbiertasSinServicios(){
+  const idsServicio = serviciosIdsSet();
+  return cxcAbiertas().filter(m => !idsServicio.has(m.id));
+}
+
+// --- "Cartera por cliente": agrupa la cartera abierta real (cxcAbiertasSinServicios,
+// que ya excluye pagadas/canceladas, reconocimiento de ingresos, y ahora también
+// las facturas de servicio) por cliente, para poder gestionar el saldo completo
+// de un cliente de una sola vez en vez de factura por factura.
 let carteraAgingChart = null;
 let carteraClienteOrden = 'saldo'; // 'saldo' | 'cliente' | 'antiguedad'
 let carteraClienteAbiertos = new Set();
@@ -2124,7 +2141,7 @@ function colorPorAntiguedad(dias){
   return '#0ca30c';
 }
 function carteraAgrupadaPorCliente(){
-  let cxc = cxcAbiertas();
+  let cxc = cxcAbiertasSinServicios();
   if(carteraClienteFiltroRango){
     cxc = cxc.filter(m => bucketAntiguedad(diasDesdeFactura(m)) === carteraClienteFiltroRango);
   }
@@ -2148,7 +2165,7 @@ function carteraAgrupadaPorCliente(){
   });
 }
 function renderResumenEjecutivoCartera(){
-  const cxc = cxcAbiertas();
+  const cxc = cxcAbiertasSinServicios();
   const total = cxc.reduce((s,m)=>s+Math.abs(m.monto),0);
   const vencido = cxc.filter(m=>diasVencidoCxc(m)>0).reduce((s,m)=>s+Math.abs(m.monto),0);
   const conFecha = cxc.filter(m=>m.fechaFactura);
@@ -2258,7 +2275,7 @@ let serviciosBusqueda = '';
 function serviciosBase(){
   return cobServicios
     .map(x => Object.assign({}, x, { _m: buscarMovimientoPorFactura(x.factura, x.cliente) }))
-    .filter(x => x._m && !esReconocimientoPorTexto(x.factura, x.cliente) && !esReconocimientoIngresos(x._m));
+    .filter(x => x._m && x._m.origen !== 'hito_cobro_manual' && !esReconocimientoPorTexto(x.factura, x.cliente) && !esReconocimientoIngresos(x._m));
 }
 function serviciosAgrupados(){
   let base = serviciosBase();
@@ -2270,7 +2287,7 @@ function serviciosAgrupados(){
   const grupos = {};
   base.forEach(x => { (grupos[x.cliente || '(Sin cliente)'] = grupos[x.cliente || '(Sin cliente)'] || []).push(x); });
   return Object.entries(grupos).map(([cliente, items])=>{
-    const total = items.reduce((s,x)=>s+Math.abs(x.saldo_pendiente||0),0);
+    const total = items.reduce((s,x)=>s+Math.abs(x._m.monto||0),0);
     const dias = items.map(x=>diasDesdeFactura(x._m)).filter(d=>d!=null);
     return {cliente, items, total, maxDias: dias.length ? Math.max(...dias) : null};
   });
@@ -2278,11 +2295,11 @@ function serviciosAgrupados(){
 let serviciosAgingChart = null;
 function renderResumenServicios(){
   const base = serviciosBase();
-  const total = base.reduce((s,x)=>s+Math.abs(x.saldo_pendiente||0),0);
-  const vencido = base.filter(x=>diasVencidoCxc(x._m)>0).reduce((s,x)=>s+Math.abs(x.saldo_pendiente||0),0);
+  const total = base.reduce((s,x)=>s+Math.abs(x._m.monto||0),0);
+  const vencido = base.filter(x=>diasVencidoCxc(x._m)>0).reduce((s,x)=>s+Math.abs(x._m.monto||0),0);
   const conFecha = base.filter(x=>x._m.fechaFactura);
-  const sumaPonderada = conFecha.reduce((s,x)=>s+Math.abs(x.saldo_pendiente||0)*diasDesdeFactura(x._m),0);
-  const sumaMontos = conFecha.reduce((s,x)=>s+Math.abs(x.saldo_pendiente||0),0);
+  const sumaPonderada = conFecha.reduce((s,x)=>s+Math.abs(x._m.monto||0)*diasDesdeFactura(x._m),0);
+  const sumaMontos = conFecha.reduce((s,x)=>s+Math.abs(x._m.monto||0),0);
   const antProm = sumaMontos ? Math.round(sumaPonderada/sumaMontos) : 0;
   const conGestion = base.filter(x=>x._m.esFechaManual).length;
   document.getElementById('srTotal').textContent = fmtMoney(total);
@@ -2292,7 +2309,7 @@ function renderResumenServicios(){
   document.getElementById('srAntProm').textContent = `${antProm} días`;
   document.getElementById('srGestion').textContent = base.length ? `${Math.round(conGestion/base.length*100)}%` : '—';
   document.getElementById('srGestionHelp').textContent = `${conGestion} de ${base.length} con fecha compromiso`;
-  const datos = RANGOS_ANTIGUEDAD.map(r => base.filter(x=>bucketAntiguedad(diasDesdeFactura(x._m))===r.clave).reduce((s,x)=>s+Math.abs(x.saldo_pendiente||0),0));
+  const datos = RANGOS_ANTIGUEDAD.map(r => base.filter(x=>bucketAntiguedad(diasDesdeFactura(x._m))===r.clave).reduce((s,x)=>s+Math.abs(x._m.monto||0),0));
   const canvas = document.getElementById('serviciosAgingChart');
   if(canvas && typeof Chart === 'undefined'){
     if(!canvas.dataset.avisoMostrado){
@@ -2341,7 +2358,7 @@ function renderServiciosLista(){
           <span style="flex:1; font-size:13px;">${escapeHTML(x.factura || '')}</span>
           <span style="font-size:12px; color:var(--muted); width:90px;">${m.fechaFactura ? fmtDate(m.fechaFactura).split('-').reverse().join('/') : '—'}</span>
           <span style="font-size:12px; color:var(--muted); width:70px;">${dias != null ? dias+' días' : '—'}</span>
-          <span style="font-size:13px; width:90px; text-align:right;">${fmtMoney(x.saldo_pendiente)}</span>
+          <span style="font-size:13px; width:90px; text-align:right;">${fmtMoney(x._m.monto)}</span>
           <span style="white-space:nowrap;">${botonComentario(m)}</span>
         </div>`;
       }).join('');
@@ -2561,7 +2578,7 @@ document.addEventListener('click', e=>{
 function renderCobranzas(){
   const sum = (arr, campo='monto') => arr.reduce((s,x)=>s+Number(x[campo]||0), 0);
 
-  const cxc = cxcAbiertas();
+  const cxc = cxcAbiertasSinServicios();
 
   document.getElementById('cobAntiguedadBuckets').style.display = cobVistaActual === 'antiguedad' ? 'flex' : 'none';
   renderCobAntiguedadBuckets();
@@ -2602,8 +2619,9 @@ function renderCobranzas(){
   document.getElementById('cobKpiClientesSub').textContent = `${cxc.length} facturas abiertas`;
   document.getElementById('cobKpiHitos').textContent = fmtMoney(sum(cobHitos));
   document.getElementById('cobKpiHitosSub').textContent = `${cobHitos.length} hitos`;
-  document.getElementById('cobKpiServicios').textContent = fmtMoney(sum(cobServicios, 'saldo_pendiente'));
-  document.getElementById('cobKpiServiciosSub').textContent = `${cobServicios.length} facturas`;
+  const srvBaseKpi = serviciosBase();
+  document.getElementById('cobKpiServicios').textContent = fmtMoney(srvBaseKpi.reduce((s,x)=>s+Math.abs(x._m.monto||0),0));
+  document.getElementById('cobKpiServiciosSub').textContent = `${srvBaseKpi.length} facturas`;
   document.querySelectorAll('.cob-vista-card').forEach(card=>{
     card.classList.toggle('activo', card.dataset.vista === cobVistaActual);
   });
@@ -2821,7 +2839,7 @@ function renderCobranzasDetalle(){
         <td class="concepto">${escapeHTML(x.cliente || '')} — ${escapeHTML(x.orden_venta || 'Servicio')}<br><span style="color:var(--muted); font-size:11px;">Vend.: ${escapeHTML(x.vendedor || '—')} · Factura ${fmtMoney(x.monto_total)} · Pagado ${fmtMoney(x.monto_pagado)}</span>${m?.terminosPago ? `<br><span style="color:var(--muted); font-size:11px;">${escapeHTML(m.terminosPago)}</span>` : ''}</td>
         <td>${escapeHTML(x.factura || '—')}</td>
         <td>${escapeHTML(x.analitica || x.proyecto_codigo || '—')}</td>
-        <td class="nums amt-in">${fmtMoney(x.saldo_pendiente)}</td>
+        <td class="nums amt-in">${fmtMoney(m ? m.monto : x.saldo_pendiente)}</td>
         <td>${textoFechaCompromiso(m)}</td>
         <td style="white-space:nowrap;">${botonComentario(m)}</td>
       </tr>`;
