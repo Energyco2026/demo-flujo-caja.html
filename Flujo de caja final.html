@@ -1804,8 +1804,12 @@ function renderIndices(){
   const cxcContable = abiertas
     .filter(m=>esCxc(m) && !esReconocimientoIngresos(m))
     .reduce((s,m)=>s+Math.abs(m.monto),0);
+  // Los cruces de anticipo (cruce_anticipo_cliente/proveedor) no cuentan para
+  // la rotación de cartera: el dinero ya había entrado/salido antes, en la
+  // fecha del anticipo original — no en la fecha de este asiento contable.
   const ejecutadasConFecha = movimientosCartera.filter(m =>
-    m.estado === 'ejecutado' && m.fechaFactura && m.fecha
+    m.estado === 'ejecutado' && m.fechaFactura && m.fecha &&
+    m.origen !== 'cruce_anticipo_cliente' && m.origen !== 'cruce_anticipo_proveedor'
   );
   const diasCobro = ejecutadasConFecha.filter(esCxc).map(m=>diasEntre(m.fechaFactura,m.fecha));
   const diasPago = ejecutadasConFecha.filter(esCxp).map(m=>diasEntre(m.fechaFactura,m.fecha));
