@@ -676,7 +676,7 @@
   <section class="panel">
     <div class="panel-head">
       <div class="panel-title">Mi calendario de gestión</div>
-      <div class="panel-note">Próximas gestiones que registraste — vencidas en rojo, de hoy en naranja.</div>
+      <div class="panel-note">Próximas gestiones que registraste (hasta 7 días adelante) — vencidas en rojo, de hoy en naranja, próximas en azul.</div>
     </div>
     <div class="table-scroll"><table>
       <thead><tr><th>Fecha acordada</th><th>Cliente</th><th>Factura</th><th>Registrado por</th><th>Última gestión</th><th></th></tr></thead>
@@ -2649,22 +2649,25 @@ function renderCobranzas(){
       if(!actual || new Date(c.fecha) > new Date(actual.fecha)) porFactura.set(c.odoo_move_id, c);
     });
   const hoyStr = fmtDate(HOY);
+  const limiteStr = fmtDate(addDays(HOY, 7)); // ventana de próximas gestiones: hasta 7 días adelante
   const calendario = [...porFactura.values()]
-    .filter(c => c.fecha_proxima_gestion <= hoyStr)
+    .filter(c => c.fecha_proxima_gestion <= limiteStr)
     .sort((a,b) => a.fecha_proxima_gestion.localeCompare(b.fecha_proxima_gestion));
   const calRows = document.getElementById('cobCalendarioRows');
   calRows.innerHTML = calendario.length ? calendario.map(c=>{
     const m = movimientosCartera.find(x => x.odooId === c.odoo_move_id);
-    const vencida = c.fecha_proxima_gestion < hoyStr;
+    const color = c.fecha_proxima_gestion < hoyStr ? 'var(--bad)'
+      : c.fecha_proxima_gestion === hoyStr ? 'var(--projected)'
+      : 'var(--focus)';
     return `<tr>
-      <td class="nums" style="color:${vencida?'var(--bad)':'var(--projected)'}; font-weight:700;">${fmtDate(new Date(c.fecha_proxima_gestion+'T00:00:00')).split('-').reverse().join('/')}</td>
+      <td class="nums" style="color:${color}; font-weight:700;">${fmtDate(new Date(c.fecha_proxima_gestion+'T00:00:00')).split('-').reverse().join('/')}</td>
       <td>${escapeHTML(m?.proveedor || '—')}</td>
       <td class="concepto">${escapeHTML(m?.concepto || '—')}</td>
       <td>${escapeHTML(c.autor || '—')}</td>
       <td>${escapeHTML(c.texto || '—')}</td>
       <td><button type="button" class="btn-cob-comentarios" data-mid="${m?.id || ''}" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:4px 9px; cursor:pointer; font-size:12px;">💬 Ver / gestionar</button></td>
     </tr>`;
-  }).join('') : '<tr><td colspan="6" class="oc-detail-empty">Sin gestiones pendientes por hoy — al día.</td></tr>';
+  }).join('') : '<tr><td colspan="6" class="oc-detail-empty">Sin gestiones pendientes en los próximos 7 días — al día.</td></tr>';
   calRows.querySelectorAll('.btn-cob-comentarios').forEach(btn=>{
     btn.addEventListener('click', e=>{
       const id = parseInt(e.currentTarget.dataset.mid);
