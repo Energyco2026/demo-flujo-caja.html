@@ -854,8 +854,11 @@
 
       <section class="panel">
         <div class="panel-head">
-          <div class="panel-title" id="bitGestionesTitulo">Historial de gestiones (chatter)</div>
-          <div class="panel-note" id="bitGestionesNota">Últimas gestiones registradas, todos los clientes — más reciente primero.</div>
+          <div>
+            <div class="panel-title" id="bitGestionesTitulo">Historial de gestiones (chatter)</div>
+            <div class="panel-note" id="bitGestionesNota">Últimas gestiones registradas, todos los clientes — más reciente primero.</div>
+          </div>
+          <button type="button" id="btnFiltroRevisarFecha" style="border:1px solid #FDBA74; background:#fff; color:#9A3412; border-radius:6px; padding:6px 12px; cursor:pointer; font-size:12px; font-weight:600; white-space:nowrap;">⚠️ Ver solo por revisar</button>
         </div>
         <div id="bitacoraGeneralLista" style="padding:14px 20px; display:flex; flex-direction:column; gap:10px;"></div>
       </section>
@@ -3347,6 +3350,10 @@ function cerrarBitacora(){
 document.getElementById('bitacoraClose').addEventListener('click', cerrarBitacora);
 document.getElementById('bitacoraOverlay').addEventListener('click', e=>{ if(e.target.id==='bitacoraOverlay') cerrarBitacora(); });
 document.getElementById('btnVerBitacoraGeneral').addEventListener('click', abrirBitacoraGeneral);
+document.getElementById('btnFiltroRevisarFecha').addEventListener('click', ()=>{
+  bitacoraSoloRevisarFecha = !bitacoraSoloRevisarFecha;
+  renderBitacoraGeneral();
+});
 
 // Lógica compartida para guardar una gestión, sin importar desde qué
 // formulario venga (hoy solo existe el de la ventana de Bitácora).
@@ -3390,6 +3397,7 @@ async function guardarGestionCobranza(m, campos){
 let bitacoraFiltroOdooId = null;
 let bitacoraFiltroCliente = null;
 let bitacoraFiltroFactura = null;
+let bitacoraSoloRevisarFecha = false;
 
 function poblarBitFacturaSelect(){
   const select = document.getElementById('bitFacturaSelect');
@@ -3410,6 +3418,7 @@ function aplicarFiltroBitacora(m){
   bitacoraFiltroOdooId = m.odooId;
   bitacoraFiltroCliente = m.proveedor;
   bitacoraFiltroFactura = extraerNumeroFactura(m.concepto) || null;
+  bitacoraSoloRevisarFecha = false;
   const select = document.getElementById('bitFacturaSelect');
   if(select.querySelector(`option[value="${m.id}"]`)) select.value = m.id;
   document.getElementById('bitacoraTitle').textContent = `Gestión de cobranza · ${m.proveedor || m.concepto || ''}`;
@@ -3473,11 +3482,22 @@ function renderAbonosRecientes(){
 function renderBitacoraGeneral(){
   let hilo = [...comentariosCobranza];
   if(bitacoraFiltroOdooId != null) hilo = hilo.filter(c => Number(c.odoo_move_id) === bitacoraFiltroOdooId);
+  if(bitacoraSoloRevisarFecha) hilo = hilo.filter(c => c.fecha_gestion_confianza === 'revisar_manual');
   hilo = hilo.sort((a,b) => new Date(b.fecha) - new Date(a.fecha)).slice(0, 80);
-  document.getElementById('bitGestionesTitulo').textContent = bitacoraFiltroCliente ? `Gestiones de ${bitacoraFiltroCliente}` : 'Historial de gestiones (chatter)';
-  document.getElementById('bitGestionesNota').textContent = bitacoraFiltroCliente
-    ? 'Solo gestiones de esta factura.'
-    : 'Últimas gestiones registradas, todos los clientes — más reciente primero.';
+  const btnRevisar = document.getElementById('btnFiltroRevisarFecha');
+  if(btnRevisar){
+    const totalRevisar = comentariosCobranza.filter(c => c.fecha_gestion_confianza === 'revisar_manual').length;
+    btnRevisar.textContent = bitacoraSoloRevisarFecha ? '← Ver todas' : `⚠️ Ver solo por revisar (${totalRevisar})`;
+    btnRevisar.style.display = (totalRevisar === 0 && !bitacoraSoloRevisarFecha) ? 'none' : '';
+  }
+  document.getElementById('bitGestionesTitulo').textContent = bitacoraSoloRevisarFecha
+    ? 'Comentarios con fecha de seguimiento por revisar'
+    : bitacoraFiltroCliente ? `Gestiones de ${bitacoraFiltroCliente}` : 'Historial de gestiones (chatter)';
+  document.getElementById('bitGestionesNota').textContent = bitacoraSoloRevisarFecha
+    ? 'El texto menciona una fecha de seguimiento, pero fue ambigua para detectarla automáticamente.'
+    : bitacoraFiltroCliente
+      ? 'Solo gestiones de esta factura.'
+      : 'Últimas gestiones registradas, todos los clientes — más reciente primero.';
   const lista = document.getElementById('bitacoraGeneralLista');
   if(!hilo.length){
     lista.innerHTML = '<div class="oc-detail-empty">Sin gestiones registradas todavía.</div>';
@@ -3497,6 +3517,7 @@ function renderBitacoraGeneral(){
         <div style="font-size:13px; color:var(--ink); white-space:pre-wrap;">${escapeHTML(c.texto)}</div>
         ${c.monto_prometido ? `<div style="font-size:11px; color:var(--good); margin-top:5px; font-weight:600;">💵 Monto prometido: ${fmtMoney(c.monto_prometido)}</div>` : ''}
         ${c.fecha_proxima_gestion ? `<div style="font-size:11px; color:var(--projected); margin-top:3px; font-weight:600;">📅 Fecha comprometida: ${fmtDate(new Date(c.fecha_proxima_gestion+'T00:00:00')).split('-').reverse().join('/')}${c.alerta_enviada?' (ya avisada)':''}</div>` : ''}
+        ${c.fecha_gestion_confianza === 'revisar_manual' ? `<div style="font-size:11px; color:#9A3412; background:#FFF7ED; border:1px solid #FDBA74; border-radius:5px; padding:4px 8px; margin-top:5px; font-weight:600;" title="El texto menciona una posible fecha de seguimiento, pero es ambigua o poco clara — revísala y, si corresponde, regístrala manualmente desde el formulario de la izquierda.">⚠️ Revisar fecha de seguimiento</div>` : ''}
         ${m && !bitacoraFiltroOdooId ? `<div style="margin-top:6px;"><button type="button" class="btn-bit-ver-factura" data-mid="${m.id}" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:3px 9px; cursor:pointer; font-size:11px;">Filtrar por esta factura</button></div>` : ''}
       </div>`;
     }).join('');
