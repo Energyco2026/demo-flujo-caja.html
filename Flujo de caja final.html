@@ -905,13 +905,29 @@ const CORREOS_AUTORIZADOS = new Set([
 const CORREOS_COBRANZAS = new Set([
   'rperalta@energycontrolsa.com',
 ]);
-let rolActual = null; // 'completo' | 'cobranzas'
+// Rol "cobranzas_limitado": mismo permiso de edición que "cobranzas" (solo
+// CxC), pero además NO ve las pestañas Flujo de caja ni Presupuesto por
+// Proyecto — solo Rotación CxC/CxP y Cobranzas.
+const CORREOS_COBRANZAS_LIMITADO = new Set([
+  'mpineyro@energycontrolsa.com',
+]);
+let rolActual = null; // 'completo' | 'cobranzas' | 'cobranzas_limitado'
+
+function correoAutorizado(email){
+  return CORREOS_AUTORIZADOS.has(email) || CORREOS_COBRANZAS.has(email) || CORREOS_COBRANZAS_LIMITADO.has(email);
+}
+function rolDeCorreo(email){
+  if(CORREOS_AUTORIZADOS.has(email)) return 'completo';
+  if(CORREOS_COBRANZAS.has(email)) return 'cobranzas';
+  if(CORREOS_COBRANZAS_LIMITADO.has(email)) return 'cobranzas_limitado';
+  return null;
+}
 
 // Determina si el usuario actual puede editar un movimiento dado.
 // Rol completo: puede editar cualquiera. Rol cobranzas: solo CxC.
 function puedeEditar(m){
   if(rolActual === 'completo') return true;
-  if(rolActual === 'cobranzas') return /Cuentas por Cobrar/i.test((m && m.cuenta) || '');
+  if(rolActual === 'cobranzas' || rolActual === 'cobranzas_limitado') return /Cuentas por Cobrar/i.test((m && m.cuenta) || '');
   return false;
 }
 // Para acciones que no son de un movimiento en particular (OC, formas de
@@ -958,7 +974,7 @@ async function intentarLogin(){
   const password = document.getElementById('loginPassword').value;
   const errorEl = document.getElementById('loginError');
   errorEl.style.display = 'none';
-  if(!CORREOS_AUTORIZADOS.has(email) && !CORREOS_COBRANZAS.has(email)){
+  if(!correoAutorizado(email)){
     errorEl.textContent = 'Este correo no está autorizado para entrar al dashboard.';
     errorEl.style.display = 'block';
     return;
@@ -970,14 +986,14 @@ async function intentarLogin(){
     return;
   }
   const emailReal = (data.user?.email || '').toLowerCase();
-  if(!data.user || (!CORREOS_AUTORIZADOS.has(emailReal) && !CORREOS_COBRANZAS.has(emailReal))){
+  if(!data.user || !correoAutorizado(emailReal)){
     await sb.auth.signOut();
     errorEl.textContent = 'Este usuario no está autorizado para entrar al dashboard.';
     errorEl.style.display = 'block';
     return;
   }
   usuarioActual = emailReal;
-  rolActual = CORREOS_AUTORIZADOS.has(emailReal) ? 'completo' : 'cobranzas';
+  rolActual = rolDeCorreo(emailReal);
   mostrarDashboard();
 }
 
@@ -986,10 +1002,25 @@ function mostrarDashboard(){
   document.getElementById('dashboard').style.display = 'block';
   // Por defecto se muestran todas; el usuario puede aislar las vencidas o excluirlas.
   document.getElementById('filtroVencimiento').value = 'todas';
-  // Rol cobranzas: no agrega movimientos manuales (no es parte de su alcance).
+  // Rol cobranzas y cobranzas_limitado: no agregan movimientos manuales.
   if(!esRolCompleto()){
     const btnManual = document.getElementById('btnAgregarManual');
     if(btnManual) btnManual.style.display = 'none';
+  }
+  // Rol cobranzas_limitado: solo ve Rotación CxC/CxP y Cobranzas — se
+  // ocultan los botones de Flujo de caja y Presupuesto por Proyecto, y
+  // entra directo a Rotación CxC/CxP en vez de Flujo de caja.
+  if(rolActual === 'cobranzas_limitado'){
+    document.querySelectorAll('.view-tab').forEach(btn=>{
+      if(btn.dataset.view === 'flujo' || btn.dataset.view === 'presupuesto'){
+        btn.style.display = 'none';
+      }
+    });
+    document.querySelectorAll('.view-tab').forEach(b=>b.classList.toggle('active', b.dataset.view === 'indices'));
+    document.getElementById('vistaFlujo').style.display = 'none';
+    document.getElementById('vistaIndices').style.display = '';
+    document.getElementById('vistaPresupuesto').style.display = 'none';
+    document.getElementById('vistaCobranzas').style.display = 'none';
   }
   cargarDatos();
 }
@@ -1000,9 +1031,9 @@ document.getElementById('loginPassword').addEventListener('keydown', e=>{ if(e.k
 // Si ya había una sesión activa (recargaste la página), entra directo
 sb.auth.getSession().then(({data})=>{
   const email = (data.session?.user?.email || '').toLowerCase();
-  if(data.session && (CORREOS_AUTORIZADOS.has(email) || CORREOS_COBRANZAS.has(email))){
+  if(data.session && correoAutorizado(email)){
     usuarioActual = email;
-    rolActual = CORREOS_AUTORIZADOS.has(email) ? 'completo' : 'cobranzas';
+    rolActual = rolDeCorreo(email);
     mostrarDashboard();
   }
   else if(data.session) sb.auth.signOut();
@@ -1280,6 +1311,10 @@ async function cargarDatos(){
     renderOC();
     prepararPresupuestos();
     cargarAuditoria();
+    // Rol cobranzas_limitado entra directo a Rotación CxC/CxP — esa vista
+    // solo se renderiza normalmente al hacer clic en su pestaña, así que
+    // hay que forzarla aquí.
+    if(rolActual === 'cobranzas_limitado') renderIndices();
   } catch(err){
     console.error(err);
     estado.textContent = 'Error de conexión — clic para reintentar';
@@ -3423,7 +3458,7 @@ function aplicarFiltroBitacora(m){
   if(select.querySelector(`option[value="${m.id}"]`)) select.value = m.id;
   document.getElementById('bitacoraTitle').textContent = `Gestión de cobranza · ${m.proveedor || m.concepto || ''}`;
   document.getElementById('bitacoraSubtitle').textContent = (m.concepto || '') + (m.terminosPago ? ` — Forma de cobro: ${m.terminosPago}` : '');
-  document.getElementById('btnVerEnFlujo').style.display = '';
+  document.getElementById('btnVerEnFlujo').style.display = (rolActual === 'cobranzas_limitado') ? 'none' : '';
   renderBitacora();
 }
 function limpiarFiltroBitacora(){
@@ -3441,6 +3476,7 @@ function limpiarFiltroBitacora(){
 // puede confirmar de un vistazo si la fecha que se acaba de mover en
 // Cobranzas quedó reflejada en el flujo general.
 function verGestionEnFlujoGeneral(){
+  if(rolActual === 'cobranzas_limitado') return; // este rol no tiene acceso a Flujo de caja
   const factura = bitacoraFiltroFactura;
   if(!factura) return;
   cerrarBitacora();
