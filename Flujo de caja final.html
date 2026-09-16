@@ -2281,12 +2281,35 @@ function renderCarteraPorCliente(){
       .sort((a,b)=>(b.fechaFactura?.getTime()||0)-(a.fechaFactura?.getTime()||0))
       .map(m=>{
         const dias = diasDesdeFactura(m);
-        return `<div style="display:flex; align-items:center; gap:10px; padding:6px 8px;">
+        // Igual que en renderServiciosLista: fecha/banco/monto editables y
+        // botón "Marcar pagado hoy" para quien tenga permiso de editar este
+        // movimiento (rol completo o rol cobranzas/cobranzas_servicios sobre
+        // sus propias facturas de CxC).
+        const editable = m.estado === 'proyectado' && puedeEditar(m);
+        let camposEditables = '';
+        if(editable){
+          const bancosValidos = bancosDePagoValidos();
+          const bancoActualEsValido = bancosValidos.includes(m.banco);
+          const opcionesBanco = [
+            `<option value="" ${bancoActualEsValido ? '' : 'selected'}>Selecciona un banco</option>`,
+            ...bancosValidos.map(b => `<option value="${b.replace(/"/g,'&quot;')}" ${b===m.banco?'selected':''}>${b}</option>`)
+          ].join('');
+          camposEditables = `
+            <input type="date" class="nums" value="${fmtDate(m.fecha)}" data-id="${m.id}" title="Fecha de pago proyectada" style="width:128px; border:1px solid var(--projected); border-radius:6px; padding:3px 5px; font-size:12px;">
+            <select class="nums" data-banco-id="${m.id}" title="Banco" style="font-size:12px; border:1px solid var(--projected); border-radius:6px; padding:3px 5px; max-width:130px;">${opcionesBanco}</select>
+            <input type="number" step="0.01" class="nums" data-monto-id="${m.id}" value="${m.monto}" title="Monto" style="width:85px; border:1px solid var(--projected); border-radius:6px; padding:3px 5px; font-size:12px;">
+            ${m.pagadoManual
+              ? `<span class="pago-manual-badge" style="font-size:11px;">✓ Pagado hoy <button type="button" class="btn-deshacer" data-undo-id="${m.id}">deshacer</button></span>`
+              : `<button type="button" class="btn-marcar-pagado" data-marcar-id="${m.id}">Marcar pagado hoy</button>`}
+          `;
+        }
+        return `<div style="display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:6px 8px; border-bottom:1px dashed var(--line);">
           <span style="width:8px; height:8px; border-radius:50%; background:${colorPorAntiguedad(dias)}; flex-shrink:0;"></span>
-          <span style="flex:1; font-size:13px;">${escapeHTML(extraerNumeroFactura(m.concepto) || m.concepto || '')}</span>
+          <span style="flex:1; min-width:120px; font-size:13px;">${escapeHTML(extraerNumeroFactura(m.concepto) || m.concepto || '')}</span>
           <span style="font-size:12px; color:var(--muted); width:90px;">${m.fechaFactura ? fmtDate(m.fechaFactura).split('-').reverse().join('/') : '—'}</span>
           <span style="font-size:12px; color:var(--muted); width:70px;">${dias != null ? dias+' días' : '—'}</span>
           <span style="font-size:13px; width:90px; text-align:right;">${fmtMoney(m.monto)}</span>
+          ${camposEditables}
           <span style="white-space:nowrap;">${botonComentario(m)}</span>
         </div>`;
       }).join('');
@@ -2317,6 +2340,10 @@ function renderCarteraPorCliente(){
       if(m) abrirComentarios(m);
     });
   });
+  // Conecta los campos de fecha/banco/monto y el botón "Marcar pagado hoy"
+  // recién insertados con la misma lógica de guardado que ya usa el Flujo
+  // de caja (igual que hace renderServiciosLista).
+  attachHandlers();
 }
 document.getElementById('carteraClienteBuscador')?.addEventListener('input', e=>{
   carteraClienteBusqueda = e.target.value.trim();
