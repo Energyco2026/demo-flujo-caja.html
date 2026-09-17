@@ -1078,20 +1078,23 @@ async function fetchTabla(nombre, query=""){
 async function cargarAuditoria(){
   const banner = document.getElementById('bannerAuditoria');
   try{
-    const [dup, mism] = await Promise.all([
+    const [dup, mism, cheq] = await Promise.all([
       sb.from('alertas_sistema').select('*').eq('tipo','duplicado_bnk_payment').order('corrida_en',{ascending:false}).limit(1).maybeSingle(),
       sb.from('alertas_sistema').select('*').eq('tipo','proveedor_distinto_po').order('corrida_en',{ascending:false}).limit(1).maybeSingle(),
+      sb.from('alertas_sistema').select('*').eq('tipo','cheque_a_fecha').order('corrida_en',{ascending:false}).limit(1).maybeSingle(),
     ]);
-    const alertas = [dup.data, mism.data].filter(a => a && a.cantidad > 0);
+    const alertas = [dup.data, mism.data, cheq.data].filter(a => a && a.cantidad > 0);
     if(alertas.length === 0){ banner.style.display = 'none'; return; }
 
     const etiquetas = {
       duplicado_bnk_payment: 'posible(s) pago(s) contado(s) dos veces (banco y account.payment)',
       proveedor_distinto_po: 'pago(s) con proveedor distinto al actual de su Orden de Compra',
+      cheque_a_fecha: 'cheque(s) a fecha por vencer en los próximos 15 días (o ya vencidos, sin cobrar)',
     };
     const camposPorTipo = {
       duplicado_bnk_payment: [['concepto','Concepto'],['proveedor','Proveedor'],['banco','Banco'],['monto','Monto'],['fecha','Fecha']],
       proveedor_distinto_po: [['pen','N.° PEN'],['proveedor_en_pago','Proveedor en el pago'],['proveedor_actual_oc','Proveedor actual de la OC'],['monto','Monto'],['fecha','Fecha']],
+      cheque_a_fecha: [['numero','N.° Cheque'],['beneficiario','Beneficiario'],['banco','Banco'],['monto','Monto'],['fecha','Fecha cobro'],['estado','Estado']],
     };
     banner.style.display = 'block';
     banner.innerHTML = `
