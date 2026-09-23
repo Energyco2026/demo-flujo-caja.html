@@ -1854,6 +1854,7 @@ function render(){
   filasVisiblesParaExportar = []; // se llena abajo, solo con lo que pasa todos los filtros
 
   let entradas30 = 0, salidas30 = 0;
+  let saldoDia30 = saldoActual; // saldo real al día 30 (hoy + próximos 30 días, incluye vencidas)
   const chartPoints = [{x: fmtDate(HOY), y: saldoActual}];
 
   sorted.forEach(m=>{
@@ -1862,8 +1863,11 @@ function render(){
     // El saldo real ya incluye todo lo ejecutado. Lo proyectado con fecha futura mueve el saldo hacia adelante.
     // Lo vencido NO se suma de golpe al día de hoy (evita que el gráfico "caiga" simulando que se paga todo hoy).
     if(m.estado === 'proyectado' && !esVencida) running += m.monto;
-    if(m.estado === 'proyectado' && m.fecha > HOY && m.fecha <= addDays(HOY,30)){
+    // Desde HOY (incluye las vencidas que se corren a hoy) hasta el día 30,
+    // para que Saldo actual + Entradas - Salidas = Saldo día 30.
+    if(m.estado === 'proyectado' && m.fecha >= HOY && m.fecha <= addDays(HOY,30)){
       if(m.monto > 0) entradas30 += m.monto; else salidas30 += Math.abs(m.monto);
+      saldoDia30 += m.monto;
     }
     if(m.fecha >= HOY) chartPoints.push({x: fmtDate(m.fecha), y: running});
 
@@ -1967,8 +1971,8 @@ function render(){
   document.getElementById('kpiIn').textContent = '+' + fmtMoney(entradas30);
   document.getElementById('kpiOut').textContent = '-' + fmtMoney(salidas30);
   const kpiFinal = document.getElementById('kpiFinal');
-  kpiFinal.textContent = fmtMoney(running);
-  kpiFinal.className = 'kpi-val nums ' + (running < saldoActual ? '' : 'good');
+  kpiFinal.textContent = fmtMoney(saldoDia30);
+  kpiFinal.className = 'kpi-val nums ' + (saldoDia30 < 0 ? 'bad' : 'good');
 
   // Gráfico de Saldo acumulado desactivado a pedido de la usuaria (dejaba de aportar con tantos pasivos proyectados)
   // try{ drawChart(chartPoints); }
