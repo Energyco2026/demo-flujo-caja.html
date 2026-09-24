@@ -413,7 +413,7 @@
         <button type="button" id="btnAgregarManual" title="Agregar movimiento manual" style="width:24px; height:24px; border-radius:50%; border:1px solid var(--navy); background:var(--navy); color:#fff; font-size:15px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0;">+</button>
       </div>
       <div class="panel-note" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-        <span><span class="badge exec toggle-estado" id="badgeExec" title="Clic para mostrar u ocultar">EJECUTADO</span> &nbsp;<span class="badge proj toggle-estado" id="badgeProy" title="Clic para mostrar u ocultar">PROYECTADO</span></span>
+        <span><span class="badge exec toggle-estado" id="badgeExec" title="Clic para mostrar u ocultar">EJECUTADO</span> &nbsp;<span class="badge proj toggle-estado" id="badgeProy" title="Clic para mostrar u ocultar">PROYECTADO</span> &nbsp;<span class="badge toggle-estado" id="badgeCruces" title="Cruces de anticipo: no mueven dinero del banco (el anticipo ya se pagó/cobró antes). Clic para mostrar u ocultar" style="background:#EAF0FC; color:var(--navy);">CRUCES ANTICIPO</span></span>
         <span style="display:flex; align-items:center; gap:6px; position:relative;">
           Mes:
           <button type="button" id="btnFiltroMes" style="font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px; background:#fff; color:var(--ink); cursor:pointer; min-width:150px; text-align:left;">Todos los meses</button>
@@ -1129,6 +1129,7 @@ const NOMBRE_CATEGORIA_OBLIGACION = Object.fromEntries(CATEGORIAS_OBLIGACION.map
 // unificado), cuenta contable y concepto, en este orden de prioridad.
 function categoriaObligacion(m){
   if(!m || !(m.monto < 0)) return null;
+  if(esCruceAnticipo(m)) return null; // no es salida de caja
   const sinTildes = v => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const prov = sinTildes(m.proveedor);
   const cuenta = sinTildes(m.cuenta);
@@ -1779,6 +1780,9 @@ function etiquetaPO(m){
 
 let mostrarEjecutados = true;
 let mostrarProyectados = true;
+// Los cruces de anticipo no son movimientos de caja: se ocultan por defecto.
+let mostrarCruces = false;
+function esCruceAnticipo(m){ return String((m && m.origen) || '').startsWith('cruce_anticipo'); }
 
 function render(){
   const selPO = document.getElementById('filtroPO');
@@ -1801,6 +1805,9 @@ function render(){
   badgeProy.classList.toggle('badge-off', !mostrarProyectados);
   badgeExec.onclick = ()=>{ mostrarEjecutados = !mostrarEjecutados; render(); };
   badgeProy.onclick = ()=>{ mostrarProyectados = !mostrarProyectados; render(); };
+  const badgeCruces = document.getElementById('badgeCruces');
+  badgeCruces.classList.toggle('badge-off', !mostrarCruces);
+  badgeCruces.onclick = ()=>{ mostrarCruces = !mostrarCruces; render(); };
 
   const valBanco = selBanco.value;
   poblarFiltroMes(movimientos);
@@ -1873,6 +1880,7 @@ function render(){
 
     const poLabel = etiquetaPO(m);
     if(!mesesSeleccionados.has(claveMes(m.fecha))) return;
+    if(!mostrarCruces && esCruceAnticipo(m)) return;
     if(!mostrarEjecutados && m.estado === 'ejecutado') return;
     if(!mostrarProyectados && m.estado === 'proyectado') return;
     if(!coincideFiltroTexto(poLabel, fPO)) return;
