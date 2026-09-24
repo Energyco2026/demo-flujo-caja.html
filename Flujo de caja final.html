@@ -330,6 +330,15 @@
   .btn-negociar{border:1px solid var(--navy); background:#fff; color:var(--navy); border-radius:6px; padding:4px 9px; font-size:11.5px; font-weight:600; cursor:pointer; white-space:nowrap;}
   .btn-negociar:hover{background:var(--navy); color:#fff;}
   .obl-nego-nota{font-size:10.5px; color:var(--projected); margin-top:3px; max-width:240px;}
+
+  /* ---------- Filtros de lista con selección múltiple ---------- */
+  .mf-btn{font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px; background:#fff; color:var(--ink); cursor:pointer; max-width:320px; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .mf-btn.activo{border-color:var(--navy); box-shadow:inset 0 0 0 1px var(--navy);}
+  .mf-panel{position:absolute; top:calc(100% + 4px); left:0; z-index:60; background:#fff; border:1px solid var(--line); border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,.14); padding:8px; width:380px; text-transform:none; letter-spacing:0;}
+  .mf-buscar{width:100%; box-sizing:border-box; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:6px 8px; margin-bottom:6px;}
+  .mf-acciones{display:flex; justify-content:space-between; gap:6px; margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid var(--line);}
+  .mf-lista{max-height:300px; overflow:auto;}
+  .mf-nota{font-size:11px; color:var(--muted); padding:6px 2px;}
 </style>
 </head>
 <body>
@@ -425,23 +434,63 @@
             <div id="listaMeses"></div>
           </div>
         </span>
-        <span style="display:flex; align-items:center; gap:6px;">P.O.: <input type="text" id="filtroPO" list="listaPO" placeholder="Todas (escribe para filtrar)" style="min-width:140px; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px;"><datalist id="listaPO"></datalist></span>
-        <span style="display:flex; align-items:center; gap:6px;">Banco: <select id="filtroBanco"></select></span>
-        <span style="display:flex; align-items:center; gap:6px;">Concepto: <input type="text" id="filtroConcepto" placeholder="Todos (escribe para filtrar)" style="min-width:200px; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px;"></span>
-        <span style="display:flex; align-items:center; gap:6px;">N.° Factura: <input type="text" id="filtroFactura" placeholder="Buscar por número de factura" style="min-width:180px; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px;"></span>
-        <span style="display:flex; align-items:center; gap:6px; position:relative;">Proveedor:
-          <button type="button" id="btnFiltroProveedor" style="font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px; background:#fff; color:var(--ink); cursor:pointer; min-width:220px; max-width:320px; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Todos los proveedores ▾</button>
-          <div id="panelFiltroProveedor" style="display:none; position:absolute; top:calc(100% + 4px); left:70px; z-index:50; background:#fff; border:1px solid var(--line); border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,.14); padding:8px; width:340px;">
-            <input type="text" id="buscarProveedor" placeholder="Escribe para buscar…" autocomplete="off" style="width:100%; box-sizing:border-box; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:6px 8px; margin-bottom:6px;">
-            <div style="display:flex; justify-content:space-between; gap:6px; margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid var(--line);">
-              <button type="button" id="provMarcarVisibles" class="prov-link">Marcar los que se ven</button>
-              <button type="button" id="provLimpiar" class="prov-link" style="color:var(--muted);">Quitar filtro (todos)</button>
+        <span class="mf" style="display:flex; align-items:center; gap:6px; position:relative;">P.O.:
+          <button type="button" class="mf-btn" id="mfBtn_po" style="min-width:150px;">Todas ▾</button>
+          <div class="mf-panel" id="mfPanel_po" style="display:none;">
+            <input type="text" class="mf-buscar" id="mfBuscar_po" placeholder="Escribe para buscar…" autocomplete="off">
+            <div class="mf-acciones">
+              <button type="button" class="prov-link" id="mfMarcar_po">Marcar los que se ven</button>
+              <button type="button" class="prov-link" id="mfLimpiar_po" style="color:var(--muted);">Quitar filtro (todos)</button>
             </div>
-            <div id="listaProveedoresChk" style="max-height:280px; overflow:auto;"></div>
+            <div class="mf-lista" id="mfLista_po"></div>
+          </div>
+        </span>
+        <span style="display:flex; align-items:center; gap:6px;">Banco: <select id="filtroBanco"></select></span>
+        <span class="mf" style="display:flex; align-items:center; gap:6px; position:relative;">Concepto:
+          <button type="button" class="mf-btn" id="mfBtn_concepto" style="min-width:200px;">Todos ▾</button>
+          <div class="mf-panel" id="mfPanel_concepto" style="display:none;">
+            <input type="text" class="mf-buscar" id="mfBuscar_concepto" placeholder="Escribe para buscar…" autocomplete="off">
+            <div class="mf-acciones">
+              <button type="button" class="prov-link" id="mfMarcar_concepto">Marcar los que se ven</button>
+              <button type="button" class="prov-link" id="mfLimpiar_concepto" style="color:var(--muted);">Quitar filtro (todos)</button>
+            </div>
+            <div class="mf-lista" id="mfLista_concepto"></div>
+          </div>
+        </span>
+        <span class="mf" style="display:flex; align-items:center; gap:6px; position:relative;">N.° Factura:
+          <button type="button" class="mf-btn" id="mfBtn_factura" style="min-width:170px;">Todas ▾</button>
+          <div class="mf-panel" id="mfPanel_factura" style="display:none;">
+            <input type="text" class="mf-buscar" id="mfBuscar_factura" placeholder="Escribe para buscar…" autocomplete="off">
+            <div class="mf-acciones">
+              <button type="button" class="prov-link" id="mfMarcar_factura">Marcar los que se ven</button>
+              <button type="button" class="prov-link" id="mfLimpiar_factura" style="color:var(--muted);">Quitar filtro (todos)</button>
+            </div>
+            <div class="mf-lista" id="mfLista_factura"></div>
+          </div>
+        </span>
+        <span class="mf" style="display:flex; align-items:center; gap:6px; position:relative;">Proveedor:
+          <button type="button" class="mf-btn" id="mfBtn_proveedor" style="min-width:220px;">Todos ▾</button>
+          <div class="mf-panel" id="mfPanel_proveedor" style="display:none;">
+            <input type="text" class="mf-buscar" id="mfBuscar_proveedor" placeholder="Escribe para buscar…" autocomplete="off">
+            <div class="mf-acciones">
+              <button type="button" class="prov-link" id="mfMarcar_proveedor">Marcar los que se ven</button>
+              <button type="button" class="prov-link" id="mfLimpiar_proveedor" style="color:var(--muted);">Quitar filtro (todos)</button>
+            </div>
+            <div class="mf-lista" id="mfLista_proveedor"></div>
           </div>
         </span>
         <span id="totalProveedorFiltrado" class="nums" style="display:none; font-size:12px; font-weight:600; color:var(--bad); background:var(--bad-bg); border-radius:6px; padding:5px 10px;"></span>
-        <span style="display:flex; align-items:center; gap:6px;">Cuenta contable: <input type="text" id="filtroCuenta" list="listaCuentas" placeholder="Todas (escribe para filtrar)" style="min-width:220px; font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px;"><datalist id="listaCuentas"></datalist></span>
+        <span class="mf" style="display:flex; align-items:center; gap:6px; position:relative;">Cuenta contable:
+          <button type="button" class="mf-btn" id="mfBtn_cuenta" style="min-width:220px;">Todas ▾</button>
+          <div class="mf-panel" id="mfPanel_cuenta" style="display:none;">
+            <input type="text" class="mf-buscar" id="mfBuscar_cuenta" placeholder="Escribe para buscar…" autocomplete="off">
+            <div class="mf-acciones">
+              <button type="button" class="prov-link" id="mfMarcar_cuenta">Marcar los que se ven</button>
+              <button type="button" class="prov-link" id="mfLimpiar_cuenta" style="color:var(--muted);">Quitar filtro (todos)</button>
+            </div>
+            <div class="mf-lista" id="mfLista_cuenta"></div>
+          </div>
+        </span>
         <span style="display:flex; align-items:center; gap:6px;">Desde: <input type="date" id="filtroFechaDesde"></span>
         <span style="display:flex; align-items:center; gap:6px;">Hasta: <input type="date" id="filtroFechaHasta"></span>
         <span style="display:flex; align-items:center; gap:6px;">Vencimiento:
@@ -1102,6 +1151,11 @@ const ALIAS_PROVEEDOR = [
   { patron: /^banco procredit/, nombre: 'BANCO PROCREDIT S.A.' },
   { patron: /^(banco de la produccion|produbanco)/, nombre: 'PRODUBANCO' },
   { patron: /municipalidad de guayaquil|municipal de guayaquil/, nombre: 'MUNICIPIO DE GUAYAQUIL' },
+  // Errores de tipeo de contactos en Odoo (misma persona/empresa):
+  { patron: /^industrias? dacar/, nombre: 'INDUSTRIA DACAR CIA. LTDA.' },
+  { patron: /^quichimbo h?idrovo hugo alfredo/, nombre: 'Quichimbo Hidrovo Hugo Alfredo' },
+  { patron: /^martines rosas carlos eduardo/, nombre: 'CARLOS EDUARDO MARTINEZ ROSAS' },
+  { patron: /^jessica epinoza espana/, nombre: 'ESPINOZA ESPAÑA JESSICA TATIANA' },
 ];
 function normalizarProveedor(nombre){
   const limpio = String(nombre || '').trim();
@@ -1110,6 +1164,109 @@ function normalizarProveedor(nombre){
   const alias = ALIAS_PROVEEDOR.find(a => a.patron.test(comparable));
   return alias ? alias.nombre : limpio;
 }
+
+// Los hitos de cobro vienen del Excel de Control Operativo con el nombre
+// corto del proyecto ("ECUAHIELO", "DULCAFE SA", "Eco. Eduardo Jurado"...).
+// Se reemplaza por el cliente real de Odoo según el número de P.O.
+// (mismo mapeo MAPEO_PO_CLIENTE de sync_hitos_cobro.py).
+const CLIENTE_ODOO_POR_PO = {
+  '1697': 'FUNDACION COLEGIO AMERICANO DE QUITO',
+  '1704': 'VITA ALIMENTOS C.A.',
+  '1727': 'ECUAHIELO S.A.',
+  '1733': 'LANAFIT SA',
+  '1734': 'INDUSTRIAL TEXTILANA S.A.',
+  '1741': 'PINTURAS UNIDAS S.A.',
+  '1789': 'ECUABALPRO S.A.',
+  '1804': 'DULCAFE S.A.',
+  '1895': 'ALIDULCAF S.A.S.',
+  // '1898' no se mapea: el hito de Entrega de Medidor B lo paga Eco. Eduardo Jurado, no Electrónica Siglo XXI.
+  '1899': 'ENVASUR ENVASES SURAMERICANOS S.A.',
+  '1957': 'INTERMEDIARIA DE VENTAS SUPER BAHIA SUBAHI SOCIEDAD ANONIMA',
+  '1961': 'COLEGIOS DE ECUADOR COLDEC S.A.S.',
+  '2039': 'Consorcio Ecuatoriano de Telecomunicaciones, S.A. Conecel',
+  '2094': 'ECUAHIELO S.A.',
+  '2148': 'GRAFICOS NACIONALES SA GRANASA',
+};
+function clienteDeHito(m){
+  if(!m || m.origen !== 'hito_cobro_manual') return null;
+  const numero = (String(m.proyecto_codigo || '').match(/\d{3,5}/) || [])[0];
+  return numero ? (CLIENTE_ODOO_POR_PO[numero] || null) : null;
+}
+
+// ------------------------------------------------------------
+// Unificación AUTOMÁTICA del resto de nombres duplicados
+// ------------------------------------------------------------
+// Junta en un solo nombre las variantes del mismo tercero:
+//  1) Mismas palabras sin importar mayúsculas, tildes, puntuación, orden ni
+//     sufijos societarios ("Brito Ortega Ruben Francisco" = "BRITO ORTEGA
+//     RUBEN FRANCISCO"; "DULCAFE SA" = "DULCAFE S.A."; "Maximo Geovanny
+//     Anchundia Uriña" = "Anchundia Uriña Maximo Geovanny").
+//  2) Nombre corto contenido en UN SOLO nombre largo ("Contecon" →
+//     "CONTECON GUAYAQUIL S.A."). Si el corto calza en dos o más nombres
+//     largos, NO se une (ej. "Carlos Martinez" podría ser dos personas).
+// Se muestra el nombre que más aparece en Odoo. Para separar dos nombres que
+// se unieron por error, agrega cualquiera de los dos a NO_UNIR_PROVEEDORES.
+const NO_UNIR_PROVEEDORES = [
+  'SAXIMAN S. A.', // distinto de SAXIMAN.LOGISTIC INC S.A. (confirmar)
+];
+const PALABRAS_SOCIETARIAS = new Set(['s','a','sa','sas','c','ca','cia','ltda','cltda','compania','sociedad','anonima','inc','llc','ltd','co','matriz','sc','scc','ep','de','del','la','el','los','las','y','e','eco','ing','arq','dr','dra','lcdo','econ']);
+const PALABRAS_GENERICAS = new Set(['banco','empresa','corporacion','comercial','industrial','industria','industrias','servicios','consorcio','inmobiliaria','grupo','energy','energia','solar','ecuador','ecuatoriana','ecuatoriano','internacional','seguros','transporte','constructora','consultores','asociados','fundacion','agencia','distribuidora','compania','club','diners','visa','pacifico','pichincha','guayaquil','quito']);
+
+function palabrasProveedor(nombre){
+  return String(nombre || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9ñ]+/g, ' ')
+    .split(' ')
+    .filter(p => p && !PALABRAS_SOCIETARIAS.has(p));
+}
+
+function unificarNombresProveedores(lista){
+  const excluidos = new Set(NO_UNIR_PROVEEDORES.map(n => palabrasProveedor(n).sort().join(' ')));
+  // Conteo por nombre, dando más peso a los que vienen de Odoo.
+  const peso = new Map();
+  lista.forEach(m => {
+    if(!m.proveedor) return;
+    const w = (m.origen === 'manual' || m.origen === 'hito_cobro_manual') ? 1 : 1000;
+    peso.set(m.proveedor, (peso.get(m.proveedor) || 0) + w);
+  });
+  // 1) Agrupar por conjunto de palabras.
+  const grupos = new Map(); // clave -> {palabras:Set, nombres:Map(nombre->peso)}
+  peso.forEach((w, nombre) => {
+    const palabras = palabrasProveedor(nombre);
+    const clave = [...new Set(palabras)].sort().join(' ');
+    if(!clave) return;
+    if(!grupos.has(clave)) grupos.set(clave, { clave, palabras: new Set(palabras), nombres: new Map() });
+    grupos.get(clave).nombres.set(nombre, w);
+  });
+  // 2) Unir un grupo corto dentro de un único grupo largo que lo contenga.
+  const lista_g = [...grupos.values()];
+  const destino = new Map(); // clave corta -> grupo largo
+  lista_g.forEach(g => {
+    if(excluidos.has(g.clave)) return;
+    const distintivas = [...g.palabras].filter(p => p.length >= 5 && !PALABRAS_GENERICAS.has(p) && !/^\d+$/.test(p));
+    if(!distintivas.length) return;
+    const contenedores = lista_g.filter(o => o !== g && !excluidos.has(o.clave) &&
+      o.palabras.size > g.palabras.size && [...g.palabras].every(p => o.palabras.has(p)));
+    if(contenedores.length === 1) destino.set(g.clave, contenedores[0]);
+  });
+  // Resolver cadenas (A -> B -> C).
+  const raiz = g => { let x = g, n = 0; while(destino.has(x.clave) && n++ < 10) x = destino.get(x.clave); return x; };
+  const miembros = new Map(); // grupo raíz -> Map(nombre->peso)
+  lista_g.forEach(g => {
+    const r = raiz(g);
+    if(!miembros.has(r)) miembros.set(r, new Map());
+    g.nombres.forEach((w, n) => miembros.get(r).set(n, w));
+  });
+  // Nombre a mostrar: el de más peso (Odoo); en empate, el más largo.
+  const canonico = new Map();
+  miembros.forEach(nombres => {
+    const elegido = [...nombres.entries()].sort((a,b) => b[1] - a[1] || b[0].length - a[0].length)[0][0];
+    nombres.forEach((_, n) => canonico.set(n, elegido.trim()));
+  });
+  lista.forEach(m => { if(m.proveedor && canonico.has(m.proveedor)) m.proveedor = canonico.get(m.proveedor); });
+}
+
 
 // ============================================================
 // Obligaciones financieras (pagos que no se pueden postergar)
@@ -1409,7 +1566,7 @@ async function cargarDatos(){
       .map(m => ({
         id: m.id,
         concepto: m.concepto,
-        proveedor: normalizarProveedor(m.proveedor),
+        proveedor: normalizarProveedor(clienteDeHito(m) || m.proveedor),
         proveedorOriginal: m.proveedor,
         bancoOriginal: m.banco,
         banco: m.banco_manual || m.banco,
@@ -1422,7 +1579,13 @@ async function cargarDatos(){
             obtenerPOComercialDesdeTexto(m.concepto, poComercialUnicoPorNumero) ||
             '',
         cuenta: obtenerCuentaContable(m),
-        analitica: m.proyecto_codigo ? normalizarCodigoProyecto(m.proyecto_codigo) : null,
+        // Si el código viene solo con el número (ej. hitos: "1727"), se usa el
+        // código comercial real de la OC ("1727ER-25") para no duplicar la P.O.
+        analitica: m.proyecto_codigo
+          ? normalizarCodigoProyecto(
+              (/^\s*\d{3,5}\s*$/.test(String(m.proyecto_codigo)) && poComercialUnicoPorNumero[String(m.proyecto_codigo).trim()])
+              || m.proyecto_codigo)
+          : null,
         montoOriginal: Number(m.monto),
         monto: Number(m.monto_manual != null ? m.monto_manual : m.monto),
         esMontoManual: m.monto_manual != null,
@@ -1447,6 +1610,7 @@ async function cargarDatos(){
       // Las facturas con saldo cero no representan una cuenta pendiente y
       // se excluyen tanto del flujo como de los indicadores de cartera.
       .filter(m => Math.abs(m.monto) > 0.005);
+    unificarNombresProveedores(movimientosCartera);
     movimientosCartera.forEach(m => { m.categoriaObligacion = categoriaObligacion(m); });
     // La pestaña principal muestra solamente movimientos desde 2026. La
     // pestaña de cartera mantiene el histórico disponible, sin saldos cero.
@@ -1787,11 +1951,7 @@ let mostrarProyectados = true;
 function esCruceAnticipo(m){ return String((m && m.origen) || '').startsWith('cruce_anticipo'); }
 
 function render(){
-  const selPO = document.getElementById('filtroPO');
   const selBanco = document.getElementById('filtroBanco');
-  const selConcepto = document.getElementById('filtroConcepto');
-  const selFactura = document.getElementById('filtroFactura');
-  const selCuenta = document.getElementById('filtroCuenta');
   const inpDesde = document.getElementById('filtroFechaDesde');
   const inpHasta = document.getElementById('filtroFechaHasta');
   const selVencimiento = document.getElementById('filtroVencimiento');
@@ -1810,31 +1970,23 @@ function render(){
 
   const valBanco = selBanco.value;
   poblarFiltroMes(movimientos);
-  poblarDatalist(document.getElementById('listaPO'), [...new Set(movimientos.map(m => etiquetaPO(m)))].sort());
   poblarSelect(selBanco, [...new Set(movimientos.map(m => m.banco).filter(Boolean))].sort(), render);
-  // Proveedor, Cuenta contable y P.O. son campos de texto: se deja lo que la
-  // usuaria escribió tal cual (no se pisa el valor) y el datalist solo
-  // ofrece sugerencias al escribir, no obliga a elegir el texto exacto.
-  poblarFiltroProveedor(movimientos);
-  poblarDatalist(document.getElementById('listaCuentas'), [...new Set(movimientos.map(m => m.cuenta).filter(Boolean))].sort());
-  selPO.oninput = render;
-  selConcepto.oninput = render;
-  selFactura.oninput = render;
-  selCuenta.oninput = render;
+  // P.O., Concepto, N.° Factura, Proveedor y Cuenta contable: listas
+  // desplegables con selección múltiple (sin cruces de anticipo).
+  const baseFiltros = movimientos.filter(m => !esCruceAnticipo(m));
+  Object.values(FILTROS_MULTI).forEach(f => f.poblar(baseFiltros));
   if(valBanco) selBanco.value = valBanco;
 
-  const fPO = selPO.value.trim();
   const fBanco = selBanco.value || 'Todas';
-  const fConcepto = selConcepto.value.trim();
-  const fFactura = selFactura.value.trim();
-  const hayFiltroProv = proveedoresSeleccionados.size > 0;
+  const filtroProv = FILTROS_MULTI.proveedor;
+  const hayFiltroProv = filtroProv.seleccion.size > 0;
 
   // Total pendiente (proyectado, sin pagar todavía) de los proveedores
   // marcados en el filtro — independiente de los demás filtros de la tabla,
   // para que responda solo a "cuánto le debo/me deben estos proveedores".
   const totalProvEl = document.getElementById('totalProveedorFiltrado');
   if(hayFiltroProv){
-    const pendientesProv = movimientos.filter(m => m.estado === 'proyectado' && proveedoresSeleccionados.has(m.proveedor));
+    const pendientesProv = movimientos.filter(m => m.estado === 'proyectado' && filtroProv.seleccion.has(m.proveedor));
     const totalPagar = pendientesProv.filter(m => m.monto < 0).reduce((s,m)=>s+Math.abs(m.monto), 0);
     const totalCobrar = pendientesProv.filter(m => m.monto > 0).reduce((s,m)=>s+m.monto, 0);
     const partes = [];
@@ -1845,7 +1997,6 @@ function render(){
   } else {
     totalProvEl.style.display = 'none';
   }
-  const fCuenta = selCuenta.value.trim();
   const fDesde = inpDesde.value ? new Date(inpDesde.value + 'T00:00:00') : null;
   const fHasta = inpHasta.value ? new Date(inpHasta.value + 'T23:59:59') : null;
 
@@ -1882,12 +2033,8 @@ function render(){
     if(esCruceAnticipo(m)) return; // asiento contable, no es movimiento de banco
     if(!mostrarEjecutados && m.estado === 'ejecutado') return;
     if(!mostrarProyectados && m.estado === 'proyectado') return;
-    if(!coincideFiltroTexto(poLabel, fPO)) return;
     if(fBanco !== 'Todas' && m.banco !== fBanco) return;
-    if(!coincideFiltroTexto(m.concepto, fConcepto)) return;
-    if(!coincideFiltroTexto(m.concepto, fFactura)) return;
-    if(hayFiltroProv && !proveedoresSeleccionados.has(m.proveedor)) return;
-    if(!coincideFiltroTexto(m.cuenta, fCuenta)) return;
+    if(!Object.values(FILTROS_MULTI).every(f => f.pasa(m))) return;
     if(fDesde && m.fecha < fDesde) return;
     if(fHasta && m.fecha > fHasta) return;
     const filtroVencimiento = selVencimiento.value || 'todas';
@@ -3793,8 +3940,7 @@ function verGestionEnFlujoGeneral(){
   if(!factura) return;
   cerrarBitacora();
   document.querySelector('.view-tab[data-view="flujo"]').click();
-  const inputFactura = document.getElementById('filtroFactura');
-  inputFactura.value = factura;
+  FILTROS_MULTI.factura.seleccionarTexto(factura);
   render();
   document.getElementById('vistaFlujo').scrollIntoView({behavior:'smooth', block:'start'});
 }
@@ -4891,87 +5037,132 @@ document.addEventListener('click', e=>{
 });
 
 // ============================================================
-// Filtro de Proveedor con selección múltiple
+// Filtros de lista desplegable con selección múltiple
+// (P.O., Concepto, N.° Factura, Proveedor, Cuenta contable)
 // ============================================================
-let proveedoresSeleccionados = new Set(); // vacío = todos (sin filtro)
-let proveedoresDisponibles = [];
+// Cada filtro: botón que abre un panel con buscador + casillas. Sin nada
+// marcado = sin filtro (todos). Se puede marcar uno o varios valores.
+const MAX_OPCIONES_VISIBLES = 400; // listas largas (Concepto): escribe para acotar
 
-function poblarFiltroProveedor(lista){
-  proveedoresDisponibles = [...new Set(lista.map(m => m.proveedor).filter(Boolean))]
-    .sort((a,b) => a.localeCompare(b, 'es', {sensitivity:'base'}));
-  // Si un proveedor marcado ya no existe en los datos, se quita del filtro.
-  proveedoresSeleccionados = new Set([...proveedoresSeleccionados].filter(p => proveedoresDisponibles.includes(p)));
-  dibujarListaProveedores();
-  actualizarBotonProveedor();
-}
+function crearFiltroMultiple(clave, cfg){
+  const f = {
+    clave,
+    seleccion: new Set(),
+    disponibles: [],
+    textoTodos: cfg.textoTodos,
+    textoVarios: cfg.textoVarios,
+    valoresDe: cfg.valoresDe, // m -> array de valores del movimiento
+    // Por defecto coincide si alguno de los valores del movimiento está marcado.
+    coincide: cfg.coincide || ((m, sel) => f.valoresDe(m).some(v => sel.has(v))),
+  };
+  const $ = id => document.getElementById(id);
+  const btn = $(`mfBtn_${clave}`), panel = $(`mfPanel_${clave}`);
+  const buscador = $(`mfBuscar_${clave}`), lista = $(`mfLista_${clave}`);
 
-function proveedoresVisiblesEnBusqueda(){
-  const q = normalizarTexto(document.getElementById('buscarProveedor').value.trim());
-  return proveedoresDisponibles.filter(p => !q || normalizarTexto(p).includes(q));
-}
-
-function dibujarListaProveedores(){
-  const cont = document.getElementById('listaProveedoresChk');
-  const visibles = proveedoresVisiblesEnBusqueda();
-  if(!visibles.length){
-    cont.innerHTML = '<div style="font-size:12px; color:var(--muted); padding:6px 2px;">Sin coincidencias</div>';
-    return;
-  }
-  cont.innerHTML = visibles.map(p => `
-    <label class="prov-opcion">
-      <input type="checkbox" data-prov="${escapeHTML(p)}" ${proveedoresSeleccionados.has(p) ? 'checked' : ''}>
-      <span>${escapeHTML(p)}</span>
-    </label>`).join('');
-  cont.querySelectorAll('input[type=checkbox]').forEach(chk=>{
-    chk.addEventListener('change', e=>{
-      const p = e.target.dataset.prov;
-      if(e.target.checked) proveedoresSeleccionados.add(p); else proveedoresSeleccionados.delete(p);
-      actualizarBotonProveedor();
-      render();
+  f.poblar = movs => {
+    const set = new Set();
+    movs.forEach(m => f.valoresDe(m).forEach(v => { if(v != null && String(v).trim()) set.add(String(v)); }));
+    f.disponibles = [...set].sort((a,b) => a.localeCompare(b, 'es', {sensitivity:'base', numeric:true}));
+    // Un valor marcado que ya no existe en los datos se quita del filtro
+    // (excepto los textos puestos por "Ver en flujo general").
+    if(!f.textoLibre) f.seleccion = new Set([...f.seleccion].filter(v => set.has(v)));
+    if(panel.style.display !== 'none') f.dibujar();
+    f.actualizarBoton();
+  };
+  f.visibles = () => {
+    const q = normalizarTexto(buscador.value.trim());
+    return f.disponibles.filter(v => !q || normalizarTexto(v).includes(q));
+  };
+  f.dibujar = () => {
+    const visibles = f.visibles();
+    if(!visibles.length){
+      lista.innerHTML = '<div class="mf-nota">Sin coincidencias</div>';
+      return;
+    }
+    const mostrar = visibles.slice(0, MAX_OPCIONES_VISIBLES);
+    lista.innerHTML = mostrar.map(v => `
+      <label class="prov-opcion">
+        <input type="checkbox" data-valor="${escapeHTML(v)}" ${f.seleccion.has(v) ? 'checked' : ''}>
+        <span>${escapeHTML(v)}</span>
+      </label>`).join('') +
+      (visibles.length > mostrar.length
+        ? `<div class="mf-nota">Mostrando ${mostrar.length} de ${visibles.length}. Escribe para acotar la lista.</div>` : '');
+    lista.querySelectorAll('input[type=checkbox]').forEach(chk=>{
+      chk.addEventListener('change', e=>{
+        const v = e.target.dataset.valor;
+        f.textoLibre = false;
+        if(e.target.checked) f.seleccion.add(v); else f.seleccion.delete(v);
+        f.actualizarBoton();
+        render();
+      });
     });
+  };
+  f.actualizarBoton = () => {
+    const n = f.seleccion.size;
+    btn.textContent = (n === 0 ? f.textoTodos : n === 1 ? [...f.seleccion][0] : `${n} ${f.textoVarios}`) + ' ▾';
+    btn.title = n ? [...f.seleccion].join('\n') : '';
+    btn.classList.toggle('activo', n > 0);
+  };
+  f.pasa = m => f.seleccion.size === 0 || f.coincide(m, f.seleccion);
+  // Usado por "Ver en flujo general" (Cobranzas): marca los valores que
+  // contienen el texto; si ninguno coincide, filtra por el texto tal cual.
+  f.seleccionarTexto = texto => {
+    const q = normalizarTexto(String(texto || '').trim());
+    const coinciden = f.disponibles.filter(v => normalizarTexto(v).includes(q));
+    f.seleccion = new Set(coinciden.length ? coinciden : [String(texto)]);
+    f.textoLibre = !coinciden.length;
+    f.actualizarBoton();
+  };
+
+  btn.addEventListener('click', e=>{
+    e.stopPropagation();
+    const abrir = panel.style.display === 'none';
+    Object.values(FILTROS_MULTI).forEach(o => { if(o !== f) o.cerrar(); });
+    panel.style.display = abrir ? 'block' : 'none';
+    if(abrir){ buscador.value = ''; f.dibujar(); buscador.focus(); }
   });
+  f.cerrar = () => { panel.style.display = 'none'; };
+  buscador.addEventListener('input', f.dibujar);
+  $(`mfMarcar_${clave}`).addEventListener('click', ()=>{
+    f.textoLibre = false;
+    f.visibles().forEach(v => f.seleccion.add(v));
+    f.actualizarBoton(); f.dibujar(); render();
+  });
+  $(`mfLimpiar_${clave}`).addEventListener('click', ()=>{
+    f.textoLibre = false;
+    f.seleccion = new Set();
+    f.actualizarBoton(); f.dibujar(); render();
+  });
+  document.addEventListener('click', e=>{
+    if(panel.style.display !== 'none' && !panel.contains(e.target) && e.target !== btn) f.cerrar();
+  });
+  return f;
 }
 
-function actualizarBotonProveedor(){
-  const btn = document.getElementById('btnFiltroProveedor');
-  const n = proveedoresSeleccionados.size;
-  if(n === 0) btn.textContent = 'Todos los proveedores ▾';
-  else if(n === 1) btn.textContent = [...proveedoresSeleccionados][0] + ' ▾';
-  else btn.textContent = `${n} proveedores seleccionados ▾`;
-  btn.title = n ? [...proveedoresSeleccionados].join('\n') : '';
-  btn.style.borderColor = n ? 'var(--navy)' : 'var(--line)';
-}
-
-document.getElementById('btnFiltroProveedor').addEventListener('click', e=>{
-  e.stopPropagation();
-  const panel = document.getElementById('panelFiltroProveedor');
-  const abrir = panel.style.display === 'none';
-  panel.style.display = abrir ? 'block' : 'none';
-  if(abrir){
-    const buscador = document.getElementById('buscarProveedor');
-    buscador.value = '';
-    dibujarListaProveedores();
-    buscador.focus();
-  }
-});
-document.getElementById('buscarProveedor').addEventListener('input', dibujarListaProveedores);
-document.getElementById('provMarcarVisibles').addEventListener('click', ()=>{
-  proveedoresVisiblesEnBusqueda().forEach(p => proveedoresSeleccionados.add(p));
-  actualizarBotonProveedor();
-  render();
-});
-document.getElementById('provLimpiar').addEventListener('click', ()=>{
-  proveedoresSeleccionados = new Set();
-  actualizarBotonProveedor();
-  render();
-});
-document.addEventListener('click', e=>{
-  const panel = document.getElementById('panelFiltroProveedor');
-  const btn = document.getElementById('btnFiltroProveedor');
-  if(panel.style.display !== 'none' && !panel.contains(e.target) && e.target !== btn){
-    panel.style.display = 'none';
-  }
-});
+const FILTROS_MULTI = {
+  po: crearFiltroMultiple('po', {
+    textoTodos: 'Todas', textoVarios: 'P.O. seleccionadas',
+    valoresDe: m => [etiquetaPO(m)],
+  }),
+  concepto: crearFiltroMultiple('concepto', {
+    textoTodos: 'Todos', textoVarios: 'conceptos seleccionados',
+    valoresDe: m => [m.concepto],
+  }),
+  factura: crearFiltroMultiple('factura', {
+    textoTodos: 'Todas', textoVarios: 'facturas seleccionadas',
+    valoresDe: m => [extraerNumeroFactura(m.concepto)],
+    // El número puede venir dentro del concepto (ej. "Fact 001-003-000002912 · PO 1727").
+    coincide: (m, sel) => [...sel].some(v => normalizarTexto(m.concepto).includes(normalizarTexto(v))),
+  }),
+  proveedor: crearFiltroMultiple('proveedor', {
+    textoTodos: 'Todos los proveedores', textoVarios: 'proveedores seleccionados',
+    valoresDe: m => [m.proveedor],
+  }),
+  cuenta: crearFiltroMultiple('cuenta', {
+    textoTodos: 'Todas', textoVarios: 'cuentas seleccionadas',
+    valoresDe: m => [m.cuenta],
+  }),
+};
 
 // ============================================================
 // Pestaña Obligaciones financieras
