@@ -551,7 +551,7 @@
 
 <main id="vistaObligaciones" style="display:none;">
   <div class="obl-aviso">
-    <b>Pagos que no se pueden postergar:</b> SRI, IESS, sueldos, DECEVALE (emisión de obligaciones) y préstamos bancarios.
+    <b>Pagos pendientes que no se pueden postergar:</b> SRI, IESS, sueldos, DECEVALE (emisión de obligaciones) y préstamos bancarios. Lo ya pagado se ve en el Flujo de caja.
     La fecha de pago de estas obligaciones está <b>bloqueada</b> en todo el dashboard. Solo se puede cambiar con el botón
     <b>«Negociar fecha»</b>, registrando la referencia de la negociación con el banco o la entidad.
   </div>
@@ -578,10 +578,9 @@
         <span style="display:flex; align-items:center; gap:6px;">Categoría: <select id="oblFiltroCategoria" class="obl-filtro"></select></span>
         <span style="display:flex; align-items:center; gap:6px;">Estado:
           <select id="oblFiltroEstado" class="obl-filtro">
-            <option value="todos">Todos</option>
-            <option value="pendientes">Solo pendientes</option>
+            <option value="todos">Todas las pendientes</option>
             <option value="vencidas">Solo vencidas</option>
-            <option value="pagados">Solo pagados</option>
+            <option value="porvencer">Solo por vencer</option>
           </select>
         </span>
         <span style="display:flex; align-items:center; gap:6px;">Mes: <select id="oblFiltroMes" class="obl-filtro"></select></span>
@@ -5205,8 +5204,10 @@ async function cargarNegociaciones(){
   }
 }
 
+// Solo lo que falta pagar: lo ya pagado (ejecutado o "pagado hoy") se ve en
+// el Flujo de caja, no aquí.
 function obligacionesBase(){
-  return movimientos.filter(m => m.categoriaObligacion);
+  return movimientos.filter(m => m.categoriaObligacion && esPendienteObligacion(m));
 }
 
 function renderObligaciones(){
@@ -5224,7 +5225,6 @@ function renderObligaciones(){
     const prox30 = pendientes.filter(m => m.fecha <= en30).reduce((s,m)=>s+Math.abs(m.monto), 0);
     const vencido = pendientes.filter(m => estadoObligacion(m) === 'vencida').reduce((s,m)=>s+Math.abs(m.monto), 0);
     const totalPend = pendientes.reduce((s,m)=>s+Math.abs(m.monto), 0);
-    const pagado = filas.filter(m => !esPendienteObligacion(m)).reduce((s,m)=>s+Math.abs(m.monto), 0);
     return `
       <button type="button" class="obl-card ${oblFiltroCategoria === cat.clave ? 'activo' : ''}" data-obl-cat="${cat.clave}">
         <div class="obl-card-label">${escapeHTML(cat.nombre)}</div>
@@ -5232,7 +5232,6 @@ function renderObligaciones(){
         <div class="obl-card-sub">próximos 30 días</div>
         <div class="obl-card-sub ${vencido > 0.01 ? 'vencido' : ''}">Vencido: ${fmtMoney(vencido)}</div>
         <div class="obl-card-sub">Total pendiente: ${fmtMoney(totalPend)}</div>
-        <div class="obl-card-sub">Pagado 2026: ${fmtMoney(pagado)}</div>
       </button>`;
   });
   const cardsEl = document.getElementById('oblCards');
@@ -5268,9 +5267,8 @@ function renderObligaciones(){
 
   const pasaEstado = m => {
     const e = estadoObligacion(m);
-    if(fEstado === 'pendientes') return e === 'pendiente' || e === 'vencida';
     if(fEstado === 'vencidas') return e === 'vencida';
-    if(fEstado === 'pagados') return e === 'pagado' || e === 'pagado_hoy';
+    if(fEstado === 'porvencer') return e === 'pendiente';
     return true;
   };
   const pasaTexto = m => !fTexto ||
