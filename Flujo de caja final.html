@@ -4318,9 +4318,13 @@ function renderOC(){
     // (aún proyectados) — el saldo pendiente descuenta el anticipo al instante
     // para no perder de vista el dinero ya comprometido, aunque Odoo todavía
     // no lo haya conciliado.
+    // Solo salidas de dinero (monto negativo) cuentan como pago a la OC.
+    // Evita que anticipos de CLIENTES con "Anticipo PO ####" en el concepto
+    // se sumen como pagado de una orden de compra.
     const pagos = movimientos.filter(m =>
       m.poInterno != null &&
       String(m.poInterno) === String(oc.id) &&
+      Number(m.monto) < 0 &&
       (m.estado === 'ejecutado' || (m.estado === 'proyectado' && m.origen === 'anticipo_oc_manual'))
     );
     const pagado = pagos.reduce((s,p)=>s+Math.abs(p.monto),0);
