@@ -56,6 +56,11 @@
     cursor:pointer;
   }
   .demo-tag:hover{background:rgba(255,255,255,.2);}
+  .top-acciones{display:flex; flex-direction:column; align-items:flex-end; gap:6px;}
+  .btn-actualizar-odoo{background:#fff; color:var(--navy); border:0; font-weight:700; font-size:12.5px; padding:8px 14px; border-radius:20px; cursor:pointer; white-space:nowrap;}
+  .btn-actualizar-odoo:hover{background:#EAF0FB;}
+  .btn-actualizar-odoo:disabled{opacity:.75; cursor:wait;}
+  .act-odoo-nota{font-size:11.5px; color:#C6CFE3; max-width:300px; text-align:right;}
   .sub{color:#C6CFE3; font-size:13.5px; margin-top:6px; max-width:56ch;}
 
   main{max-width:100%; margin:0; padding:22px 32px 60px;}
@@ -368,7 +373,11 @@
       <h1>Flujo de Caja</h1>
       <p class="sub">Capa gris = ya ejecutado en banco (desde Odoo, no editable). Capa naranja = proyectado — mueve la fecha y el saldo se recalcula al instante.</p>
     </div>
-    <span class="demo-tag" id="estadoConexion" title="Clic para recargar datos">Conectando a Supabase…</span>
+    <div class="top-acciones">
+      <span class="demo-tag" id="estadoConexion" title="Clic para recargar datos">Conectando a Supabase…</span>
+      <button type="button" id="btnActualizarOdoo" class="btn-actualizar-odoo" style="display:none;" title="Corre ahora el Python de GitHub que trae los datos de Odoo y SharePoint">↻ Actualizar datos desde Odoo</button>
+      <div id="actOdooNota" class="act-odoo-nota"></div>
+    </div>
   </div>
 </header>
 
@@ -1411,6 +1420,7 @@ function mostrarDashboard(){
     const btnBitGeneral = document.getElementById('btnVerBitacoraGeneral');
     if(btnBitGeneral) btnBitGeneral.style.display = 'none';
   }
+  prepararBotonOdoo();
   cargarDatos();
 }
 
@@ -4790,6 +4800,98 @@ async function confirmarCuotaFormaPago(cuotaId, oc, fila){
 }
 
 document.getElementById('estadoConexion').addEventListener('click', cargarDatos);
+// ---- Botón "Actualizar datos desde Odoo": corre el workflow de GitHub Actions ----
+// El token de GitHub está guardado en Supabase (función flujo-actualizar-odoo), nunca aquí.
+const TEXTO_BTN_ODOO = '↻ Actualizar datos desde Odoo';
+let actOdooTimer = null;
+function notaActOdoo(texto, color){
+  const el = document.getElementById('actOdooNota');
+  if(!el) return;
+  el.textContent = texto || '';
+  el.style.color = color || '';
+}
+async function invocarFlujoActualizar(accion){
+  const { data:{ session } } = await sb.auth.getSession();
+  if(!session) throw new Error('Inicia sesión de nuevo');
+  const r = await sb.functions.invoke('flujo-actualizar-odoo', { body:{ accion }, headers:{ Authorization:'Bearer ' + session.access_token } });
+  if(r.error){
+    let msg = r.error.message;
+    if(r.error.context instanceof Response){
+      const p = await r.error.context.clone().json().catch(()=>null);
+      msg = (p && p.error) || ('HTTP ' + r.error.context.status);
+    }
+    throw new Error(msg);
+  }
+  if(!r.data || r.data.ok !== true) throw new Error((r.data && r.data.error) || 'Sin respuesta');
+  return r.data;
+}
+function horaCorta(iso){
+  const d = new Date(iso);
+  const hoy = new Date();
+  const mismoDia = d.toDateString() === hoy.toDateString();
+  return (mismoDia ? 'hoy ' : d.toLocaleDateString('es-EC',{day:'2-digit',month:'short'}) + ' ') + d.toLocaleTimeString('es-EC',{hour:'2-digit',minute:'2-digit'});
+}
+async function prepararBotonOdoo(){
+  const btn = document.getElementById('btnActualizarOdoo');
+  if(!btn) return;
+  if(!esRolCompleto()){ btn.style.display = 'none'; notaActOdoo(''); return; }
+  btn.style.display = '';
+  try{
+    const e = await invocarFlujoActualizar('estado');
+    const c = e.corrida;
+    if(!c) return;
+    if(c.estado !== 'completed') notaActOdoo('Hay una actualización corriendo en GitHub…');
+    else if(c.resultado === 'success') notaActOdoo('Última actualización desde Odoo: ' + horaCorta(c.actualizado));
+    else notaActOdoo('La última actualización falló (' + horaCorta(c.actualizado) + ')', '#FCA5A5');
+  }catch(err){
+    notaActOdoo(/GITHUB_TOKEN_FLUJO/.test(err.message) ? 'Botón pendiente de activar (falta el token de GitHub en Supabase)' : '');
+  }
+}
+async function actualizarDesdeOdoo(){
+  const btn = document.getElementById('btnActualizarOdoo');
+  const fin = () => { btn.disabled = false; btn.textContent = TEXTO_BTN_ODOO; };
+  clearTimeout(actOdooTimer);
+  btn.disabled = true;
+  btn.textContent = '⏳ Actualizando…';
+  try{
+    const d = await invocarFlujoActualizar('iniciar');
+    const desde = d.ya_corriendo ? new Date(d.corrida.creado).getTime() : new Date(d.desde).getTime() - 5000;
+    notaActOdoo(d.ya_corriendo ? 'Ya había una actualización en curso; esperando que termine…' : 'Actualización iniciada en GitHub (tarda unos 2–3 minutos)…');
+    const inicio = Date.now();
+    const revisar = async () => {
+      try{
+        const c = (await invocarFlujoActualizar('estado')).corrida;
+        const mia = c && new Date(c.creado).getTime() >= desde;
+        if(mia && c.estado === 'completed'){
+          if(c.resultado === 'success'){
+            notaActOdoo('✓ Datos actualizados desde Odoo ' + horaCorta(c.actualizado), '#86EFAC');
+            await cargarDatos();
+          } else {
+            notaActOdoo('La actualización terminó con error en GitHub. Revisa Actions del repo flujo-caja.', '#FCA5A5');
+          }
+          fin();
+          return;
+        }
+        if(Date.now() - inicio > 15 * 60000){
+          notaActOdoo('Está tardando más de lo normal; revisa GitHub Actions.', '#FCA5A5');
+          fin();
+          return;
+        }
+        notaActOdoo(!mia ? 'Esperando que GitHub arranque…' : (c.estado === 'queued' || c.estado === 'waiting' || c.estado === 'pending') ? 'En fila en GitHub…' : 'Corriendo el Python en GitHub…');
+        actOdooTimer = setTimeout(revisar, 10000);
+      }catch(err){
+        notaActOdoo('No se pudo consultar el estado: ' + err.message, '#FCA5A5');
+        fin();
+      }
+    };
+    actOdooTimer = setTimeout(revisar, 8000);
+  }catch(err){
+    notaActOdoo('No se pudo iniciar: ' + err.message, '#FCA5A5');
+    fin();
+  }
+}
+document.getElementById('btnActualizarOdoo').addEventListener('click', actualizarDesdeOdoo);
+
 
 // ---------- Movimiento manual (botón +) ----------
 function abrirModalManual(){
