@@ -3488,7 +3488,7 @@ function renderAgingDetailRows(filtro){
     const edad = fechaRef ? diasEntre(fechaRef, HOY) : null;
     const poVisible = m.po || obtenerPOComercialDesdeTexto(m.concepto, {});
     return `<tr>
-      <td>${escapeHTML(m.concepto || '—')}</td>
+      <td>${escapeHTML(m.concepto || '—')}${linkOdoo(odooUrlMov(m))}</td>
       <td>${escapeHTML(m.proveedor || '—')}</td>
       <td>${escapeHTML(m.banco || 'Sin banco')}</td>
       <td>${escapeHTML(poVisible || '—')}</td>
@@ -3537,7 +3537,7 @@ function renderBuscarFacturaCxc(filtro){
     const esCxc = /Cuentas por Cobrar/i.test(m.cuenta || '');
     const poVisible = m.po || obtenerPOComercialDesdeTexto(m.concepto, {});
     return `<tr>
-      <td>${escapeHTML(m.concepto || '—')}</td>
+      <td>${escapeHTML(m.concepto || '—')}${linkOdoo(odooUrlMov(m))}</td>
       <td>${escapeHTML(m.proveedor || '—')}</td>
       <td>${esCxc ? 'CxC' : 'CxP'}</td>
       <td>${escapeHTML(m.banco || 'Sin banco')}</td>
@@ -4016,7 +4016,7 @@ function renderAbonosRecientes(){
       <td class="nums">${fmtDate(p.fecha).split('-').reverse().join('/')}</td>
       <td>${escapeHTML(p.proveedor || '—')}</td>
       <td>${escapeHTML(p.banco || '—')}</td>
-      <td class="concepto">${escapeHTML(p.concepto || '—')}</td>
+      <td class="concepto">${escapeHTML(p.concepto || '—')}${linkOdoo(odooUrlMov(p))}</td>
       <td class="nums amt-in">${fmtMoney(p.monto)}</td>
     </tr>`).join('') : '<tr><td colspan="5" class="oc-detail-empty">Sin abonos registrados todavía.</td></tr>';
 }
@@ -4428,7 +4428,7 @@ function renderOC(){
           <div class="oc-detail-row">
             <div>
               <div class="oc-detail-prov">${p.proveedor || oc.proveedor}${proveedorDistinto ? ` <span style="color:var(--bad); font-weight:600; font-size:11px;" title="Este pago quedó registrado a nombre de ${escapeHTML(p.proveedor)}, pero la OC ahora está a nombre de ${escapeHTML(oc.proveedor)} — probablemente se reasignó el proveedor en Odoo después de este pago.">⚠️ proveedor distinto al actual de la OC</span>` : ''}</div>
-              <div class="oc-detail-concepto">${p.concepto} · ${fmtDate(p.fecha)}${p.origen==='anticipo_oc_manual' ? ' <span style="color:var(--projected); font-weight:600;">· anticipo, pendiente de confirmar en Odoo</span>' : ''}</div>
+              <div class="oc-detail-concepto">${p.concepto} · ${fmtDate(p.fecha)}${linkOdoo(odooUrlMov(p))}${p.origen==='anticipo_oc_manual' ? ' <span style="color:var(--projected); font-weight:600;">· anticipo, pendiente de confirmar en Odoo</span>' : ''}</div>
             </div>
             <div class="nums">${fmtMoney(Math.abs(p.monto))}</div>
           </div>`;
