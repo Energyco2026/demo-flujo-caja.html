@@ -3154,6 +3154,7 @@ function renderCobranzas(){
   const hoyStr = fmtDate(HOY);
   const limiteStr = fmtDate(addDays(HOY, 7)); // ventana de próximas gestiones: hasta 7 días adelante
   const calendario = [...porFactura.values()]
+    .filter(c => !c.ejecutado)
     .filter(c => c.fecha_proxima_gestion <= limiteStr)
     // Rol cobranzas_servicios: este calendario cruza TODOS los clientes —
     // se filtra a solo las facturas de Servicios para no exponer nombres
@@ -3176,7 +3177,10 @@ function renderCobranzas(){
       <td class="concepto">${escapeHTML(m?.concepto || '—')}</td>
       <td>${escapeHTML(c.autor || '—')}</td>
       <td>${escapeHTML(c.texto || '—')}</td>
-      <td><button type="button" class="btn-cob-comentarios" data-mid="${m?.id || ''}" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:4px 9px; cursor:pointer; font-size:12px;">💬 Ver / gestionar</button></td>
+      <td style="white-space:nowrap;">
+        <button type="button" class="btn-cob-comentarios" data-mid="${m?.id || ''}" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:4px 9px; cursor:pointer; font-size:12px;">💬 Ver / gestionar</button>
+        <button type="button" class="btn-gestion-ejecutada" data-cid="${c.id}" title="Marcar como resuelta: deja de salir aquí y en el correo de alertas. El comentario se queda en el historial." style="border:1px solid var(--good); background:var(--good-bg); color:var(--good); border-radius:6px; padding:4px 9px; cursor:pointer; font-size:12px; font-weight:600; margin-left:4px;">✓ Ejecutado</button>
+      </td>
     </tr>`;
   }).join('') : '<tr><td colspan="6" class="oc-detail-empty">Sin gestiones pendientes en los próximos 7 días — al día.</td></tr>';
   calRows.querySelectorAll('.btn-cob-comentarios').forEach(btn=>{
@@ -3184,6 +3188,11 @@ function renderCobranzas(){
       const id = parseInt(e.currentTarget.dataset.mid);
       const m = movimientosCartera.find(x=>x.id===id);
       if(m) abrirComentarios(m);
+    });
+  });
+  calRows.querySelectorAll('.btn-gestion-ejecutada').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      marcarGestionEjecutada(parseInt(e.currentTarget.dataset.cid), true);
     });
   });
 }
@@ -3863,6 +3872,23 @@ document.getElementById('btnFiltroRevisarFecha').addEventListener('click', ()=>{
   renderBitacoraGeneral();
 });
 
+// Marca (o desmarca) una gestión como ejecutada. No borra el comentario:
+// solo lo saca del calendario y del correo de alertas.
+async function marcarGestionEjecutada(id, ejecutado){
+  const c = comentariosCobranza.find(x => x.id === id);
+  if(!c) return;
+  if(ejecutado && !confirm('¿Marcar esta gestión como ejecutada?\n\nYa no saldrá en tu calendario ni en las alertas por correo. El comentario se queda en el historial.')) return;
+  const cambios = ejecutado
+    ? { ejecutado: true, ejecutado_por: nombreUsuario(usuarioActual) || usuarioActual, ejecutado_en: new Date().toISOString() }
+    : { ejecutado: false, ejecutado_por: null, ejecutado_en: null };
+  const { data, error } = await sb.from('comentarios_cobranza').update(cambios).eq('id', id).select();
+  if(error){ alert('No se pudo guardar: ' + error.message); return; }
+  if(!data || !data.length){ alert('No se actualizó ningún registro (revisa permisos en Supabase).'); return; }
+  Object.assign(c, cambios);
+  renderCobranzas();
+  if(document.getElementById('bitacoraOverlay').classList.contains('open')) renderBitacoraGeneral();
+}
+
 // Lógica compartida para guardar una gestión, sin importar desde qué
 // formulario venga (hoy solo existe el de la ventana de Bitácora).
 async function guardarGestionCobranza(m, campos){
@@ -4030,6 +4056,7 @@ function renderBitacoraGeneral(){
         <div style="font-size:13px; color:var(--ink); white-space:pre-wrap;">${escapeHTML(c.texto)}</div>
         ${c.monto_prometido ? `<div style="font-size:11px; color:var(--good); margin-top:5px; font-weight:600;">💵 Monto prometido: ${fmtMoney(c.monto_prometido)}</div>` : ''}
         ${c.fecha_proxima_gestion ? `<div style="font-size:11px; color:var(--projected); margin-top:3px; font-weight:600;">📅 Fecha comprometida: ${fmtDate(new Date(c.fecha_proxima_gestion+'T00:00:00')).split('-').reverse().join('/')}${c.alerta_enviada?' (ya avisada)':''}</div>` : ''}
+        ${c.ejecutado ? `<div style="font-size:11px; color:var(--good); margin-top:3px; font-weight:600;">✓ Ejecutado por ${escapeHTML(c.ejecutado_por || '—')} el ${new Date(c.ejecutado_en).toLocaleDateString('es-EC')} <button type="button" class="btn-deshacer btn-deshacer-ejecutado" data-cid="${c.id}">deshacer</button></div>` : ''}
         ${c.fecha_gestion_confianza === 'revisar_manual' ? `<div style="font-size:11px; color:#9A3412; background:#FFF7ED; border:1px solid #FDBA74; border-radius:5px; padding:4px 8px; margin-top:5px; font-weight:600;" title="El texto menciona una posible fecha de seguimiento, pero es ambigua o poco clara — revísala y, si corresponde, regístrala manualmente desde el formulario de la izquierda.">⚠️ Revisar fecha de seguimiento</div>` : ''}
         ${m && !bitacoraFiltroOdooId ? `<div style="margin-top:6px;"><button type="button" class="btn-bit-ver-factura" data-mid="${m.id}" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:3px 9px; cursor:pointer; font-size:11px;">Filtrar por esta factura</button></div>` : ''}
       </div>`;
@@ -4040,6 +4067,11 @@ function renderBitacoraGeneral(){
       const id = parseInt(e.currentTarget.dataset.mid);
       const m = movimientosCartera.find(x=>x.id===id);
       if(m) aplicarFiltroBitacora(m);
+    });
+  });
+  lista.querySelectorAll('.btn-deshacer-ejecutado').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      marcarGestionEjecutada(parseInt(e.currentTarget.dataset.cid), false);
     });
   });
 }
