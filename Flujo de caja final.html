@@ -387,6 +387,7 @@
   <button type="button" class="view-tab" data-view="indices">Rotación CxC / CxP</button>
   <button type="button" class="view-tab" data-view="presupuesto">Presupuesto por Proyecto</button>
   <button type="button" class="view-tab" data-view="cobranzas">Cobranzas</button>
+  <button type="button" class="view-tab" data-view="auditoriaHitos" id="tabAuditoriaHitos" style="display:none;">Auditoría de hitos</button>
 </div>
 
 <main id="vistaFlujo">
@@ -968,6 +969,71 @@
   </section>
 </main>
 
+<!-- ============================================================
+     Auditoría de hitos de cobro (solo smaya): quién eliminó o
+     registró cobro parcial de un hito, cuándo y por qué.
+     ============================================================ -->
+<main id="vistaAuditoriaHitos" style="display:none;">
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <div class="panel-title">Auditoría de hitos de cobro</div>
+        <div class="panel-note">Cada vez que alguien elimina un hito (tachito) o registra un cobro parcial, queda aquí con su usuario, fecha y motivo. "Restaurar" deshace la última acción de ese hito y lo devuelve al flujo.</div>
+      </div>
+      <label class="panel-note">Mostrar:
+        <select id="audHitosFiltro">
+          <option value="pendientes">Solo acciones vigentes</option>
+          <option value="todo">Todo el historial</option>
+        </select>
+      </label>
+    </div>
+  </section>
+  <div class="budget-summary">
+    <div class="indice-card"><div class="indice-label">Hitos eliminados (vigentes)</div><div class="indice-value nums" id="audHitosEliminados">—</div></div>
+    <div class="indice-card"><div class="indice-label">Cobros parciales (vigentes)</div><div class="indice-value nums" id="audHitosParciales">—</div></div>
+    <div class="indice-card"><div class="indice-label">Monto retirado del flujo</div><div class="indice-value nums" id="audHitosMonto">—</div></div>
+    <div class="indice-card"><div class="indice-label">Acciones últimos 7 días</div><div class="indice-value nums" id="audHitosSemana">—</div></div>
+  </div>
+  <section class="panel">
+    <div class="table-scroll"><table>
+      <thead><tr><th>Fecha acción</th><th>Usuario</th><th>Acción</th><th>Proyecto</th><th>Hito</th><th>Fecha del hito</th><th>Monto antes</th><th>Monto después</th><th>Motivo</th><th></th></tr></thead>
+      <tbody id="audHitosRows"></tbody>
+    </table></div>
+  </section>
+</main>
+
+<div class="detail-overlay" id="hitoOverlay" role="dialog" aria-modal="true" aria-labelledby="hitoOverlayTitle">
+  <div class="detail-dialog" style="width:min(520px,96vw);">
+    <div class="detail-dialog-head">
+      <div><div class="panel-title" id="hitoOverlayTitle">Gestionar hito de cobro</div><div class="panel-note" id="hitoOverlaySub"></div></div>
+      <button type="button" class="detail-close" id="hitoOverlayClose">Cerrar</button>
+    </div>
+    <div class="detail-scroll" style="padding:16px 20px; display:flex; flex-direction:column; gap:12px; font-size:13px;">
+      <div id="hitoOverlayInfo" style="background:var(--bg, #f6f7f9); border-radius:8px; padding:10px 12px;"></div>
+      <label style="display:flex; gap:8px; align-items:flex-start; cursor:pointer;">
+        <input type="radio" name="hitoAccion" value="eliminar" checked>
+        <span><b>Cobrado completo</b> — quita el hito del flujo de caja (ya entró todo el dinero).</span>
+      </label>
+      <label style="display:flex; gap:8px; align-items:flex-start; cursor:pointer;">
+        <input type="radio" name="hitoAccion" value="cobro_parcial">
+        <span><b>Cobro parcial</b> — el cliente pagó solo una parte; el saldo sigue en el flujo.</span>
+      </label>
+      <div id="hitoParcialWrap" style="display:none;">
+        <label>Monto cobrado (USD)<br><input type="number" id="hitoMontoCobrado" min="0" step="0.01" style="width:100%; padding:7px; border:1px solid var(--line); border-radius:6px;"></label>
+        <div class="panel-note" id="hitoSaldoQueda" style="margin-top:4px;"></div>
+      </div>
+      <label>Motivo (obligatorio)<br>
+        <textarea id="hitoMotivo" rows="3" placeholder="Ej.: Cliente pagó por transferencia el 05/10, ver pago en Odoo" style="width:100%; padding:7px; border:1px solid var(--line); border-radius:6px; font-family:inherit;"></textarea>
+      </label>
+      <div id="hitoOverlayError" style="display:none; color:var(--bad); font-size:12.5px;"></div>
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button type="button" id="hitoOverlayCancelar" style="border:1px solid var(--line); background:#fff; border-radius:6px; padding:7px 14px; cursor:pointer;">Cancelar</button>
+        <button type="button" id="hitoOverlayGuardar" style="border:none; background:var(--bad); color:#fff; border-radius:6px; padding:7px 14px; cursor:pointer; font-weight:600;">Confirmar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="detail-overlay" id="bitacoraOverlay" role="dialog" aria-modal="true" aria-labelledby="bitacoraTitle">
   <div class="detail-dialog">
     <div class="detail-dialog-head">
@@ -1105,6 +1171,19 @@ const CORREOS_AUTORIZAN_NEGOCIACION = new Set([
   'smaya@energycontrolsa.com',
   'jagarciauribe@energycontrolsa.com',
 ]);
+
+// Hitos de cobro: quién puede usar el tachito (eliminar / cobro parcial) y
+// quién ve la pestaña de auditoría y puede restaurar. La validación real
+// también está en la función gestionar_hito de Supabase (no se puede saltar
+// desde el navegador); si cambias esta lista, cámbiala también allá.
+const CORREOS_GESTIONAN_HITOS = new Set([
+  'smaya@energycontrolsa.com',
+  'rperalta@energycontrolsa.com',
+  'ccisneros@energycontrolsa.com',
+]);
+const CORREO_AUDITORIA_HITOS = 'smaya@energycontrolsa.com';
+function puedeGestionarHitos(){ return CORREOS_GESTIONAN_HITOS.has(usuarioActual); }
+function veAuditoriaHitos(){ return usuarioActual === CORREO_AUDITORIA_HITOS; }
 
 function correoAutorizado(email){
   return CORREOS_AUTORIZADOS.has(email) || CORREOS_COBRANZAS.has(email) || CORREOS_COBRANZAS_SERVICIOS.has(email);
@@ -1420,6 +1499,9 @@ function mostrarDashboard(){
     const btnBitGeneral = document.getElementById('btnVerBitacoraGeneral');
     if(btnBitGeneral) btnBitGeneral.style.display = 'none';
   }
+  // Pestaña "Auditoría de hitos": solo visible para smaya.
+  const tabAudHitos = document.getElementById('tabAuditoriaHitos');
+  if(tabAudHitos) tabAudHitos.style.display = veAuditoriaHitos() ? '' : 'none';
   prepararBotonOdoo();
   cargarDatos();
 }
@@ -2094,7 +2176,7 @@ function render(){
     tr.innerHTML = `
       <td data-label="Sel.">${isProj && editable ? `<input type="checkbox" class="chk-pagar-hoy" data-id="${m.id}" ${movimientosSeleccionados.has(m.id)?'checked':''}>` : ''}</td>
       <td style="color:var(--muted); font-size:12.5px;" data-label="Cuenta contable">${m.cuenta || '—'}</td>
-      <td class="concepto" data-label="Concepto">${m.concepto || '—'}${linkOdoo(odooUrlMov(m))}${esVencida ? ' <span class="badge" style="background:var(--bad-bg); color:var(--bad);">VENCIDA</span>' : ''}${(m.origen==='manual' || m.origen==='anticipo_oc_manual') && editable ? ` <button type="button" class="btn-eliminar-manual" data-eliminar-id="${m.id}" title="Eliminar movimiento manual" style="border:none; background:none; color:var(--bad); cursor:pointer; font-size:13px; margin-left:6px; vertical-align:middle;">🗑</button>` : ''}</td>
+      <td class="concepto" data-label="Concepto">${m.concepto || '—'}${linkOdoo(odooUrlMov(m))}${esVencida ? ' <span class="badge" style="background:var(--bad-bg); color:var(--bad);">VENCIDA</span>' : ''}${(m.origen==='manual' || m.origen==='anticipo_oc_manual') && editable ? ` <button type="button" class="btn-eliminar-manual" data-eliminar-id="${m.id}" title="Eliminar movimiento manual" style="border:none; background:none; color:var(--bad); cursor:pointer; font-size:13px; margin-left:6px; vertical-align:middle;">🗑</button>` : ''}${m.origen==='hito_cobro_manual' && isProj && puedeGestionarHitos() ? ` <button type="button" class="btn-gestionar-hito" data-mov-id="${m.id}" title="Hito cobrado: eliminar o registrar cobro parcial" style="border:none; background:none; color:var(--bad); cursor:pointer; font-size:13px; margin-left:6px; vertical-align:middle;">🗑</button>` : ''}</td>
       <td data-label="Proveedor">${m.proveedor || '—'}</td>
       <td class="nums" data-label="Fecha factura">
         ${m.fechaFactura ? fmtDate(m.fechaFactura) : '<span style="color:var(--muted)">—</span>'}
@@ -3042,6 +3124,7 @@ function renderHitosLista(){
           <span style="font-size:12px; color:var(--muted); width:100px;">${dias != null ? (dias<0 ? `${-dias} días vencido` : `en ${dias} días`) : '—'}</span>
           <span style="font-size:13px; width:90px; text-align:right;">${fmtMoney(x.monto)}</span>
           <span style="font-size:11px; color:var(--muted); white-space:nowrap;">Aún no facturado</span>
+          ${puedeGestionarHitos() ? `<button type="button" class="btn-gestionar-hito" data-mov-id="${x.id}" title="Hito cobrado: eliminar o registrar cobro parcial" style="border:none; background:none; color:var(--bad); cursor:pointer; font-size:14px;">🗑</button>` : ''}
         </div>`;
       }).join('');
     return `<div class="hitos-cliente-card" style="background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px 16px;">
@@ -4965,6 +5048,205 @@ async function confirmarEliminarManual(id){
   await cargarDatos();
 }
 
+// ============================================================
+// Hitos de cobro: tachito (eliminar / cobro parcial) + auditoría
+// ============================================================
+// Todo pasa por la función gestionar_hito de Supabase: ella valida permisos,
+// toma el correo de la sesión (no se puede falsificar desde el navegador),
+// guarda la auditoría y marca el hito como eliminado/oculto. Nunca se borra
+// la fila, para que sync_hitos_cobro.py no lo vuelva a crear y para poder
+// restaurarlo.
+const NOMBRE_POR_CORREO = {
+  'smaya@energycontrolsa.com': 'Shirley Maya',
+  'rperalta@energycontrolsa.com': 'Ronald Peralta',
+  'ccisneros@energycontrolsa.com': 'Cristian Cisneros',
+};
+let hitoEnGestion = null;
+let auditoriaHitosDatos = [];
+
+function abrirModalHito(movId){
+  const m = movimientosCartera.find(x => x.id === movId);
+  if(!m || m.origen !== 'hito_cobro_manual'){
+    alert('No se encontró el hito. Recarga la página (Ctrl+F5) e intenta de nuevo.');
+    return;
+  }
+  if(m.odooId == null){
+    alert('Este hito no tiene identificador (odoo_id); no se puede gestionar desde aquí.');
+    return;
+  }
+  hitoEnGestion = m;
+  const saldo = Math.abs(m.montoOriginal);
+  document.getElementById('hitoOverlaySub').textContent = m.proveedor || '';
+  document.getElementById('hitoOverlayInfo').innerHTML =
+    `<div><b>${escapeHTML(m.concepto || '')}</b></div>
+     <div style="color:var(--muted); margin-top:2px;">Proyecto ${escapeHTML(m.analitica || '—')} · Fecha ${fmtDate(m.fecha)} · Saldo del hito <b>${fmtMoney(saldo)}</b></div>`;
+  document.querySelector('input[name="hitoAccion"][value="eliminar"]').checked = true;
+  document.getElementById('hitoParcialWrap').style.display = 'none';
+  document.getElementById('hitoMontoCobrado').value = '';
+  document.getElementById('hitoSaldoQueda').textContent = '';
+  document.getElementById('hitoMotivo').value = '';
+  document.getElementById('hitoOverlayError').style.display = 'none';
+  document.getElementById('hitoOverlayGuardar').disabled = false;
+  document.getElementById('hitoOverlay').classList.add('open');
+}
+function cerrarModalHito(){
+  document.getElementById('hitoOverlay').classList.remove('open');
+  hitoEnGestion = null;
+}
+function errorModalHito(texto){
+  const el = document.getElementById('hitoOverlayError');
+  el.textContent = texto;
+  el.style.display = 'block';
+}
+async function guardarGestionHito(){
+  if(!hitoEnGestion) return;
+  const accion = document.querySelector('input[name="hitoAccion"]:checked').value;
+  const motivo = document.getElementById('hitoMotivo').value.trim();
+  const saldo = Math.abs(hitoEnGestion.montoOriginal);
+  if(!motivo) return errorModalHito('Escribe el motivo: queda registrado en la auditoría.');
+  let montoCobrado = null;
+  if(accion === 'cobro_parcial'){
+    montoCobrado = Number(document.getElementById('hitoMontoCobrado').value);
+    if(!(montoCobrado > 0) || montoCobrado >= saldo){
+      return errorModalHito(`El monto cobrado debe ser mayor a 0 y menor a ${fmtMoney(saldo)}. Si cobró todo, usa "Cobrado completo".`);
+    }
+  }
+  const texto = accion === 'eliminar'
+    ? `¿Confirmas que el hito "${hitoEnGestion.concepto}" ya se cobró completo? Saldrá del flujo de caja.`
+    : `¿Confirmas un cobro parcial de ${fmtMoney(montoCobrado)}? En el flujo quedarán ${fmtMoney(saldo - montoCobrado)}.`;
+  if(!window.confirm(texto)) return;
+
+  const btn = document.getElementById('hitoOverlayGuardar');
+  btn.disabled = true;
+  const esMontoManual = hitoEnGestion.esMontoManual;
+  const movId = hitoEnGestion.id;
+  const { error } = await sb.rpc('gestionar_hito', {
+    p_odoo_id: hitoEnGestion.odooId,
+    p_accion: accion,
+    p_motivo: motivo,
+    p_monto_cobrado: montoCobrado,
+  });
+  if(error){
+    btn.disabled = false;
+    return errorModalHito('No se pudo guardar: ' + error.message);
+  }
+  // Si el hito tenía un monto editado a mano, ese valor taparía el nuevo
+  // saldo calculado por el cobro parcial — se limpia para que mande el saldo.
+  if(accion === 'cobro_parcial' && esMontoManual){
+    await sb.from('movimientos').update({ monto_manual: null }).eq('id', movId);
+  }
+  cerrarModalHito();
+  await cargarDatos();
+  if(document.getElementById('vistaCobranzas').style.display !== 'none') renderCobranzas();
+}
+
+document.addEventListener('click', e=>{
+  const btn = e.target.closest('.btn-gestionar-hito');
+  if(!btn) return;
+  e.stopPropagation();
+  abrirModalHito(Number(btn.dataset.movId));
+});
+document.querySelectorAll('input[name="hitoAccion"]').forEach(r=>{
+  r.addEventListener('change', ()=>{
+    const parcial = document.querySelector('input[name="hitoAccion"]:checked').value === 'cobro_parcial';
+    document.getElementById('hitoParcialWrap').style.display = parcial ? '' : 'none';
+    document.getElementById('hitoOverlayError').style.display = 'none';
+  });
+});
+document.getElementById('hitoMontoCobrado').addEventListener('input', e=>{
+  if(!hitoEnGestion) return;
+  const v = Number(e.target.value);
+  const saldo = Math.abs(hitoEnGestion.montoOriginal);
+  document.getElementById('hitoSaldoQueda').textContent =
+    v > 0 && v < saldo ? `Quedarán ${fmtMoney(saldo - v)} pendientes en el flujo.` : '';
+});
+document.getElementById('hitoOverlayClose').addEventListener('click', cerrarModalHito);
+document.getElementById('hitoOverlayCancelar').addEventListener('click', cerrarModalHito);
+document.getElementById('hitoOverlayGuardar').addEventListener('click', guardarGestionHito);
+document.getElementById('hitoOverlay').addEventListener('click', e=>{ if(e.target.id==='hitoOverlay') cerrarModalHito(); });
+
+function fmtFechaHora(iso){
+  if(!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleString('es-EC', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+
+async function cargarAuditoriaHitos(){
+  const tbody = document.getElementById('audHitosRows');
+  if(!veAuditoriaHitos()){ tbody.innerHTML = ''; return; }
+  tbody.innerHTML = '<tr><td colspan="10" class="oc-detail-empty">Cargando…</td></tr>';
+  const { data, error } = await sb.from('auditoria_hitos').select('*').order('fecha_accion', { ascending: false });
+  if(error){
+    tbody.innerHTML = `<tr><td colspan="10" style="color:var(--bad);">No se pudo cargar la auditoría: ${escapeHTML(error.message)}</td></tr>`;
+    return;
+  }
+  auditoriaHitosDatos = data || [];
+  renderAuditoriaHitos();
+}
+
+function renderAuditoriaHitos(){
+  const filtro = document.getElementById('audHitosFiltro').value;
+  const vigentes = auditoriaHitosDatos.filter(a => a.accion !== 'restaurar' && !a.revertido);
+  // Solo la acción vigente más reciente de cada hito se puede restaurar
+  // (la función de Supabase revierte siempre la última).
+  const ultimaPorHito = new Map();
+  vigentes.forEach(a => { if(!ultimaPorHito.has(a.odoo_id)) ultimaPorHito.set(a.odoo_id, a.id); });
+
+  const eliminados = vigentes.filter(a => a.accion === 'eliminar');
+  const parciales = vigentes.filter(a => a.accion === 'cobro_parcial');
+  const montoRetirado = vigentes.reduce((s,a)=> s + Math.abs(Number(a.monto_anterior)||0) - Math.abs(Number(a.monto_nuevo)||0), 0);
+  const hace7 = Date.now() - 7*86400000;
+  document.getElementById('audHitosEliminados').textContent = eliminados.length;
+  document.getElementById('audHitosParciales').textContent = parciales.length;
+  document.getElementById('audHitosMonto').textContent = fmtMoney(montoRetirado);
+  document.getElementById('audHitosSemana').textContent =
+    auditoriaHitosDatos.filter(a => new Date(a.fecha_accion).getTime() >= hace7).length;
+
+  const filas = filtro === 'todo' ? auditoriaHitosDatos : vigentes;
+  const etiquetaAccion = {
+    eliminar: '<span class="badge" style="background:var(--bad-bg); color:var(--bad);">Eliminado</span>',
+    cobro_parcial: '<span class="badge" style="background:#fff4d6; color:#9a6b00;">Cobro parcial</span>',
+    restaurar: '<span class="badge" style="background:#e3f4e3; color:#1f7a1f;">Restaurado</span>',
+  };
+  const tbody = document.getElementById('audHitosRows');
+  tbody.innerHTML = filas.length ? filas.map(a => {
+    const puedeRestaurar = ultimaPorHito.get(a.odoo_id) === a.id;
+    return `<tr${a.revertido ? ' style="opacity:.55;"' : ''}>
+      <td>${fmtFechaHora(a.fecha_accion)}</td>
+      <td>${escapeHTML(NOMBRE_POR_CORREO[a.usuario] || a.usuario || '')}</td>
+      <td>${etiquetaAccion[a.accion] || escapeHTML(a.accion)}${a.revertido ? ' <span style="font-size:11px; color:var(--muted);">(revertido)</span>' : ''}</td>
+      <td>${escapeHTML(a.proyecto_codigo || '—')}</td>
+      <td>${escapeHTML(a.concepto || '')}</td>
+      <td>${a.fecha_hito ? escapeHTML(a.fecha_hito) : '—'}</td>
+      <td class="nums">${a.monto_anterior != null ? fmtMoney(Math.abs(Number(a.monto_anterior))) : '—'}</td>
+      <td class="nums">${a.monto_nuevo != null ? fmtMoney(Math.abs(Number(a.monto_nuevo))) : '—'}</td>
+      <td style="max-width:260px;">${escapeHTML(a.motivo || '')}</td>
+      <td>${puedeRestaurar ? `<button type="button" class="btn-restaurar-hito" data-odoo-id="${a.odoo_id}" style="border:1px solid var(--navy); background:#fff; color:var(--navy); border-radius:6px; padding:3px 10px; cursor:pointer; font-size:12px;">Restaurar</button>` : ''}</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="10" class="oc-detail-empty">Sin acciones registradas.</td></tr>';
+}
+
+document.getElementById('audHitosFiltro').addEventListener('change', renderAuditoriaHitos);
+document.addEventListener('click', async e=>{
+  const btn = e.target.closest('.btn-restaurar-hito');
+  if(!btn) return;
+  if(!window.confirm('¿Restaurar este hito? Se deshace la última acción y vuelve al flujo de caja con su monto anterior.')) return;
+  btn.disabled = true;
+  const { error } = await sb.rpc('gestionar_hito', {
+    p_odoo_id: Number(btn.dataset.odooId),
+    p_accion: 'restaurar',
+    p_motivo: null,
+    p_monto_cobrado: null,
+  });
+  if(error){
+    btn.disabled = false;
+    alert('No se pudo restaurar: ' + error.message);
+    return;
+  }
+  await cargarDatos();
+  await cargarAuditoriaHitos();
+});
+
 document.getElementById('btnAgregarManual').addEventListener('click', abrirModalManual);
 document.getElementById('manualMovClose').addEventListener('click', cerrarModalManual);
 document.getElementById('manualMovCancelar').addEventListener('click', cerrarModalManual);
@@ -5175,6 +5457,8 @@ document.querySelectorAll('.view-tab').forEach(btn=>{
     document.getElementById('vistaIndices').style.display = vista === 'indices' ? '' : 'none';
     document.getElementById('vistaPresupuesto').style.display = vista === 'presupuesto' ? '' : 'none';
     document.getElementById('vistaCobranzas').style.display = vista === 'cobranzas' ? '' : 'none';
+    document.getElementById('vistaAuditoriaHitos').style.display = vista === 'auditoriaHitos' ? '' : 'none';
+    if(vista === 'auditoriaHitos') cargarAuditoriaHitos();
     if(vista === 'indices') renderIndices();
     if(vista === 'obligaciones') renderObligaciones();
     if(vista === 'presupuesto') renderPresupuesto();
