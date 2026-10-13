@@ -114,6 +114,12 @@
   /* Pagado hoy, pendiente de registrar en Odoo: verde claro */
   tbody tr.pagado-hoy td{background:var(--good-bg);}
   tbody tr.pagado-hoy td:first-child{box-shadow:inset 3px 0 0 var(--good);}
+  /* Cheques de utilidades por retirar: una sola fila informativa */
+  tbody tr.utilidades-grupo td{background:#EEF1F8; cursor:pointer;}
+  tbody tr.utilidades-grupo td:first-child{box-shadow:inset 3px 0 0 var(--navy);}
+  tbody tr.utilidades-grupo:hover td{background:#E3E8F4;}
+  tbody tr.utilidades-detalle td{background:#F6F8FC; font-size:12.5px; color:var(--muted);}
+  tbody tr.utilidades-detalle td:first-child{box-shadow:inset 3px 0 0 #B9C6E4;}
   /* Fila seleccionada para pagar: verde mas fuerte con borde */
   tbody tr.seleccionada-pago td{background:#D4E8C4; border-top:1px solid var(--good); border-bottom:1px solid var(--good);}
   .badge{
@@ -1225,6 +1231,16 @@ function esRolCompleto(){ return rolActual === 'completo'; }
 // El flujo operativo inicia en 2026. Los registros de 2025 no se muestran
 // porque ese año no cuenta con una carga completa de Odoo.
 const FECHA_MINIMA = '2026-01-01';
+// Ordenes de pago de utilidades cuyos cheques ya se emitieron y Odoo ya
+// descontó del saldo del banco, pero los trabajadores aún no los retiran.
+// Se muestran en UNA sola fila desplegable, con la fecha de emisión, y NO
+// restan del saldo proyectado (para no descontarlos dos veces).
+// Para agregar otra orden de pago de utilidades, añade su código aquí.
+const ORDENES_PAGO_UTILIDADES = ['PAY00190'];
+function esOrdenPagoUtilidades(texto){
+  return ORDENES_PAGO_UTILIDADES.some(c => new RegExp('\\b' + c + '\\b', 'i').test(String(texto || '')));
+}
+let utilidadesAbiertas = false;
 const PATRON_BANCO_TARJETA = /\b(VISA|DINERS|MASTERCARD|AMEX|AMERICAN\s+EXPRESS)\b/i;
 
 function addDays(date, n){ const d = new Date(date); d.setDate(d.getDate()+n); return d; }
@@ -1731,7 +1747,15 @@ async function cargarDatos(){
       // se excluyen tanto del flujo como de los indicadores de cartera.
       .filter(m => Math.abs(m.monto) > 0.005);
     unificarNombresProveedores(movimientosCartera);
-    movimientosCartera.forEach(m => { m.categoriaObligacion = categoriaObligacion(m); });
+    movimientosCartera.forEach(m => {
+      m.esChequeUtilidad = m.estado === 'proyectado' && esOrdenPagoUtilidades(m.concepto);
+      if(m.esChequeUtilidad){
+        // Siempre con la fecha de emisión del cheque, nunca corrida a hoy.
+        m.fecha = new Date(m.fechaOriginal);
+        m.esFechaManual = false;
+      }
+      m.categoriaObligacion = m.esChequeUtilidad ? null : categoriaObligacion(m);
+    });
     // La pestaña principal muestra solamente movimientos desde 2026. La
     // pestaña de cartera mantiene el histórico disponible, sin saldos cero.
     movimientos = movimientosCartera.filter(m => fmtDate(m.fecha) >= FECHA_MINIMA);
@@ -1744,7 +1768,7 @@ async function cargarDatos(){
     const idsVencidasCorridas = [];
     const fechasAnterioresVencidas = {};
     movimientos.forEach(m=>{
-      if(m.estado === 'proyectado' && m.fecha < HOY){
+      if(m.estado === 'proyectado' && m.fecha < HOY && !m.esChequeUtilidad){
         fechasAnterioresVencidas[m.id] = fmtDate(m.fecha);
         m.fecha = new Date(HOY);
         m.esFechaManual = true;
@@ -2129,6 +2153,8 @@ function render(){
   const rowsEl = document.getElementById('rows');
   rowsEl.innerHTML = '';
   filasVisiblesParaExportar = []; // se llena abajo, solo con lo que pasa todos los filtros
+  const grupoUtilidades = [];
+  let filaGrupoUtilidades = null;
 
   let entradas30 = 0, salidas30 = 0;
   let saldoDia30 = saldoActual; // saldo real al día 30 (hoy + próximos 30 días, incluye vencidas)
@@ -2136,13 +2162,15 @@ function render(){
 
   sorted.forEach(m=>{
     // Vencida = proyectado con fecha ya pasada (factura pendiente antigua, sin fecha de pago real todavía)
-    const esVencida = m.estado === 'proyectado' && m.fecha < HOY;
+    // Los cheques de utilidades por retirar ya están descontados del saldo
+    // bancario en Odoo: no se vuelven a restar en la proyección.
+    const esVencida = m.estado === 'proyectado' && m.fecha < HOY && !m.esChequeUtilidad;
     // El saldo real ya incluye todo lo ejecutado. Lo proyectado con fecha futura mueve el saldo hacia adelante.
     // Lo vencido NO se suma de golpe al día de hoy (evita que el gráfico "caiga" simulando que se paga todo hoy).
-    if(m.estado === 'proyectado' && !esVencida) running += m.monto;
+    if(m.estado === 'proyectado' && !esVencida && !m.esChequeUtilidad) running += m.monto;
     // Desde HOY (incluye las vencidas que se corren a hoy) hasta el día 30,
     // para que Saldo actual + Entradas - Salidas = Saldo día 30.
-    if(m.estado === 'proyectado' && m.fecha >= HOY && m.fecha <= addDays(HOY,30)){
+    if(m.estado === 'proyectado' && !m.esChequeUtilidad && m.fecha >= HOY && m.fecha <= addDays(HOY,30)){
       if(m.monto > 0) entradas30 += m.monto; else salidas30 += Math.abs(m.monto);
       saldoDia30 += m.monto;
     }
@@ -2165,6 +2193,15 @@ function render(){
     if(filtroTipo === 'egresos' && m.monto >= 0) return;
 
     filasVisiblesParaExportar.push(m);
+
+    if(m.esChequeUtilidad){
+      grupoUtilidades.push({ m, running });
+      if(!filaGrupoUtilidades){
+        filaGrupoUtilidades = document.createElement('tr');
+        rowsEl.appendChild(filaGrupoUtilidades);
+      }
+      return;
+    }
 
     const tr = document.createElement('tr');
     tr.className = m.estado
@@ -2228,6 +2265,8 @@ function render(){
     rowsEl.appendChild(tr);
   });
 
+  if(filaGrupoUtilidades) pintarGrupoUtilidades(filaGrupoUtilidades, grupoUtilidades);
+
   if(rowsEl.children.length === 0){
     rowsEl.innerHTML = `<tr><td colspan="12" style="color:var(--muted); font-style:italic; text-align:center; padding:24px;">Sin movimientos para este filtro.</td></tr>`;
   }
@@ -2260,6 +2299,59 @@ function render(){
   renderCobranzas();
   attachHandlers();
   actualizarContadorSeleccionados();
+}
+
+// Dibuja la fila única de cheques de utilidades por retirar y, debajo,
+// el detalle por trabajador (oculto hasta hacer clic).
+function pintarGrupoUtilidades(fila, items){
+  const total = items.reduce((s, x) => s + x.m.monto, 0);
+  const bancos = [...new Set(items.map(x => x.m.banco).filter(Boolean))];
+  const fechaEmision = items[0].m.fecha;
+  const dias = diasEntre(fechaEmision, HOY);
+  const saldo = items[items.length - 1].running;
+  const ordenes = [...new Set(items.map(x => (String(x.m.concepto || '').match(/PAY\d+/i) || [''])[0]).filter(Boolean))].join(', ');
+  fila.className = 'utilidades-grupo';
+  fila.title = 'Clic para ver u ocultar el detalle por trabajador';
+  fila.innerHTML = `
+    <td data-label="Detalle" style="text-align:center; font-size:12px; color:var(--navy);">${utilidadesAbiertas ? '▼' : '▶'}</td>
+    <td style="color:var(--muted); font-size:12.5px;" data-label="Cuenta contable">${escapeHTML(items[0].m.cuenta || '—')}</td>
+    <td data-label="Concepto">
+      <b>Utilidades · cheques por retirar (${items.length})</b>
+      <div style="font-size:11px; color:var(--muted); margin-top:3px;">Orden de pago ${escapeHTML(ordenes)} · hace ${dias} días sin retirar</div>
+      <span class="badge" style="background:#DCE4F5; color:var(--navy); margin-top:5px;">Ya descontado del saldo · no afecta la proyección</span>
+    </td>
+    <td data-label="Proveedor">${items.length} trabajador${items.length === 1 ? '' : 'es'}</td>
+    <td data-label="Fecha factura"><span style="color:var(--muted)">—</span></td>
+    <td data-label="P.O."><span style="color:var(--muted)">—</span></td>
+    <td data-label="Total factura"><span style="color:var(--muted)">—</span></td>
+    <td style="font-size:12.5px;" data-label="Banco">${escapeHTML(bancos.join(', ') || '—')}</td>
+    <td class="nums amt-out" data-label="Monto">${fmtMoney(total)}</td>
+    <td data-label="Fecha vencimiento"><span style="color:var(--muted)">—</span></td>
+    <td class="nums" style="font-size:12.5px;" data-label="Fecha pago">${fmtDate(fechaEmision)}<div style="font-size:10px; color:var(--muted);">fecha de emisión</div></td>
+    <td class="nums balance ${saldo < 0 ? 'neg' : ''}" data-label="Saldo proyectado (a esa fecha)">${fmtMoney(saldo)}</td>`;
+  const detalle = items.map(({ m }) => {
+    const tr = document.createElement('tr');
+    tr.className = 'utilidades-detalle';
+    tr.style.display = utilidadesAbiertas ? '' : 'none';
+    tr.innerHTML = `
+      <td></td>
+      <td data-label="Cuenta contable">${escapeHTML(m.cuenta || '—')}</td>
+      <td class="concepto" data-label="Concepto">${escapeHTML(m.concepto || '—')}${linkOdoo(odooUrlMov(m))}</td>
+      <td data-label="Proveedor">${escapeHTML(m.proveedor || '—')}</td>
+      <td>—</td><td>—</td><td>—</td>
+      <td data-label="Banco">${escapeHTML(m.banco || '—')}</td>
+      <td class="nums amt-out" data-label="Monto">${fmtMoney(m.monto)}</td>
+      <td>—</td>
+      <td class="nums" data-label="Fecha pago">${fmtDate(m.fecha)}</td>
+      <td></td>`;
+    return tr;
+  });
+  fila.after(...detalle);
+  fila.onclick = () => {
+    utilidadesAbiertas = !utilidadesAbiertas;
+    detalle.forEach(tr => { tr.style.display = utilidadesAbiertas ? '' : 'none'; });
+    fila.firstElementChild.textContent = utilidadesAbiertas ? '▼' : '▶';
+  };
 }
 
 const EXCLUIR_DE_SALDO_BANCO = /VISA|DINERS|MASTERCARD|TARJETA|ANTICIPO|SALDOS INICIALES|CAJA CHICA|CAJA GENERAL|^CASH$/i;
@@ -2300,7 +2392,7 @@ function renderBancos(){
     const ajuste = ajusteManualBanco(banco);
     const saldoReal = saldo + ajuste;
     let proyectado30 = 0;
-    movimientos.filter(m=>m.banco===banco && m.estado==='proyectado').forEach(m=>{
+    movimientos.filter(m=>m.banco===banco && m.estado==='proyectado' && !m.esChequeUtilidad).forEach(m=>{
       if(m.fecha > HOY && m.fecha <= addDays(HOY,30)) proyectado30 += m.monto;
     });
     const card = document.createElement('div');
@@ -5383,7 +5475,7 @@ function exportarExcel(){
     Monto: Number(m.monto.toFixed(2)),
     'Fecha vencimiento': m.fechaVencimiento ? fmtDate(m.fechaVencimiento) : '',
     'Fecha pago': fmtDate(m.fecha),
-    Estado: m.estado || ''
+    Estado: m.esChequeUtilidad ? 'cheque utilidades por retirar (ya descontado)' : (m.estado || '')
   }));
   const hoja = XLSX.utils.json_to_sheet(datos, {
     header: ['Cuenta contable','Concepto','Proveedor','Fecha factura','P.O.','N.° PEN','Total factura','Banco','Monto','Fecha vencimiento','Fecha pago','Estado']
