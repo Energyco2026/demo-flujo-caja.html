@@ -1020,6 +1020,24 @@
       <tbody id="audHitosRows"></tbody>
     </table></div>
   </section>
+
+  <!-- Partidas registradas en Odoo que faltan conciliar con el banco -->
+  <section class="panel" style="margin-top:18px;">
+    <div class="panel-head">
+      <div>
+        <div class="panel-title">Partidas por conciliar con el banco</div>
+        <div class="panel-note">Registradas en Odoo (pagos y transacciones de extracto) que todavía no están conciliadas. Incluye desde 2025. Se actualiza con cada carga desde Odoo.</div>
+      </div>
+      <button type="button" id="btnExcelSinConciliar" style="border:1px solid var(--navy); background:var(--navy); color:#fff; border-radius:6px; padding:7px 14px; cursor:pointer; font-size:12px; font-weight:600;">Descargar Excel para conciliar</button>
+    </div>
+  </section>
+  <div class="budget-summary" id="audConcResumen"></div>
+  <section class="panel">
+    <div class="table-scroll"><table>
+      <thead><tr><th>Fecha</th><th>Banco</th><th>Tipo</th><th>Concepto</th><th>Proveedor / Cliente</th><th style="text-align:right;">Monto</th><th>Días</th></tr></thead>
+      <tbody id="audConcRows"></tbody>
+    </table></div>
+  </section>
 </main>
 
 <div class="detail-overlay" id="hitoOverlay" role="dialog" aria-modal="true" aria-labelledby="hitoOverlayTitle">
@@ -1590,6 +1608,43 @@ function partidasSinConciliar(){
     .sort((a, b) => String(a.banco || '').localeCompare(String(b.banco || '')) || a.fecha - b.fecha);
 }
 
+function renderPorConciliar(){
+  const tbody = document.getElementById('audConcRows');
+  const resumen = document.getElementById('audConcResumen');
+  if(!tbody || !resumen) return;
+  if(!veAuditoriaHitos()){ tbody.innerHTML = ''; resumen.innerHTML = ''; return; }
+  const lista = partidasSinConciliar();
+  // Tarjetas: una por banco con cantidad y monto pendiente.
+  const porBanco = {};
+  lista.forEach(m => {
+    const b = m.banco || 'Sin banco';
+    porBanco[b] = porBanco[b] || { n: 0, total: 0 };
+    porBanco[b].n += 1;
+    porBanco[b].total += Number(m.monto) || 0;
+  });
+  resumen.innerHTML = `<div class="indice-card"><div class="indice-label">Total por conciliar</div><div class="indice-value nums">${lista.length}</div></div>`
+    + Object.entries(porBanco).map(([b, d]) =>
+      `<div class="indice-card"><div class="indice-label">${escapeHTML(b)}</div><div class="indice-value nums">${d.n}</div><div class="panel-note nums">${fmtMoney(d.total)}</div></div>`
+    ).join('');
+  if(!lista.length){
+    tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted);">No hay partidas pendientes de conciliar. ✓</td></tr>';
+    return;
+  }
+  tbody.innerHTML = lista.map(m => {
+    const dias = Math.max(0, Math.round((HOY - m.fecha) / 86400000));
+    return `<tr>
+      <td class="nums">${fmtDate(m.fecha)}</td>
+      <td>${escapeHTML(m.banco || '—')}</td>
+      <td>${m.origen === 'account.payment' ? 'Pago registrado' : 'Transacción del extracto'}</td>
+      <td class="concepto">${escapeHTML(m.concepto || '—')}${linkOdoo(odooUrlMov(m))}</td>
+      <td>${escapeHTML(m.proveedor || '—')}</td>
+      <td class="nums ${m.monto < 0 ? 'amt-out' : ''}" style="text-align:right;">${fmtMoney(m.monto)}</td>
+      <td class="nums" style="${dias > 30 ? 'color:var(--bad); font-weight:600;' : ''}">${dias}</td>
+    </tr>`;
+  }).join('');
+}
+document.getElementById('btnExcelSinConciliar').addEventListener('click', descargarExcelSinConciliar);
+
 function descargarExcelSinConciliar(){
   if(typeof XLSX === 'undefined'){ alert('No se pudo cargar la librería de Excel. Recarga la página.'); return; }
   const filas = partidasSinConciliar().map(m => ({
@@ -1622,37 +1677,18 @@ async function cargarAuditoria(){
       cheq.data.detalle = cheq.data.detalle.filter(d => !CHEQUES_IGNORADOS.has(String(d.numero ?? '').trim()));
       cheq.data.cantidad = cheq.data.detalle.length;
     }
-    // Partidas registradas en Odoo que faltan conciliar con el extracto
-    // (se calcula con los movimientos ya cargados; incluye todo desde 2025).
-    const fechaCorrida = [dup.data, mism.data, cheq.data].find(a => a && a.corrida_en)?.corrida_en || new Date().toISOString();
-    const pendientesConciliar = partidasSinConciliar();
-    const alertaConciliar = pendientesConciliar.length ? {
-      tipo: 'sin_conciliar',
-      cantidad: pendientesConciliar.length,
-      corrida_en: fechaCorrida,
-      detalle: pendientesConciliar.map(m => ({
-        fecha: fmtDate(m.fecha),
-        banco: m.banco || '—',
-        tipo_partida: m.origen === 'account.payment' ? 'Pago registrado' : 'Transacción del extracto',
-        concepto: m.concepto || '—',
-        proveedor: m.proveedor || '—',
-        monto: fmtMoney(m.monto),
-      })),
-    } : null;
-    const alertas = [dup.data, mism.data, cheq.data, alertaConciliar].filter(a => a && a.cantidad > 0);
+    const alertas = [dup.data, mism.data, cheq.data].filter(a => a && a.cantidad > 0);
     if(alertas.length === 0){ banner.style.display = 'none'; return; }
 
     const etiquetas = {
       duplicado_bnk_payment: 'posible(s) pago(s) contado(s) dos veces (banco y account.payment)',
       proveedor_distinto_po: 'pago(s) con proveedor distinto al actual de su Orden de Compra',
       cheque_a_fecha: 'cheque(s) a fecha por vencer en los próximos 15 días (o ya vencidos, sin cobrar)',
-      sin_conciliar: 'partida(s) registrada(s) en Odoo que faltan conciliar con el banco',
     };
     const camposPorTipo = {
       duplicado_bnk_payment: [['concepto','Concepto'],['proveedor','Proveedor'],['banco','Banco'],['monto','Monto'],['fecha','Fecha']],
       proveedor_distinto_po: [['pen','N.° PEN'],['proveedor_en_pago','Proveedor en el pago'],['proveedor_actual_oc','Proveedor actual de la OC'],['monto','Monto'],['fecha','Fecha']],
       cheque_a_fecha: [['numero','N.° Cheque'],['beneficiario','Beneficiario'],['banco','Banco'],['monto','Monto'],['fecha','Fecha cobro'],['estado','Estado']],
-      sin_conciliar: [['fecha','Fecha'],['banco','Banco'],['tipo_partida','Tipo'],['concepto','Concepto'],['proveedor','Proveedor'],['monto','Monto']],
     };
     banner.style.display = 'block';
     banner.innerHTML = `
@@ -1664,7 +1700,6 @@ async function cargarAuditoria(){
           <div style="display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--ink); margin-top:2px;">
             <span>${a.cantidad} ${etiquetas[a.tipo] || a.tipo}</span>
             <button type="button" class="btn-ver-alerta" data-tipo="${a.tipo}" style="font-size:11px; border:1px solid var(--bad); background:#fff; color:var(--bad); border-radius:5px; padding:2px 8px; cursor:pointer;">Ver detalle</button>
-            ${a.tipo === 'sin_conciliar' ? '<button type="button" id="btnExcelSinConciliar" style="font-size:11px; border:1px solid var(--bad); background:#fff; color:var(--bad); border-radius:5px; padding:2px 8px; cursor:pointer;">Descargar Excel para conciliar</button>' : ''}
           </div>
           <div class="panel-alerta-detalle" data-tipo-detalle="${a.tipo}" style="display:none; margin-top:8px; max-height:260px; overflow:auto; background:#fff; border-radius:6px;">
             <table style="width:100%; font-size:11.5px; border-collapse:collapse;">
@@ -1676,8 +1711,6 @@ async function cargarAuditoria(){
           </div>`;
         }).join('')}
       </div>`;
-    const btnExcelConc = banner.querySelector('#btnExcelSinConciliar');
-    if(btnExcelConc) btnExcelConc.addEventListener('click', descargarExcelSinConciliar);
     banner.querySelectorAll('.btn-ver-alerta').forEach(btn=>{
       btn.addEventListener('click', ()=>{
         const panel = banner.querySelector(`.panel-alerta-detalle[data-tipo-detalle="${btn.dataset.tipo}"]`);
@@ -5639,7 +5672,7 @@ document.querySelectorAll('.view-tab').forEach(btn=>{
     document.getElementById('vistaPresupuesto').style.display = vista === 'presupuesto' ? '' : 'none';
     document.getElementById('vistaCobranzas').style.display = vista === 'cobranzas' ? '' : 'none';
     document.getElementById('vistaAuditoriaHitos').style.display = vista === 'auditoriaHitos' ? '' : 'none';
-    if(vista === 'auditoriaHitos') cargarAuditoriaHitos();
+    if(vista === 'auditoriaHitos'){ cargarAuditoriaHitos(); renderPorConciliar(); }
     if(vista === 'indices') renderIndices();
     if(vista === 'obligaciones') renderObligaciones();
     if(vista === 'presupuesto') renderPresupuesto();
