@@ -290,8 +290,11 @@
   .view-tab.active{background:var(--navy); color:#fff; border-color:var(--navy);}
   .indice-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; margin-bottom:20px;}
   .indice-card{background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px;}
-  .toggle-estado{cursor:pointer; user-select:none; transition:opacity .15s;}
+  .toggle-estado{cursor:pointer; user-select:none; transition:opacity .15s, box-shadow .15s; border:1px solid transparent;}
+  .toggle-estado:hover{border-color:currentColor;}
   .toggle-estado.badge-off{opacity:.3;}
+  .toggle-estado.activo{box-shadow:0 0 0 2px currentColor;}
+  .badge.pagado-hoy-badge{background:var(--good-bg); color:var(--good);}
   .clickable-cell{cursor:pointer; text-decoration:underline; text-decoration-style:dotted; text-underline-offset:3px;}
   .clickable-cell:hover{background:#F5F6F8;}
   .indice-label{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em;}
@@ -447,7 +450,7 @@
         <button type="button" id="btnAgregarManual" title="Agregar movimiento manual" style="width:24px; height:24px; border-radius:50%; border:1px solid var(--navy); background:var(--navy); color:#fff; font-size:15px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0;">+</button>
       </div>
       <div class="panel-note" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-        <span><span class="badge exec toggle-estado" id="badgeExec" title="Pago ya registrado en Odoo. Clic para mostrar u ocultar">EJECUTADO / REGISTRADO</span> &nbsp;<span class="badge" style="background:var(--good-bg); color:var(--good);" title="Marcado pagado hoy en el dashboard; deja de verse en verde cuando se registra en Odoo">PAGADO HOY</span> &nbsp;<span class="badge proj toggle-estado" id="badgeProy" title="Clic para mostrar u ocultar">PROYECTADO</span></span>
+        <span><span class="badge exec toggle-estado" id="badgeExec" title="Clic para ver solo lo registrado en Odoo. Otro clic: ver todo">EJECUTADO / REGISTRADO</span> &nbsp;<span class="badge pagado-hoy-badge toggle-estado" id="badgePagadoHoy" title="Clic para ver solo lo marcado pagado hoy (aún sin registrar en Odoo). Otro clic: ver todo">PAGADO HOY</span> &nbsp;<span class="badge proj toggle-estado" id="badgeProy" title="Clic para ver solo lo proyectado. Otro clic: ver todo">PROYECTADO</span> <span style="font-size:11px; color:var(--muted);">(clic para filtrar)</span></span>
         <span style="display:flex; align-items:center; gap:6px; position:relative;">
           Mes:
           <button type="button" id="btnFiltroMes" style="font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px; background:#fff; color:var(--ink); cursor:pointer; min-width:150px; text-align:left;">Todos los meses</button>
@@ -2086,8 +2089,15 @@ function etiquetaPO(m){
   return base ? normalizarCodigoProyecto(base) : 'Sin P.O.';
 }
 
-let mostrarEjecutados = true;
-let mostrarProyectados = true;
+// Filtro por estado desde las etiquetas de la leyenda:
+// 'todos' | 'ejecutado' | 'pagado_hoy' | 'proyectado'.
+// Clic en una etiqueta = ver solo esa categoría; otro clic = ver todo.
+let filtroEstado = 'todos';
+function categoriaEstado(m){
+  if(m.estado === 'ejecutado') return 'ejecutado';
+  if(m.estado === 'proyectado' && m.pagadoManual) return 'pagado_hoy';
+  return 'proyectado';
+}
 // Cruces de anticipo (clientes y proveedores): son solo asientos contables que
 // aplican un anticipo ya cobrado/pagado contra la factura. NO son dinero que
 // entra o sale del banco, así que nunca se muestran en el Flujo de caja ni en
@@ -2107,10 +2117,12 @@ function render(){
 
   const badgeExec = document.getElementById('badgeExec');
   const badgeProy = document.getElementById('badgeProy');
-  badgeExec.classList.toggle('badge-off', !mostrarEjecutados);
-  badgeProy.classList.toggle('badge-off', !mostrarProyectados);
-  badgeExec.onclick = ()=>{ mostrarEjecutados = !mostrarEjecutados; render(); };
-  badgeProy.onclick = ()=>{ mostrarProyectados = !mostrarProyectados; render(); };
+  const badgePagadoHoy = document.getElementById('badgePagadoHoy');
+  [[badgeExec,'ejecutado'],[badgePagadoHoy,'pagado_hoy'],[badgeProy,'proyectado']].forEach(([el, cat])=>{
+    el.classList.toggle('activo', filtroEstado === cat);
+    el.classList.toggle('badge-off', filtroEstado !== 'todos' && filtroEstado !== cat);
+    el.onclick = ()=>{ filtroEstado = (filtroEstado === cat) ? 'todos' : cat; render(); };
+  });
 
   const valBanco = selBanco.value;
   poblarFiltroMes(movimientos);
@@ -2179,8 +2191,7 @@ function render(){
     const poLabel = etiquetaPO(m);
     if(!mesesSeleccionados.has(claveMes(m.fecha))) return;
     if(esCruceAnticipo(m)) return; // asiento contable, no es movimiento de banco
-    if(!mostrarEjecutados && m.estado === 'ejecutado') return;
-    if(!mostrarProyectados && m.estado === 'proyectado') return;
+    if(filtroEstado !== 'todos' && categoriaEstado(m) !== filtroEstado) return;
     if(fBanco !== 'Todas' && m.banco !== fBanco) return;
     if(!Object.values(FILTROS_MULTI).every(f => f.pasa(m))) return;
     if(fDesde && m.fecha < fDesde) return;
