@@ -104,11 +104,18 @@
   thead th:nth-child(7), tbody td:nth-child(7){padding-left:10px;}
   thead th:last-child, tbody td:last-child{padding-right:28px;}
   tbody tr:last-child td{border-bottom:none;}
-  tbody tr.executed{background:var(--executed); color:var(--executed-ink);}
-  tbody tr.seleccionada-pago td{background:var(--bad-bg);}
-  tbody tr.executed td.concepto::before{
-    content:"🔒"; margin-right:6px; font-size:10.5px; opacity:.6;
-  }
+  /* Ejecutado / registrado en Odoo: gris claro */
+  tbody tr.ejecutado td{background:var(--executed); color:var(--executed-ink);}
+  tbody tr.ejecutado td:first-child{box-shadow:inset 3px 0 0 #9AA1B1;}
+  tbody tr.ejecutado td.concepto::before{content:"🔒"; margin-right:6px; font-size:10.5px; opacity:.6;}
+  /* Proyectado: naranja suave */
+  tbody tr.proyectado td{background:var(--projected-bg);}
+  tbody tr.proyectado td:first-child{box-shadow:inset 3px 0 0 var(--projected);}
+  /* Pagado hoy, pendiente de registrar en Odoo: verde claro */
+  tbody tr.pagado-hoy td{background:var(--good-bg);}
+  tbody tr.pagado-hoy td:first-child{box-shadow:inset 3px 0 0 var(--good);}
+  /* Fila seleccionada para pagar: verde mas fuerte con borde */
+  tbody tr.seleccionada-pago td{background:#D4E8C4; border-top:1px solid var(--good); border-bottom:1px solid var(--good);}
   .badge{
     display:inline-block; font-size:10.5px; padding:3px 8px; border-radius:20px; font-weight:600; letter-spacing:.02em;
   }
@@ -180,7 +187,7 @@
     table, thead, tbody, tr, th, td{display:block;}
     thead tr{position:absolute; top:-9999px; left:-9999px;}
     tbody tr{border:1px solid var(--line); border-radius:9px; margin:0 20px 12px;}
-    tbody tr.executed{margin:0 20px 12px;}
+    tbody tr.ejecutado{margin:0 20px 12px;}
     tbody td{border-bottom:none; padding:8px 14px;}
     tbody td:before{
       content:attr(data-label); display:block; font-size:10px; font-weight:700;
@@ -371,7 +378,7 @@
     <div>
       <p class="brand-eyebrow">ENERGYCONTROL S.A. · Tesorería</p>
       <h1>Flujo de Caja</h1>
-      <p class="sub">Capa gris = ya ejecutado en banco (desde Odoo, no editable). Capa naranja = proyectado — mueve la fecha y el saldo se recalcula al instante.</p>
+      <p class="sub">Gris = ejecutado / registrado en Odoo (no editable). Verde = marcado pagado hoy, pendiente de registrar en Odoo. Naranja = proyectado — mueve la fecha y el saldo se recalcula al instante.</p>
     </div>
     <div class="top-acciones">
       <span class="demo-tag" id="estadoConexion" title="Clic para recargar datos">Conectando a Supabase…</span>
@@ -422,7 +429,7 @@
   <section class="panel">
     <div class="panel-head">
       <div class="panel-title">Saldo por Banco</div>
-      <div class="panel-note">Solo movimientos ya ejecutados (gris) — lo proyectado no mueve el saldo real todavía</div>
+      <div class="panel-note">Solo movimientos registrados en Odoo (gris) — lo proyectado no mueve el saldo real todavía</div>
     </div>
     <div class="oc-grid" id="bancosGrid" style="padding:16px 20px;"></div>
   </section>
@@ -434,7 +441,7 @@
         <button type="button" id="btnAgregarManual" title="Agregar movimiento manual" style="width:24px; height:24px; border-radius:50%; border:1px solid var(--navy); background:var(--navy); color:#fff; font-size:15px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0;">+</button>
       </div>
       <div class="panel-note" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-        <span><span class="badge exec toggle-estado" id="badgeExec" title="Clic para mostrar u ocultar">EJECUTADO</span> &nbsp;<span class="badge proj toggle-estado" id="badgeProy" title="Clic para mostrar u ocultar">PROYECTADO</span></span>
+        <span><span class="badge exec toggle-estado" id="badgeExec" title="Pago ya registrado en Odoo. Clic para mostrar u ocultar">EJECUTADO / REGISTRADO</span> &nbsp;<span class="badge" style="background:var(--good-bg); color:var(--good);" title="Marcado pagado hoy en el dashboard; deja de verse en verde cuando se registra en Odoo">PAGADO HOY</span> &nbsp;<span class="badge proj toggle-estado" id="badgeProy" title="Clic para mostrar u ocultar">PROYECTADO</span></span>
         <span style="display:flex; align-items:center; gap:6px; position:relative;">
           Mes:
           <button type="button" id="btnFiltroMes" style="font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px; background:#fff; color:var(--ink); cursor:pointer; min-width:150px; text-align:left;">Todos los meses</button>
@@ -2160,7 +2167,9 @@ function render(){
     filasVisiblesParaExportar.push(m);
 
     const tr = document.createElement('tr');
-    tr.className = m.estado + (movimientosSeleccionados.has(m.id) ? ' seleccionada-pago' : '');
+    tr.className = m.estado
+      + (m.estado === 'proyectado' && m.pagadoManual ? ' pagado-hoy' : '')
+      + (movimientosSeleccionados.has(m.id) ? ' seleccionada-pago' : '');
     const isProj = m.estado === 'proyectado';
     const editable = isProj && puedeEditar(m);
 
