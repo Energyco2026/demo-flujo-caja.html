@@ -108,6 +108,10 @@
   tbody tr.ejecutado td{background:var(--executed); color:var(--executed-ink);}
   tbody tr.ejecutado td:first-child{box-shadow:inset 3px 0 0 #9AA1B1;}
   tbody tr.ejecutado td.concepto::before{content:"🔒"; margin-right:6px; font-size:10.5px; opacity:.6;}
+  /* Marca de conciliación bancaria (solo filas registradas en Odoo) */
+  .marca-conc{display:inline-block; margin-left:6px; padding:1px 6px; border-radius:10px; font-size:10.5px; font-weight:700; line-height:1.5; vertical-align:middle; white-space:nowrap;}
+  .marca-conc.ok{background:#D7F0DF; color:#1E7B3E;}
+  .marca-conc.pend{background:#FDEBD3; color:#A15C07;}
   /* Proyectado: naranja suave */
   tbody tr.proyectado td{background:var(--projected-bg);}
   tbody tr.proyectado td:first-child{box-shadow:inset 3px 0 0 var(--projected);}
@@ -450,7 +454,7 @@
         <button type="button" id="btnAgregarManual" title="Agregar movimiento manual" style="width:24px; height:24px; border-radius:50%; border:1px solid var(--navy); background:var(--navy); color:#fff; font-size:15px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0;">+</button>
       </div>
       <div class="panel-note" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-        <span><span class="badge exec toggle-estado" id="badgeExec" title="Clic para ver solo lo registrado en Odoo. Otro clic: ver todo">EJECUTADO / REGISTRADO</span> &nbsp;<span class="badge pagado-hoy-badge toggle-estado" id="badgePagadoHoy" title="Clic para ver solo lo marcado pagado hoy (aún sin registrar en Odoo). Otro clic: ver todo">PAGADO HOY</span> &nbsp;<span class="badge proj toggle-estado" id="badgeProy" title="Clic para ver solo lo proyectado. Otro clic: ver todo">PROYECTADO</span> <span style="font-size:11px; color:var(--muted);">(clic para filtrar)</span></span>
+        <span><span class="badge exec toggle-estado" id="badgeExec" title="Clic para ver solo lo registrado en Odoo. Otro clic: ver todo">EJECUTADO / REGISTRADO</span> &nbsp;<span class="badge pagado-hoy-badge toggle-estado" id="badgePagadoHoy" title="Clic para ver solo lo marcado pagado hoy (aún sin registrar en Odoo). Otro clic: ver todo">PAGADO HOY</span> &nbsp;<span class="badge proj toggle-estado" id="badgeProy" title="Clic para ver solo lo proyectado. Otro clic: ver todo">PROYECTADO</span> <span style="font-size:11px; color:var(--muted);">(clic para filtrar)</span> &nbsp;<span style="font-size:11px; color:var(--muted);"><span class="marca-conc ok" style="margin-left:0;">✓</span> conciliado con el banco · <span class="marca-conc pend">Sin conciliar</span> registrado en Odoo, falta conciliar</span></span>
         <span style="display:flex; align-items:center; gap:6px; position:relative;">
           Mes:
           <button type="button" id="btnFiltroMes" style="font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px; background:#fff; color:var(--ink); cursor:pointer; min-width:150px; text-align:left;">Todos los meses</button>
@@ -1745,6 +1749,9 @@ async function cargarDatos(){
         estado: m.estado,
         origen: m.origen,
         odooId: m.odoo_id != null ? Number(m.odoo_id) : null,
+        // true = conciliado con el extracto · false = registrado sin conciliar
+        // null = Odoo no controla conciliación para este movimiento
+        conciliado: m.conciliado === true ? true : (m.conciliado === false ? false : null),
       }))
       // Las facturas con saldo cero no representan una cuenta pendiente y
       // se excluyen tanto del flujo como de los indicadores de cartera.
@@ -2090,6 +2097,14 @@ function etiquetaPO(m){
 }
 
 // Filtro por estado desde las etiquetas de la leyenda:
+// Visto de conciliación bancaria. Solo para filas registradas en Odoo.
+function marcaConciliacion(m){
+  if(m.estado !== 'ejecutado') return '';
+  if(m.conciliado === true) return ' <span class="marca-conc ok" title="Conciliado con el extracto bancario en Odoo">✓</span>';
+  if(m.conciliado === false) return ' <span class="marca-conc pend" title="Registrado en Odoo, todavía sin conciliar con el extracto bancario">Sin conciliar</span>';
+  return '';
+}
+
 // 'todos' | 'ejecutado' | 'pagado_hoy' | 'proyectado'.
 // Clic en una etiqueta = ver solo esa categoría; otro clic = ver todo.
 let filtroEstado = 'todos';
@@ -2233,7 +2248,7 @@ function render(){
     tr.innerHTML = `
       <td data-label="Sel.">${isProj && editable ? `<input type="checkbox" class="chk-pagar-hoy" data-id="${m.id}" ${movimientosSeleccionados.has(m.id)?'checked':''}>` : ''}</td>
       <td style="color:var(--muted); font-size:12.5px;" data-label="Cuenta contable">${m.cuenta || '—'}</td>
-      <td class="concepto" data-label="Concepto">${m.concepto || '—'}${linkOdoo(odooUrlMov(m))}${esVencida ? ' <span class="badge" style="background:var(--bad-bg); color:var(--bad);">VENCIDA</span>' : ''}${(m.origen==='manual' || m.origen==='anticipo_oc_manual') && editable ? ` <button type="button" class="btn-eliminar-manual" data-eliminar-id="${m.id}" title="Eliminar movimiento manual" style="border:none; background:none; color:var(--bad); cursor:pointer; font-size:13px; margin-left:6px; vertical-align:middle;">🗑</button>` : ''}${m.origen==='hito_cobro_manual' && isProj && puedeGestionarHitos() ? ` <button type="button" class="btn-gestionar-hito" data-mov-id="${m.id}" title="Hito cobrado: eliminar o registrar cobro parcial" style="border:none; background:none; color:var(--bad); cursor:pointer; font-size:13px; margin-left:6px; vertical-align:middle;">🗑</button>` : ''}</td>
+      <td class="concepto" data-label="Concepto">${m.concepto || '—'}${linkOdoo(odooUrlMov(m))}${marcaConciliacion(m)}${esVencida ? ' <span class="badge" style="background:var(--bad-bg); color:var(--bad);">VENCIDA</span>' : ''}${(m.origen==='manual' || m.origen==='anticipo_oc_manual') && editable ? ` <button type="button" class="btn-eliminar-manual" data-eliminar-id="${m.id}" title="Eliminar movimiento manual" style="border:none; background:none; color:var(--bad); cursor:pointer; font-size:13px; margin-left:6px; vertical-align:middle;">🗑</button>` : ''}${m.origen==='hito_cobro_manual' && isProj && puedeGestionarHitos() ? ` <button type="button" class="btn-gestionar-hito" data-mov-id="${m.id}" title="Hito cobrado: eliminar o registrar cobro parcial" style="border:none; background:none; color:var(--bad); cursor:pointer; font-size:13px; margin-left:6px; vertical-align:middle;">🗑</button>` : ''}</td>
       <td data-label="Proveedor">${m.proveedor || '—'}</td>
       <td class="nums" data-label="Fecha factura">
         ${m.fechaFactura ? fmtDate(m.fechaFactura) : '<span style="color:var(--muted)">—</span>'}
