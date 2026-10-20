@@ -224,6 +224,8 @@
   }
   .oc-status.abierta{background:var(--projected-bg); color:var(--projected);}
   .oc-status.cerrada{background:var(--good-bg); color:var(--good);}
+  .oc-status.facturada{background:#E6EEF8; color:var(--navy);}
+  .oc-status.por-cruzar{background:var(--bad-bg); color:var(--bad);}
   .oc-actions{justify-self:end; display:flex; align-items:center; gap:8px;}
   .oc-advance-form{display:grid; grid-template-columns:minmax(120px,1fr) minmax(150px,1.25fr) auto; gap:7px; align-items:end; width:100%;}
   .oc-advance-form label{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em;}
@@ -1021,6 +1023,23 @@
     </table></div>
   </section>
 
+  <!-- OC ya facturadas en Odoo con anticipos todavía sin cruzar contra la factura -->
+  <section class="panel" style="margin-top:18px;">
+    <div class="panel-head">
+      <div>
+        <div class="panel-title">Órdenes de compra facturadas — anticipos por cruzar</div>
+        <div class="panel-note">La OC ya recibió su factura ("Totalmente facturado" en Odoo), pero tiene anticipos o pagos que aún no se aplicaron a esa factura. Mientras no se crucen, la factura sale como egreso futuro en el flujo aunque ese dinero ya salió. Desaparece sola cuando se cruza en Odoo y corre la siguiente actualización.</div>
+      </div>
+    </div>
+  </section>
+  <div class="budget-summary" id="audCruceResumen"></div>
+  <section class="panel">
+    <div class="table-scroll"><table>
+      <thead><tr><th>N.° OC</th><th>P.O.</th><th>Proveedor</th><th>Factura(s)</th><th style="text-align:right;">Saldo factura</th><th style="text-align:right;">Anticipos sin aplicar</th><th style="text-align:right;">Por cruzar</th></tr></thead>
+      <tbody id="audCruceRows"></tbody>
+    </table></div>
+  </section>
+
   <!-- Partidas registradas en Odoo que faltan conciliar con el banco -->
   <section class="panel" style="margin-top:18px;">
     <div class="panel-head">
@@ -1479,6 +1498,8 @@ let bancosBase = {};
 let HOY = new Date();
 HOY.setHours(0,0,0,0); // medianoche de hoy, para comparar fechas sin la hora actual de por medio
 let ocAbiertas = new Set();
+let ocPorCruzar = new Set();          // N.° OC (PEN) ya facturadas con anticipos por cruzar
+let ocPorCruzarDetalle = [];
 let filasVisiblesParaExportar = [];
 let movimientosSeleccionados = new Set();
 let chart;
@@ -1644,6 +1665,53 @@ function renderPorConciliar(){
   }).join('');
 }
 document.getElementById('btnExcelSinConciliar').addEventListener('click', descargarExcelSinConciliar);
+
+// CAMBIO 20/10/2026: alerta "OC facturada con anticipos por cruzar" (la genera
+// el script en alertas_sistema, tipo oc_facturada_por_cruzar).
+async function cargarOCPorCruzar(){
+  try{
+    const { data, error } = await sb.from('alertas_sistema').select('*')
+      .eq('tipo','oc_facturada_por_cruzar').order('corrida_en',{ascending:false}).limit(1).maybeSingle();
+    if(error) throw error;
+    ocPorCruzarDetalle = Array.isArray(data?.detalle) ? data.detalle : [];
+  } catch(err){
+    console.error('No se pudo cargar la alerta de OC por cruzar:', err);
+    ocPorCruzarDetalle = [];
+  }
+  ocPorCruzar = new Set(ocPorCruzarDetalle.map(d => String(d.pen)));
+  renderOC();
+  renderOCPorCruzar();
+}
+
+function renderOCPorCruzar(){
+  const tbody = document.getElementById('audCruceRows');
+  const resumen = document.getElementById('audCruceResumen');
+  if(!tbody || !resumen) return;
+  if(!veAuditoriaHitos()){ tbody.innerHTML = ''; resumen.innerHTML = ''; return; }
+  const lista = ocPorCruzarDetalle;
+  const total = lista.reduce((s,d)=> s + (Number(d.monto_por_cruzar) || 0), 0);
+  const proveedores = new Set(lista.map(d => d.proveedor)).size;
+  resumen.innerHTML = `
+    <div class="indice-card"><div class="indice-label">OC facturadas por cruzar</div><div class="indice-value nums">${lista.length}</div></div>
+    <div class="indice-card"><div class="indice-label">Proveedores</div><div class="indice-value nums">${proveedores}</div></div>
+    <div class="indice-card"><div class="indice-label">Monto por cruzar (inflando CxP)</div><div class="indice-value nums">${fmtMoney(total)}</div></div>`;
+  if(!lista.length){
+    tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted);">No hay órdenes facturadas con anticipos por cruzar. ✓</td></tr>';
+    return;
+  }
+  tbody.innerHTML = lista.map(d => {
+    const url = d.odoo_id ? ODOO_BASE + '/odoo/purchase.order/' + encodeURIComponent(d.odoo_id) : null;
+    return `<tr>
+      <td class="nums">${escapeHTML(String(d.pen || '—'))}${linkOdoo(url, 'Abrir la orden de compra en Odoo')}</td>
+      <td>${escapeHTML(String(d.po_numero || '—'))}</td>
+      <td>${escapeHTML(String(d.proveedor || '—'))}</td>
+      <td>${escapeHTML(String(d.facturas || '—'))}</td>
+      <td class="nums" style="text-align:right;">${fmtMoney(Number(d.saldo_facturas) || 0)}</td>
+      <td class="nums" style="text-align:right;">${fmtMoney(Number(d.anticipos_sin_aplicar) || 0)}</td>
+      <td class="nums" style="text-align:right; color:var(--bad); font-weight:600;">${fmtMoney(Number(d.monto_por_cruzar) || 0)}</td>
+    </tr>`;
+  }).join('');
+}
 
 function descargarExcelSinConciliar(){
   if(typeof XLSX === 'undefined'){ alert('No se pudo cargar la librería de Excel. Recarga la página.'); return; }
@@ -1884,6 +1952,8 @@ async function cargarDatos(){
       totalSinIva: Number(oc.subtotal_presupuesto) || 0,
       estadoOdoo: oc.estado_odoo || '',
       fechaOrden: oc.fecha_orden || null,
+      estadoFacturacion: oc.estado_facturacion || null,
+      facturas: oc.facturas || null,
     }));
     cuotasFormaPago = cuotasData.map(c => ({
       id: c.id,
@@ -1950,6 +2020,7 @@ async function cargarDatos(){
     renderOC();
     prepararPresupuestos();
     cargarAuditoria();
+    cargarOCPorCruzar();
     // Rol cobranzas_servicios entra directo a Cobranzas — esa vista solo se
     // renderiza normalmente al hacer clic en su pestaña, así que hay que
     // forzarla aquí.
@@ -4573,8 +4644,30 @@ function attachHandlers(){
       if(m){
         // Obligaciones financieras: la fecha no se mueve desde la tabla.
         if(fechaBloqueada(m)){ e.target.value = fmtDate(m.fecha); return; }
+        if(!e.target.value){ e.target.value = fmtDate(m.fecha); return; }
+        const nuevaFecha = new Date(e.target.value + 'T00:00:00');
+        // CAMBIO 20/10/2026: si la fila está seleccionada (casilla) junto con
+        // otras, la nueva fecha se aplica a TODAS las seleccionadas que se
+        // puedan editar (proyectadas, con permiso y sin fecha bloqueada).
+        if(movimientosSeleccionados.has(id) && movimientosSeleccionados.size > 1){
+          const grupo = movimientos.filter(x =>
+            movimientosSeleccionados.has(x.id) && x.estado === 'proyectado' && puedeEditar(x) && !fechaBloqueada(x)
+          );
+          const omitidas = movimientosSeleccionados.size - grupo.length;
+          const ok = confirm(`¿Cambiar la fecha de pago a ${e.target.value.split('-').reverse().join('/')} en las ${grupo.length} filas seleccionadas?`
+            + (omitidas > 0 ? `\n(${omitidas} seleccionada(s) no se pueden editar y se dejan igual.)` : ''));
+          if(!ok){ e.target.value = fmtDate(m.fecha); return; }
+          grupo.forEach(x => {
+            const anteriorX = fmtDate(x.fecha);
+            x.fecha = new Date(nuevaFecha);
+            x.esFechaManual = true;
+            guardarFechaManual(x.id, x.fecha, anteriorX);
+          });
+          render();
+          return;
+        }
         const anterior = fmtDate(m.fecha);
-        m.fecha = new Date(e.target.value + 'T00:00:00');
+        m.fecha = nuevaFecha;
         m.esFechaManual = true;
         guardarFechaManual(id, m.fecha, anterior);
         render();
@@ -4809,7 +4902,13 @@ function renderOC(){
       <div>
         <div class="oc-top">
           <span class="oc-name">${oc.poNumero ? `<span class="po-real" title="${oc.poNumero==='STOCK'?'Compra para stock':'Número P.O. comercial'}">${oc.poNumero==='STOCK'?'STOCK':'P.O. '+escapeHTML(oc.poNumero)}</span>` : '<span style="color:var(--bad)">Sin P.O. comercial</span>'}</span>
-          <span class="oc-status ${cerrada?'cerrada':'abierta'}">${cerrada?'Cerrada':'Abierta'}</span>
+          ${(()=>{
+            // CAMBIO 20/10/2026: si la OC ya recibió su factura en Odoo no se muestra como "Abierta".
+            if(cerrada) return '<span class="oc-status cerrada">Cerrada</span>';
+            if(ocPorCruzar.has(String(oc.id))) return `<span class="oc-status por-cruzar" title="Facturada en Odoo: falta cruzar anticipos contra ${escapeHTML(oc.facturas || 'la factura')}">Facturada · por cruzar</span>`;
+            if(oc.estadoFacturacion === 'invoiced') return `<span class="oc-status facturada" title="${escapeHTML(oc.facturas || '')}">Facturada</span>`;
+            return '<span class="oc-status abierta">Abierta</span>';
+          })()}
         </div>
         <div class="oc-prov">${oc.proveedor || '—'}</div>
         <div class="oc-internal" title="Identificador único de la orden en Odoo">N.º OC Odoo: ${escapeHTML(String(oc.id))}${linkOdoo(oc.id ? ODOO_BASE + '/mail/view?model=purchase.order&res_id=' + encodeURIComponent(oc.id) : null, 'Abrir la orden de compra en Odoo')}</div>
@@ -5672,7 +5771,7 @@ document.querySelectorAll('.view-tab').forEach(btn=>{
     document.getElementById('vistaPresupuesto').style.display = vista === 'presupuesto' ? '' : 'none';
     document.getElementById('vistaCobranzas').style.display = vista === 'cobranzas' ? '' : 'none';
     document.getElementById('vistaAuditoriaHitos').style.display = vista === 'auditoriaHitos' ? '' : 'none';
-    if(vista === 'auditoriaHitos'){ cargarAuditoriaHitos(); renderPorConciliar(); }
+    if(vista === 'auditoriaHitos'){ cargarAuditoriaHitos(); renderPorConciliar(); renderOCPorCruzar(); }
     if(vista === 'indices') renderIndices();
     if(vista === 'obligaciones') renderObligaciones();
     if(vista === 'presupuesto') renderPresupuesto();
