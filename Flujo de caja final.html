@@ -1030,6 +1030,7 @@
         <div class="panel-title">Órdenes de compra facturadas — anticipos por cruzar</div>
         <div class="panel-note">La OC ya recibió su factura ("Totalmente facturado" en Odoo), pero tiene anticipos o pagos que aún no se aplicaron a esa factura. Mientras no se crucen, la factura sale como egreso futuro en el flujo aunque ese dinero ya salió. Desaparece sola cuando se cruza en Odoo y corre la siguiente actualización.</div>
       </div>
+      <button type="button" id="btnExcelPorCruzar" style="border:1px solid var(--navy); background:var(--navy); color:#fff; border-radius:6px; padding:7px 14px; cursor:pointer; font-size:12px; font-weight:600; white-space:nowrap;">Descargar Excel</button>
     </div>
   </section>
   <div class="budget-summary" id="audCruceResumen"></div>
@@ -1678,9 +1679,31 @@ async function cargarOCPorCruzar(){
     console.error('No se pudo cargar la alerta de OC por cruzar:', err);
     ocPorCruzarDetalle = [];
   }
-  ocPorCruzar = new Set(ocPorCruzarDetalle.map(d => String(d.pen)));
+  ocPorCruzar = new Set(ocPorCruzarDetalle.flatMap(d => String(d.pen).split(',').map(x => x.trim())));
   renderOC();
   renderOCPorCruzar();
+}
+
+document.getElementById('btnExcelPorCruzar').addEventListener('click', descargarExcelPorCruzar);
+
+function descargarExcelPorCruzar(){
+  if(typeof XLSX === 'undefined'){ alert('No se pudo cargar la librería de Excel. Recarga la página.'); return; }
+  if(!ocPorCruzarDetalle.length){ alert('No hay órdenes facturadas con anticipos por cruzar.'); return; }
+  const filas = ocPorCruzarDetalle.map(d => ({
+    'N.° OC': d.pen || '',
+    'P.O.': d.po_numero || '',
+    'Proveedor': d.proveedor || '',
+    'Factura(s)': d.facturas || '',
+    'Saldo factura': Number(d.saldo_facturas) || 0,
+    'Anticipos sin aplicar': Number(d.anticipos_sin_aplicar) || 0,
+    'Por cruzar': Number(d.monto_por_cruzar) || 0,
+  }));
+  const hoja = XLSX.utils.json_to_sheet(filas);
+  hoja['!cols'] = [{wch:26},{wch:18},{wch:40},{wch:34},{wch:15},{wch:20},{wch:15}];
+  hoja['!autofilter'] = {ref: hoja['!ref']};
+  const libro = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(libro, hoja, 'OC por cruzar');
+  XLSX.writeFile(libro, `oc_facturadas_por_cruzar_${fmtDate(new Date())}.xlsx`);
 }
 
 function renderOCPorCruzar(){
