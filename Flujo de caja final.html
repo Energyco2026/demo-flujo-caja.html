@@ -1976,6 +1976,8 @@ async function cargarDatos(){
       estadoOdoo: oc.estado_odoo || '',
       fechaOrden: oc.fecha_orden || null,
       estadoFacturacion: oc.estado_facturacion || null,
+      // id numérico de Odoo (el "id" de la tabla es el nombre PEN0000xxxx).
+      odooId: oc.odoo_id != null ? Number(oc.odoo_id) : null,
       facturas: oc.facturas || null,
     }));
     cuotasFormaPago = cuotasData.map(c => ({
@@ -4791,8 +4793,13 @@ function renderOC(){
       saldo: Math.max(oc.total - pagado, 0)
     });
   });
+  // CAMBIO 20/10/2026: las OC que ya recibieron su factura en Odoo
+  // ("Totalmente facturado") salen de este panel — su saldo real ya vive en
+  // la factura de Cuentas por Pagar. Excepción: las que tienen anticipos por
+  // cruzar se siguen mostrando (con su etiqueta roja) hasta que se crucen.
   const ordenesAbiertas = ordenesOperativas.filter(oc =>
-    resumenPorOC.get(String(oc.id)).saldo > 0.01
+    resumenPorOC.get(String(oc.id)).saldo > 0.01 &&
+    (oc.estadoFacturacion !== 'invoiced' || ocPorCruzar.has(String(oc.id)))
   );
 
   const numerosPO = [...new Set(ordenesAbiertas.map(o=>o.poNumero).filter(Boolean))].sort();
@@ -4934,7 +4941,7 @@ function renderOC(){
           })()}
         </div>
         <div class="oc-prov">${oc.proveedor || '—'}</div>
-        <div class="oc-internal" title="Identificador único de la orden en Odoo">N.º OC Odoo: ${escapeHTML(String(oc.id))}${linkOdoo(oc.id ? ODOO_BASE + '/mail/view?model=purchase.order&res_id=' + encodeURIComponent(oc.id) : null, 'Abrir la orden de compra en Odoo')}</div>
+        <div class="oc-internal" title="Identificador único de la orden en Odoo">N.º OC Odoo: ${escapeHTML(String(oc.id))}${linkOdoo(oc.odooId ? ODOO_BASE + '/odoo/purchase.order/' + encodeURIComponent(oc.odooId) : null, 'Abrir la orden de compra en Odoo')}</div>
         ${oc.referenciaProveedor ? `<div class="oc-internal" title="Referencia de proveedor cargada en la OC">Ref. proveedor: ${escapeHTML(oc.referenciaProveedor)}</div>` : ''}
         ${oc.comentariosFormaPago ? `<div class="oc-internal" title="Campo 'Comentarios Formas de Pago' de la OC en Odoo">Pago: ${escapeHTML(oc.comentariosFormaPago)}</div>` : ''}
         <br>
