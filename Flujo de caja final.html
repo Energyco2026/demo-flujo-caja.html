@@ -541,6 +541,13 @@
             <option value="egresos">Solo egresos</option>
           </select>
         </span>
+        <span style="display:flex; align-items:center; gap:6px;" title="Muestra solo movimientos cuyo monto (en valor absoluto) sea igual o mayor a este valor. Afecta solo la tabla y el Excel; los KPI y saldos no cambian.">Monto ≥
+          <input type="number" id="filtroMontoMin" min="0" step="100" placeholder="0" style="width:95px; font-family:'JetBrains Mono',monospace; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px; background:#fff; color:var(--ink);">
+          <button type="button" class="btn-refrescar btn-monto-rapido" data-monto="5000" style="padding:5px 8px;">5K</button>
+          <button type="button" class="btn-refrescar btn-monto-rapido" data-monto="10000" style="padding:5px 8px;">10K</button>
+          <button type="button" class="btn-refrescar btn-monto-rapido" data-monto="" title="Quitar filtro de monto" style="padding:5px 8px;">✕</button>
+        </span>
+        <span id="avisoFiltroMonto" class="nums" style="display:none; font-size:12px; font-weight:600; color:var(--projected); background:var(--projected-bg); border-radius:6px; padding:5px 10px;"></span>
         <button type="button" id="btnExportarCSV" class="btn-refrescar">⬇ Descargar Excel</button>
         <button type="button" id="btnSeleccionarTodos" class="btn-refrescar">Seleccionar todos</button>
         <span id="contadorSeleccionados" style="font-size:12px; color:var(--muted);">0 seleccionadas</span>
@@ -2308,6 +2315,13 @@ function render(){
   inpHasta.onchange = render;
   selVencimiento.onchange = render;
   selTipoMov.onchange = render;
+  // Filtro "Monto ≥": se aplica al presionar Enter o salir del campo, o con los atajos 5K/10K/✕.
+  const inpMontoMin = document.getElementById('filtroMontoMin');
+  inpMontoMin.onchange = render;
+  document.querySelectorAll('.btn-monto-rapido').forEach(b=>{
+    b.onclick = ()=>{ inpMontoMin.value = b.dataset.monto; render(); };
+  });
+  const montoMin = Math.max(0, parseFloat(inpMontoMin.value) || 0);
 
   const badgeExec = document.getElementById('badgeExec');
   const badgeProy = document.getElementById('badgeProy');
@@ -2400,6 +2414,7 @@ function render(){
     const filtroTipo = selTipoMov.value || 'todas';
     if(filtroTipo === 'ingresos' && m.monto <= 0) return;
     if(filtroTipo === 'egresos' && m.monto >= 0) return;
+    if(montoMin > 0 && Math.abs(m.monto) < montoMin) return;
 
     filasVisiblesParaExportar.push(m);
 
@@ -2475,6 +2490,23 @@ function render(){
   });
 
   if(filaGrupoUtilidades) pintarGrupoUtilidades(filaGrupoUtilidades, grupoUtilidades);
+
+  // Subtotal de lo que se ve con el filtro de monto activo (no toca KPI ni saldos).
+  const avisoMonto = document.getElementById('avisoFiltroMonto');
+  inpMontoMin.style.borderColor = montoMin > 0 ? 'var(--projected)' : 'var(--line)';
+  if(montoMin > 0){
+    const visibles = filasVisiblesParaExportar.filter(m => !m.esChequeUtilidad);
+    const entradasF = visibles.filter(m => m.monto > 0).reduce((s,m)=>s+m.monto, 0);
+    const salidasF = visibles.filter(m => m.monto < 0).reduce((s,m)=>s+Math.abs(m.monto), 0);
+    const partes = [`⚠ Monto ≥ ${fmtMoney(montoMin)} · ${visibles.length} mov.`];
+    if(entradasF > 0.01) partes.push(`Ingresos ${fmtMoney(entradasF)}`);
+    if(salidasF > 0.01) partes.push(`Egresos ${fmtMoney(salidasF)}`);
+    avisoMonto.textContent = partes.join(' · ');
+    avisoMonto.title = 'Subtotal solo de las filas visibles. Los KPI de arriba y el saldo proyectado siguen incluyendo todos los movimientos.';
+    avisoMonto.style.display = 'inline-block';
+  } else {
+    avisoMonto.style.display = 'none';
+  }
 
   if(rowsEl.children.length === 0){
     rowsEl.innerHTML = `<tr><td colspan="12" style="color:var(--muted); font-style:italic; text-align:center; padding:24px;">Sin movimientos para este filtro.</td></tr>`;
