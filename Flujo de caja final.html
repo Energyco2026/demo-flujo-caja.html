@@ -416,6 +416,8 @@
 
   <div id="errorBox"></div>
   <div id="bannerAuditoria" style="display:none;"></div>
+  <div id="bannerObligaciones30" style="display:none;"></div>
+  <div id="panelFacturasBorradas" style="display:none;"></div>
 
   <div class="kpis">
     <div class="kpi">
@@ -1495,6 +1497,7 @@ function fmtMoney(n){
 }
 
 let movimientos = [];
+let facturasBorradas = [];
 // Vistas del Agente Financiero (mismo Supabase) para la pestaña Cobranzas.
 let cobIngresos7 = [], cobIngresosClientes = [], cobHitos = [], cobServicios = [];
 let cobVistaActual = 'porcliente';
@@ -1768,6 +1771,117 @@ function descargarExcelSinConciliar(){
   XLSX.writeFile(libro, `partidas_por_conciliar_${fmtDate(new Date())}.xlsx`);
 }
 
+// ---------- Borrar facturas de Odoo del flujo (borrado lógico, restaurable) ----------
+async function borrarFacturaDelFlujo(id){
+  const m = movimientos.find(x => x.id === id);
+  if(!m) return;
+  const motivo = window.prompt(
+    `Vas a quitar del flujo:\n${m.concepto || ''}\n${m.proveedor || ''} · ${fmtMoney(m.monto)}\n\n` +
+    `Escribe el motivo (ej. "cruce de anticipo pendiente en Odoo"):`);
+  if(motivo == null) return;
+  if(!motivo.trim()){ alert('Debes escribir el motivo: queda registrado en el historial.'); return; }
+  const quien = usuarioActual || 'desconocido';
+  const { error } = await sb.from('movimientos').update({
+    eliminado: true,
+    eliminado_por: quien,
+    eliminado_en: new Date().toISOString(),
+  }).eq('id', id);
+  if(error){ alert('No se pudo borrar: ' + error.message); return; }
+  await registrarHistorialCambio(id, 'eliminado', null, 'Borrada del flujo: ' + motivo.trim(), quien);
+  await cargarDatos();
+}
+
+async function restaurarFacturaDelFlujo(id){
+  if(!window.confirm('¿Restaurar esta factura? Vuelve a aparecer en el flujo de caja.')) return;
+  const quien = usuarioActual || 'desconocido';
+  const { error } = await sb.from('movimientos').update({
+    eliminado: false,
+    eliminado_por: null,
+    eliminado_en: null,
+  }).eq('id', id);
+  if(error){ alert('No se pudo restaurar: ' + error.message); return; }
+  await registrarHistorialCambio(id, 'eliminado', 'borrada', 'restaurada', quien);
+  await cargarDatos();
+}
+
+let panelBorradasAbierto = false;
+function pintarFacturasBorradas(){
+  const cont = document.getElementById('panelFacturasBorradas');
+  if(!cont) return;
+  if(!esRolCompleto() || facturasBorradas.length === 0){ cont.style.display = 'none'; return; }
+  const lista = [...facturasBorradas].sort((a,b)=> String(b.eliminado_en||'').localeCompare(String(a.eliminado_en||'')));
+  cont.style.display = 'block';
+  cont.innerHTML = `
+    <div style="background:#fff; border:1px solid var(--line); border-radius:8px; padding:8px 14px; margin-bottom:16px; font-size:12.5px;">
+      <span>🗑 ${lista.length} factura(s) borrada(s) del flujo a mano</span>
+      <button type="button" id="btnVerBorradas" style="margin-left:8px; font-size:11px; border:1px solid var(--muted); background:#fff; border-radius:5px; padding:2px 8px; cursor:pointer;">${panelBorradasAbierto ? 'Ocultar' : 'Ver / restaurar'}</button>
+      <div style="display:${panelBorradasAbierto ? 'block' : 'none'}; margin-top:8px; max-height:260px; overflow:auto;">
+        <table style="width:100%; font-size:11.5px; border-collapse:collapse;">
+          <thead><tr>${['Concepto','Proveedor','Monto','Borrada por','Fecha',''].map(t=>`<th style="text-align:left; padding:5px 8px; border-bottom:1px solid var(--line); color:var(--muted);">${t}</th>`).join('')}</tr></thead>
+          <tbody>${lista.map(f=>`<tr>
+            <td style="padding:5px 8px; border-bottom:1px dashed var(--line);">${escapeHTML(f.concepto || '—')}</td>
+            <td style="padding:5px 8px; border-bottom:1px dashed var(--line);">${escapeHTML(f.proveedor || '—')}</td>
+            <td style="padding:5px 8px; border-bottom:1px dashed var(--line);" class="nums">${fmtMoney(Number(f.monto_manual != null ? f.monto_manual : f.monto))}</td>
+            <td style="padding:5px 8px; border-bottom:1px dashed var(--line);">${escapeHTML(f.eliminado_por || '—')}</td>
+            <td style="padding:5px 8px; border-bottom:1px dashed var(--line);">${f.eliminado_en ? fmtDateLocal(new Date(f.eliminado_en)) : '—'}</td>
+            <td style="padding:5px 8px; border-bottom:1px dashed var(--line);"><button type="button" class="btn-restaurar-factura" data-restaurar-id="${f.id}" style="font-size:11px; border:1px solid var(--good); color:var(--good); background:#fff; border-radius:5px; padding:2px 8px; cursor:pointer;">Restaurar</button></td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>
+    </div>`;
+  document.getElementById('btnVerBorradas').onclick = ()=>{ panelBorradasAbierto = !panelBorradasAbierto; pintarFacturasBorradas(); };
+  cont.querySelectorAll('.btn-restaurar-factura').forEach(b=>{
+    b.onclick = ()=> restaurarFacturaDelFlujo(parseInt(b.dataset.restaurarId));
+  });
+}
+
+// ---------- Alerta: obligaciones financieras que vencen en los próximos 30 días ----------
+// Incluye las ya vencidas sin pagar. Excluye lo marcado "Pagado hoy".
+let panelOblig30Abierto = false;
+function pintarAlertaObligaciones30(){
+  const cont = document.getElementById('bannerObligaciones30');
+  if(!cont) return;
+  if(!esRolCompleto()){ cont.style.display = 'none'; return; }
+  const limite = addDays(HOY, 30);
+  const lista = movimientos
+    .filter(m => m.categoriaObligacion && m.estado === 'proyectado' && !m.pagadoManual && m.fecha <= limite)
+    .sort((a,b)=> a.fecha - b.fecha);
+  if(lista.length === 0){ cont.style.display = 'none'; return; }
+  const total = lista.reduce((s,m)=> s + Math.abs(m.monto), 0);
+  const inicioHoy = new Date(HOY); inicioHoy.setHours(0,0,0,0);
+  const vencidas = lista.filter(m => m.fechaOriginal && m.fechaOriginal < inicioHoy);
+  const porCategoria = CATEGORIAS_OBLIGACION
+    .map(c => ({ nombre: c.nombre, monto: lista.filter(m => m.categoriaObligacion === c.clave).reduce((s,m)=>s+Math.abs(m.monto),0) }))
+    .filter(c => c.monto > 0.005);
+  cont.style.display = 'block';
+  cont.innerHTML = `
+    <div style="background:#FFF7E6; border:1px solid #E0A030; border-radius:8px; padding:10px 14px; margin-bottom:16px;">
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12.5px;">
+        <span style="font-weight:600; color:#9A6200;">📅 Obligaciones financieras próximos 30 días: ${lista.length} · ${fmtMoney(total)}</span>
+        ${vencidas.length ? `<span class="badge" style="background:var(--bad-bg); color:var(--bad);">${vencidas.length} vencida(s)</span>` : ''}
+        <span style="color:var(--muted);">${porCategoria.map(c => `${escapeHTML(c.nombre)} ${fmtMoney(c.monto)}`).join(' · ')}</span>
+        <button type="button" id="btnVerOblig30" style="font-size:11px; border:1px solid #E0A030; background:#fff; color:#9A6200; border-radius:5px; padding:2px 8px; cursor:pointer;">${panelOblig30Abierto ? 'Ocultar' : 'Ver detalle'}</button>
+      </div>
+      <div style="display:${panelOblig30Abierto ? 'block' : 'none'}; margin-top:8px; max-height:300px; overflow:auto; background:#fff; border-radius:6px;">
+        <table style="width:100%; font-size:11.5px; border-collapse:collapse;">
+          <thead><tr>${['Vence','Tipo','Concepto','Proveedor','Banco','Monto'].map(t=>`<th style="text-align:left; padding:5px 8px; border-bottom:1px solid var(--line); color:var(--muted);">${t}</th>`).join('')}</tr></thead>
+          <tbody>${lista.map(m => {
+            const esVenc = m.fechaOriginal && m.fechaOriginal < inicioHoy;
+            const venceTxt = esVenc ? `${fmtDate(m.fechaOriginal)} <span style="color:var(--bad); font-weight:600;">VENCIDA</span>` : fmtDate(m.fecha);
+            return `<tr>
+              <td style="padding:5px 8px; border-bottom:1px dashed var(--line); white-space:nowrap;" class="nums">${venceTxt}</td>
+              <td style="padding:5px 8px; border-bottom:1px dashed var(--line);">${escapeHTML(NOMBRE_CATEGORIA_OBLIGACION[m.categoriaObligacion] || '')}</td>
+              <td style="padding:5px 8px; border-bottom:1px dashed var(--line);">${escapeHTML(m.concepto || '—')}</td>
+              <td style="padding:5px 8px; border-bottom:1px dashed var(--line);">${escapeHTML(m.proveedor || '—')}</td>
+              <td style="padding:5px 8px; border-bottom:1px dashed var(--line);">${escapeHTML(m.banco || '—')}</td>
+              <td style="padding:5px 8px; border-bottom:1px dashed var(--line);" class="nums">${fmtMoney(m.monto)}</td>
+            </tr>`; }).join('')}</tbody>
+        </table>
+      </div>
+    </div>`;
+  document.getElementById('btnVerOblig30').onclick = ()=>{ panelOblig30Abierto = !panelOblig30Abierto; pintarAlertaObligaciones30(); };
+}
+
 async function cargarAuditoria(){
   const banner = document.getElementById('bannerAuditoria');
   try{
@@ -1887,9 +2001,14 @@ async function cargarDatos(){
         .map(([numero, codigos]) => [numero, [...codigos][0]])
     );
 
+    // Facturas de Odoo borradas a mano desde el dashboard (ej. ya se hizo el
+    // cruce pero Odoo aún no lo refleja). El script nunca toca 'eliminado',
+    // así que no reaparecen en la siguiente corrida; se pueden restaurar.
+    facturasBorradas = movData.filter(m => m.eliminado && m.origen === 'account.move');
     movimientosCartera = movData
       .filter(m =>
         !m.oculto &&
+        !m.eliminado &&
         m.fecha &&
         !PATRON_BANCO_TARJETA.test(m.banco_manual || m.banco || '')
       )
@@ -2058,6 +2177,8 @@ async function cargarDatos(){
     renderOC();
     prepararPresupuestos();
     cargarAuditoria();
+    pintarAlertaObligaciones30();
+    pintarFacturasBorradas();
     cargarOCPorCruzar();
     // Rol cobranzas_servicios entra directo a Cobranzas — esa vista solo se
     // renderiza normalmente al hacer clic en su pestaña, así que hay que
@@ -2381,6 +2502,7 @@ function render(){
   const rowsEl = document.getElementById('rows');
   rowsEl.innerHTML = '';
   filasVisiblesParaExportar = []; // se llena abajo, solo con lo que pasa todos los filtros
+  pintarAlertaObligaciones30(); // se refresca al marcar pagado / cambiar fechas
   const grupoUtilidades = [];
   let filaGrupoUtilidades = null;
 
@@ -2452,7 +2574,7 @@ function render(){
     tr.innerHTML = `
       <td data-label="Sel.">${isProj && editable ? `<input type="checkbox" class="chk-pagar-hoy" data-id="${m.id}" ${movimientosSeleccionados.has(m.id)?'checked':''}>` : ''}</td>
       <td style="color:var(--muted); font-size:12.5px;" data-label="Cuenta contable">${m.cuenta || '—'}</td>
-      <td class="concepto" data-label="Concepto">${m.concepto || '—'}${linkOdoo(odooUrlMov(m))}${marcaConciliacion(m)}${esVencida ? ' <span class="badge" style="background:var(--bad-bg); color:var(--bad);">VENCIDA</span>' : ''}${(m.origen==='manual' || m.origen==='anticipo_oc_manual') && editable ? ` <button type="button" class="btn-eliminar-manual" data-eliminar-id="${m.id}" title="Eliminar movimiento manual" style="border:none; background:none; color:var(--bad); cursor:pointer; font-size:13px; margin-left:6px; vertical-align:middle;">🗑</button>` : ''}${m.origen==='hito_cobro_manual' && isProj && puedeGestionarHitos() ? ` <button type="button" class="btn-gestionar-hito" data-mov-id="${m.id}" title="Hito cobrado: eliminar o registrar cobro parcial" style="border:none; background:none; color:var(--bad); cursor:pointer; font-size:13px; margin-left:6px; vertical-align:middle;">🗑</button>` : ''}</td>
+      <td class="concepto" data-label="Concepto">${m.concepto || '—'}${linkOdoo(odooUrlMov(m))}${marcaConciliacion(m)}${esVencida ? ' <span class="badge" style="background:var(--bad-bg); color:var(--bad);">VENCIDA</span>' : ''}${(m.origen==='manual' || m.origen==='anticipo_oc_manual') && editable ? ` <button type="button" class="btn-eliminar-manual" data-eliminar-id="${m.id}" title="Eliminar movimiento manual" style="border:none; background:none; color:var(--bad); cursor:pointer; font-size:13px; margin-left:6px; vertical-align:middle;">🗑</button>` : ''}${m.origen==='account.move' && isProj && esRolCompleto() ? ` <button type="button" class="btn-borrar-factura" data-borrar-id="${m.id}" title="Borrar esta factura del flujo (ej. ya se hizo el cruce y Odoo aún no lo refleja). Se puede restaurar." style="border:none; background:none; color:var(--bad); cursor:pointer; font-size:13px; margin-left:6px; vertical-align:middle;">🗑</button>` : ''}${m.origen==='hito_cobro_manual' && isProj && puedeGestionarHitos() ? ` <button type="button" class="btn-gestionar-hito" data-mov-id="${m.id}" title="Hito cobrado: eliminar o registrar cobro parcial" style="border:none; background:none; color:var(--bad); cursor:pointer; font-size:13px; margin-left:6px; vertical-align:middle;">🗑</button>` : ''}</td>
       <td data-label="Proveedor">${m.proveedor || '—'}</td>
       <td class="nums" data-label="Fecha factura">
         ${m.fechaFactura ? fmtDate(m.fechaFactura) : '<span style="color:var(--muted)">—</span>'}
@@ -4802,6 +4924,11 @@ function attachHandlers(){
   document.querySelectorAll('.btn-eliminar-manual').forEach(btn=>{
     btn.addEventListener('click', e=>{
       confirmarEliminarManual(parseInt(e.currentTarget.dataset.eliminarId));
+    });
+  });
+  document.querySelectorAll('.btn-borrar-factura').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      borrarFacturaDelFlujo(parseInt(e.currentTarget.dataset.borrarId));
     });
   });
 }
