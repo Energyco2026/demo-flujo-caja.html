@@ -549,6 +549,7 @@
         </span>
         <span id="avisoFiltroMonto" class="nums" style="display:none; font-size:12px; font-weight:600; color:var(--projected); background:var(--projected-bg); border-radius:6px; padding:5px 10px;"></span>
         <button type="button" id="btnExportarCSV" class="btn-refrescar">⬇ Descargar Excel</button>
+        <button type="button" id="btnDescargarPagosHoy" class="btn-refrescar" title="Solo lo marcado 'Marcar pagado hoy' con fecha de hoy, ordenado por banco. No depende de checks ni filtros." style="border-color:var(--good); color:var(--good); font-weight:600;">⬇ Pagos de hoy (tesorería)</button>
         <button type="button" id="btnSeleccionarTodos" class="btn-refrescar">Seleccionar todos</button>
         <span id="contadorSeleccionados" style="font-size:12px; color:var(--muted);">0 seleccionadas</span>
         <span id="totalSeleccionado" class="nums" style="display:none; font-size:12px; font-weight:600; color:var(--projected); background:var(--projected-bg); border-radius:6px; padding:5px 10px;"></span>
@@ -1297,6 +1298,11 @@ const PATRON_BANCO_TARJETA = /\b(VISA|DINERS|MASTERCARD|AMEX|AMERICAN\s+EXPRESS)
 
 function addDays(date, n){ const d = new Date(date); d.setDate(d.getDate()+n); return d; }
 function fmtDate(d){ return d.toISOString().slice(0,10); }
+// Fecha de HOY en hora local (Ecuador). toISOString() usa UTC: después de las
+// 7 pm devolvía la fecha de mañana. Se usa para "Marcar pagado hoy".
+function fmtDateLocal(d){
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
 // ============================================================
 // Unificación de nombres de proveedores
 // ============================================================
@@ -4642,7 +4648,7 @@ async function guardarBancoManual(id, nuevoBanco, valorAnterior){
 }
 
 async function marcarPagadoManual(id){
-  const hoy = fmtDate(new Date());
+  const hoy = fmtDateLocal(new Date());
   const quien = usuarioActual || 'desconocido';
   const { error } = await sb.from('movimientos').update({
     pagado_manual_fecha: hoy,
@@ -5136,7 +5142,7 @@ async function registrarAnticipo(oc, card){
   boton.disabled = true;
   mensaje.style.color = 'var(--muted)';
   mensaje.textContent = 'Guardando anticipo…';
-  const fecha = fmtDate(new Date());
+  const fecha = fmtDateLocal(new Date());
   const base = {
     concepto: `Anticipo P.O. ${oc.poNumero}`,
     proveedor: oc.proveedor || null,
@@ -5822,6 +5828,57 @@ function exportarSeleccionados(){
 
 document.getElementById('btnExportarCSV').addEventListener('click', exportarExcel);
 document.getElementById('btnDescargarSeleccionados').addEventListener('click', exportarSeleccionados);
+
+// Descarga para tesorería: SOLO lo marcado "Marcar pagado hoy" con fecha de HOY.
+// No depende de checks ni de filtros de la tabla. Ordenado por banco y luego proveedor.
+function exportarPagosDeHoy(){
+  const hoyTexto = fmtDateLocal(new Date());
+  const filas = movimientos
+    .filter(m => m.estado === 'proyectado'
+              && m.pagadoManual === hoyTexto
+              && !esCruceAnticipo(m)
+              && !m.esChequeUtilidad)
+    .sort((a,b)=>{
+      const bA = a.banco || '', bB = b.banco || '';
+      if(bA !== bB) return bA.localeCompare(bB);
+      return (a.proveedor || '').localeCompare(b.proveedor || '');
+    });
+
+  if(filas.length === 0){
+    alert('No hay movimientos marcados "Pagado hoy" con fecha ' + hoyTexto.split('-').reverse().join('/') + '.');
+    return;
+  }
+  if(typeof XLSX === 'undefined'){
+    alert('No se pudo cargar el generador de Excel. Revisa la conexión a internet y vuelve a intentarlo.');
+    return;
+  }
+
+  const datos = filas.map(m => ({
+    Banco: m.banco || 'Sin banco',
+    Proveedor: m.proveedor || '',
+    Concepto: m.concepto || '',
+    'Cuenta contable': m.cuenta || '',
+    'P.O.': m.po || '',
+    'N.° PEN': m.poInterno || '',
+    'Fecha factura': m.fechaFactura ? fmtDate(m.fechaFactura) : '',
+    'Total factura': m.montoFacturaTotal != null ? Number(m.montoFacturaTotal.toFixed(2)) : '',
+    Monto: Number(m.monto.toFixed(2)),
+    'Marcado por': m.editadoPor || '',
+    'Fecha pago': hoyTexto
+  }));
+  const hoja = XLSX.utils.json_to_sheet(datos, {
+    header: ['Banco','Proveedor','Concepto','Cuenta contable','P.O.','N.° PEN','Fecha factura','Total factura','Monto','Marcado por','Fecha pago']
+  });
+  hoja['!cols'] = [
+    {wch:24},{wch:34},{wch:42},{wch:30},{wch:16},{wch:14},{wch:14},{wch:15},{wch:15},{wch:28},{wch:13}
+  ];
+  hoja['!autofilter'] = {ref: hoja['!ref'] || 'A1:K1'};
+  const libro = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(libro, hojaResumenBanco(filas), 'Resumen por banco');
+  XLSX.utils.book_append_sheet(libro, hoja, 'Pagos de hoy');
+  XLSX.writeFile(libro, `pagos_tesoreria_${hoyTexto}.xlsx`, { cellStyles: true });
+}
+document.getElementById('btnDescargarPagosHoy').addEventListener('click', exportarPagosDeHoy);
 
 document.querySelectorAll('.view-tab').forEach(btn=>{
   btn.addEventListener('click', ()=>{
