@@ -4741,7 +4741,14 @@ function attachHandlers(){
     inp.addEventListener('change', e=>{
       const id = parseInt(e.target.dataset.montoId);
       const m = movimientos.find(x=>x.id===id);
-      const nuevoMonto = parseFloat(e.target.value);
+      let nuevoMonto = parseFloat(e.target.value);
+      // El signo lo manda el movimiento original: si es un pago (negativo),
+      // el monto editado siempre queda negativo aunque se escriba sin "-";
+      // si es un cobro (positivo), siempre queda positivo.
+      if(m && !isNaN(nuevoMonto) && m.montoOriginal){
+        nuevoMonto = m.montoOriginal < 0 ? -Math.abs(nuevoMonto) : Math.abs(nuevoMonto);
+        e.target.value = nuevoMonto;
+      }
       if(m && !isNaN(nuevoMonto)){
         const anterior = m.monto;
         m.monto = nuevoMonto;
