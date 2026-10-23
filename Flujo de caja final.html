@@ -1507,22 +1507,42 @@ let facturacionRotacion = [];
 let anioActualRotacion = null;
 let ordenesCompra = [];
 let cuotasFormaPago = [];
-// Pago final de una OC (última cuota de su forma de pago): a la persona que
-// paga se le avisa que descuente la retención y consulte el % a Contabilidad.
-// No calcula nada: es solo una nota. Si la OC tiene una sola cuota y es un
-// anticipo, no aplica (la retención se hace con la factura).
+// Nota de retención: se activa cuando un pago COMPLETA el total de su OC
+// (lo ya pagado + este pago >= total de la OC). Es solo un aviso para quien
+// gira el pago: descontar la retención y pedir el % a Contabilidad.
+// "Ya pagado" = ejecutado en Odoo + anticipos manuales + marcados "Pagado hoy".
 const NOTA_RETENCION = 'Descontar retención — consultar % a Contabilidad';
-function esCuotaFinalOC(cuotaId){
-  const c = cuotasFormaPago.find(x => Number(x.id) === Number(cuotaId));
-  if(!c) return false;
-  const delPO = cuotasFormaPago.filter(x => x.poId === c.poId);
-  const max = Math.max(...delPO.map(x => Number(x.cuotaNumero) || 0));
-  if((Number(c.cuotaNumero) || 0) !== max) return false;
-  if(delPO.length === 1 && /anticipo/i.test(c.descripcion || '')) return false;
-  return true;
+let cachePagadoOC = null;
+function pagadoPorOC(){
+  if(cachePagadoOC) return cachePagadoOC;
+  cachePagadoOC = new Map();
+  movimientos.forEach(x=>{
+    if(x.poInterno == null || !(Number(x.monto) < 0)) return;
+    const cuenta = x.estado === 'ejecutado' ||
+      (x.estado === 'proyectado' && (x.origen === 'anticipo_oc_manual' || x.pagadoManual));
+    if(!cuenta) return;
+    const k = String(x.poInterno);
+    const r = cachePagadoOC.get(k) || { pagado: 0, ids: new Set() };
+    r.pagado += Math.abs(Number(x.monto));
+    r.ids.add(x.id);
+    cachePagadoOC.set(k, r);
+  });
+  return cachePagadoOC;
+}
+// true si pagar "monto" deja la OC totalmente pagada.
+function completaOC(poInterno, monto, idMovimiento){
+  if(poInterno == null) return false;
+  const oc = ordenesCompra.find(o => String(o.id) === String(poInterno));
+  if(!oc || !(oc.total > 0)) return false;
+  const r = pagadoPorOC().get(String(poInterno)) || { pagado: 0, ids: new Set() };
+  let pagadoAntes = r.pagado;
+  if(idMovimiento != null && r.ids.has(idMovimiento)) pagadoAntes -= Math.abs(Number(monto));
+  const saldoAntes = oc.total - pagadoAntes;
+  return saldoAntes > 0.01 && Math.abs(Number(monto)) >= saldoAntes - 1;
 }
 function notaRetencion(m){
-  return (m && m.origen === 'oc_forma_pago' && esCuotaFinalOC(m.odooId)) ? NOTA_RETENCION : '';
+  return (m && m.estado === 'proyectado' && Number(m.monto) < 0 && completaOC(m.poInterno, m.monto, m.id))
+    ? NOTA_RETENCION : '';
 }
 const BADGE_RETENCION = ` <span class="badge" title="Pago final de la OC: descontar la retención. Pedir el % a Contabilidad." style="background:#FFF3CD; color:#8A5A00; border:1px solid #E0A030;">⚠ Descontar retención · consultar % a Contabilidad</span>`;
 let presupuestosProyecto = [];
@@ -2520,6 +2540,7 @@ function render(){
   const rowsEl = document.getElementById('rows');
   rowsEl.innerHTML = '';
   filasVisiblesParaExportar = []; // se llena abajo, solo con lo que pasa todos los filtros
+  cachePagadoOC = null; // se recalcula con los montos/pagos actuales
   pintarAlertaObligaciones30(); // se refresca al marcar pagado / cambiar fechas
   const grupoUtilidades = [];
   let filaGrupoUtilidades = null;
@@ -4952,6 +4973,7 @@ function attachHandlers(){
 }
 
 function renderOC(){
+  cachePagadoOC = null;
   const filtroSel = document.getElementById('filtroAnalitica');
   const filtroPOSel = document.getElementById('filtroOCPO');
   const valorPrevio = filtroSel.value;
@@ -5100,7 +5122,7 @@ function renderOC(){
         ` : `
           <div class="oc-cuota-row" data-cuota-id="${c.id}" data-monto-restante="${c.montoRestante}">
             <div class="oc-cuota-info">
-              <span class="oc-cuota-pct">${c.pct}%</span>${esCuotaFinalOC(c.id) ? BADGE_RETENCION : ''}
+              <span class="oc-cuota-pct">${c.pct}%</span>${completaOC(oc.id, c.montoRestante, null) ? BADGE_RETENCION : ''}
               <span class="oc-cuota-monto nums">${fmtMoney(c.montoRestante)}</span>
               ${c.montoRestante < c.montoOriginal - 0.01 ? `<span style="font-size:10px; color:var(--muted);">(de ${fmtMoney(c.montoOriginal)} — ya cubierto ${fmtMoney(c.montoOriginal - c.montoRestante)})</span>` : ''}
               ${c.fechaEfectiva && c.fechaOriginal && c.fechaEfectiva.getTime() !== c.fechaOriginal.getTime() ? `<span style="font-size:10px; color:var(--projected);" title="Se corrió porque una cuota anterior sigue sin confirmarse">(corrida desde ${fmtDate(c.fechaOriginal)})</span>` : ''}
