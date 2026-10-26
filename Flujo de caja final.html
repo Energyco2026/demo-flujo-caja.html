@@ -1380,6 +1380,7 @@ function clienteDeHito(m){
 // se unieron por error, agrega cualquiera de los dos a NO_UNIR_PROVEEDORES.
 const NO_UNIR_PROVEEDORES = [
   'SAXIMAN S. A.', // distinto de SAXIMAN.LOGISTIC INC S.A. (confirmar)
+  'ENERGYCONTROL S.A.', // la propia empresa: NO es ENERGYCONTROL USA LLC
 ];
 const PALABRAS_SOCIETARIAS = new Set(['s','a','sa','sas','c','ca','cia','ltda','cltda','compania','sociedad','anonima','inc','llc','ltd','co','matriz','sc','scc','ep','de','del','la','el','los','las','y','e','eco','ing','arq','dr','dra','lcdo','econ']);
 const PALABRAS_GENERICAS = new Set(['banco','empresa','corporacion','comercial','industrial','industria','industrias','servicios','consorcio','inmobiliaria','grupo','energy','energia','solar','ecuador','ecuatoriana','ecuatoriano','internacional','seguros','transporte','constructora','consultores','asociados','fundacion','agencia','distribuidora','compania','club','diners','visa','pacifico','pichincha','guayaquil','quito']);
@@ -2093,6 +2094,8 @@ async function cargarDatos(){
         estado: m.estado,
         origen: m.origen,
         odooId: m.odoo_id != null ? Number(m.odoo_id) : null,
+        // Asiento de diario (account.move) al que pertenece la línea bancaria
+        odooMoveId: m.odoo_move_id != null ? Number(m.odoo_move_id) : null,
         // true = conciliado con el extracto · false = registrado sin conciliar
         // null = Odoo no controla conciliación para este movimiento
         conciliado: m.conciliado === true ? true : (m.conciliado === false ? false : null),
@@ -5273,7 +5276,11 @@ function odooUrlMov(m){
   if(id >= 100000000) return null;
   if(m.origen === 'account.move') return ODOO_BASE + '/mail/view?model=account.move&res_id=' + id;
   if(m.origen === 'account.payment') return ODOO_BASE + '/mail/view?model=account.payment&res_id=' + id;
-  if(m.origen === 'account.move.bank') return ODOO_BASE + '/web#model=account.move.line&id=' + id + '&view_type=form';
+  if(m.origen === 'account.move.bank'){
+    // Abrir el ASIENTO completo, no la línea suelta
+    if(m.odooMoveId != null && Number.isFinite(m.odooMoveId)) return ODOO_BASE + '/mail/view?model=account.move&res_id=' + m.odooMoveId;
+    return ODOO_BASE + '/web#model=account.move.line&id=' + id + '&view_type=form';
+  }
   return null;
 }
 function linkOdoo(url, titulo){
