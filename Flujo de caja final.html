@@ -1542,6 +1542,10 @@ function completaOC(poInterno, monto, idMovimiento){
   return saldoAntes > 0.01 && Math.abs(Number(monto)) >= saldoAntes - 1;
 }
 function notaRetencion(m){
+  // Las facturas que ya vienen de Odoo (account.move) no llevan aviso: la retención
+  // se emite con la factura y el saldo de Odoo ya la descuenta. Importaciones
+  // (proveedor del exterior) tampoco llevan retención local.
+  if(m && m.origen === 'account.move') return '';
   return (m && m.estado === 'proyectado' && Number(m.monto) < 0 && completaOC(m.poInterno, m.monto, m.id))
     ? NOTA_RETENCION : '';
 }
@@ -1657,6 +1661,11 @@ async function fetchTabla(nombre, query=""){
     todos = todos.concat(data);
     if(data.length < tamanoPagina) break;
     desde += tamanoPagina;
+  }
+  // Seguro contra filas repetidas entre páginas: si la tabla tiene id, se deja una sola vez.
+  if(todos.length && todos[0] && todos[0].id != null){
+    const vistos = new Set();
+    todos = todos.filter(r => { if(vistos.has(r.id)) return false; vistos.add(r.id); return true; });
   }
   return todos;
 }
@@ -1988,7 +1997,7 @@ async function cargarDatos(){
   try{
     const [bancosData, movData, ocData, presupuestoData, realDetalleData, compromisosDetalleData, ingresosData, facturacionData, cuotasData, comentariosCobranzaData] = await Promise.all([
       fetchTabla('bancos'),
-      fetchTabla('movimientos', q => q.order('fecha', {ascending: true})),
+      fetchTabla('movimientos', q => q.order('fecha', {ascending: true}).order('id', {ascending: true})),
       fetchTabla('ordenes_compra'),
       fetchTabla('presupuesto_vs_comprometido_categoria'),
       fetchTabla('presupuesto_real_categoria_detalle'),
