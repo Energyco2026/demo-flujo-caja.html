@@ -1386,6 +1386,7 @@ function esOrdenPagoUtilidades(texto){
   return ORDENES_PAGO_UTILIDADES.some(c => new RegExp('\\b' + c + '\\b', 'i').test(String(texto || '')));
 }
 let utilidadesAbiertas = false;
+let verHistorialCompleto = false;
 const PATRON_BANCO_TARJETA = /\b(VISA|DINERS|MASTERCARD|AMEX|AMERICAN\s+EXPRESS)\b/i;
 
 function addDays(date, n){ const d = new Date(date); d.setDate(d.getDate()+n); return d; }
@@ -1504,12 +1505,16 @@ function unificarNombresProveedores(lista){
   });
   // 2) Unir un grupo corto dentro de un único grupo largo que lo contenga.
   const lista_g = [...grupos.values()];
+  // Índice palabra -> grupos que la contienen (antes se comparaba cada grupo contra todos).
+  const porPalabra = new Map();
+  lista_g.forEach(o => o.palabras.forEach(p => { if(!porPalabra.has(p)) porPalabra.set(p, []); porPalabra.get(p).push(o); }));
   const destino = new Map(); // clave corta -> grupo largo
   lista_g.forEach(g => {
     if(excluidos.has(g.clave)) return;
     const distintivas = [...g.palabras].filter(p => p.length >= 5 && !PALABRAS_GENERICAS.has(p) && !/^\d+$/.test(p));
     if(!distintivas.length) return;
-    const contenedores = lista_g.filter(o => o !== g && !excluidos.has(o.clave) &&
+    const candidatos = [...g.palabras].map(p => porPalabra.get(p) || []).sort((a,b) => a.length - b.length)[0] || [];
+    const contenedores = candidatos.filter(o => o !== g && !excluidos.has(o.clave) &&
       o.palabras.size > g.palabras.size && [...g.palabras].every(p => o.palabras.has(p)));
     if(contenedores.length === 1) destino.set(g.clave, contenedores[0]);
   });
@@ -1749,17 +1754,33 @@ sb.auth.getSession().then(({data})=>{
 // salir. Por eso las tablas se ordenan también por su llave única (id) y
 // además se descartan repetidos por id como red de seguridad.
 async function fetchTabla(nombre, query=""){
-  let todos = [];
-  let desde = 0;
+  // CAMBIO 28/10/2026: la primera página trae además el total de filas; el
+  // resto de páginas se piden todas a la vez en lugar de una tras otra.
   const tamanoPagina = 1000;
-  while(true){
-    let q = sb.from(nombre).select('*').range(desde, desde + tamanoPagina - 1);
+  const pedir = (desde, conteo) => {
+    let q = sb.from(nombre).select('*', conteo ? { count: 'exact' } : undefined).range(desde, desde + tamanoPagina - 1);
     if(query) q = query(q);
-    const { data, error } = await q;
-    if(error) throw new Error(`${nombre}: ${error.message}`);
-    todos = todos.concat(data);
-    if(data.length < tamanoPagina) break;
-    desde += tamanoPagina;
+    return q;
+  };
+  const primera = await pedir(0, true);
+  if(primera.error) throw new Error(`${nombre}: ${primera.error.message}`);
+  let todos = primera.data || [];
+  const total = primera.count;
+  if(total != null && total > tamanoPagina){
+    const resto = [];
+    for(let desde = tamanoPagina; desde < total; desde += tamanoPagina) resto.push(pedir(desde, false));
+    for(const r of await Promise.all(resto)){
+      if(r.error) throw new Error(`${nombre}: ${r.error.message}`);
+      todos = todos.concat(r.data || []);
+    }
+  } else if(total == null && todos.length === tamanoPagina){
+    // Sin total disponible: modo anterior, página por página.
+    for(let desde = tamanoPagina; ; desde += tamanoPagina){
+      const r = await pedir(desde, false);
+      if(r.error) throw new Error(`${nombre}: ${r.error.message}`);
+      todos = todos.concat(r.data || []);
+      if((r.data || []).length < tamanoPagina) break;
+    }
   }
   if(todos.length && todos[0].id != null){
     const vistos = new Set();
@@ -1936,7 +1957,11 @@ async function borrarFacturaDelFlujo(id){
   }).eq('id', id);
   if(error){ alert('No se pudo borrar: ' + error.message); return; }
   await registrarHistorialCambio(id, 'eliminado', null, 'Borrada del flujo: ' + motivo.trim(), quien);
-  await cargarDatos();
+  // CAMBIO 28/10/2026: se quita de pantalla al instante, sin volver a descargar todo.
+  facturasBorradas.push({ id: m.id, concepto: m.concepto, proveedor: m.proveedor, monto: m.montoOriginal,
+    monto_manual: m.esMontoManual ? m.monto : null, eliminado_por: quien, eliminado_en: new Date().toISOString() });
+  quitarMovimientoLocal(id);
+  pintarFacturasBorradas();
 }
 
 async function restaurarFacturaDelFlujo(id){
@@ -2090,6 +2115,7 @@ async function cargarAuditoria(){
 }
 
 async function cargarDatos(){
+  const t0 = performance.now();
   const estado = document.getElementById('estadoConexion');
   const errorBox = document.getElementById('errorBox');
   errorBox.innerHTML = '';
@@ -2213,6 +2239,7 @@ async function cargarDatos(){
       // se excluyen tanto del flujo como de los indicadores de cartera.
       .filter(m => Math.abs(m.monto) > 0.005);
     unificarNombresProveedores(movimientosCartera);
+    cacheServicios = null;
     movimientosCartera.forEach(m => {
       m.esChequeUtilidad = m.estado === 'proyectado' && esOrdenPagoUtilidades(m.concepto);
       if(m.esChequeUtilidad){
@@ -2321,7 +2348,9 @@ async function cargarDatos(){
     }));
 
     estado.textContent = `Conectado · ${movimientos.length} movimientos`;
+    const t1 = performance.now();
     render();
+    console.log(`⏱ Flujo: descarga y preparación ${((t1 - t0)/1000).toFixed(1)} s · dibujo ${((performance.now() - t1)/1000).toFixed(1)} s`);
     renderOC();
     prepararPresupuestos();
     cargarAuditoria();
@@ -2654,6 +2683,15 @@ function render(){
   pintarAlertaObligaciones30(); // se refresca al marcar pagado / cambiar fechas
   const grupoUtilidades = [];
   let filaGrupoUtilidades = null;
+  // CAMBIO 28/10/2026: por defecto no se DIBUJAN los pagos ya registrados de
+  // hace más de 7 días (más de 4.000 filas grises que hacían lento todo).
+  // Siguen contando en saldos, KPI y Excel. Se muestran con "Ver historial
+  // completo", o al filtrar por "Desde", por un mes o por EJECUTADO.
+  const totalMeses = document.querySelectorAll('#listaMeses input[type=checkbox]').length;
+  const ocultarHistorial = !verHistorialCompleto && !inpDesde.value &&
+    mesesSeleccionados.size === totalMeses && filtroEstado !== 'ejecutado' && filtroEstado !== 'sin_conciliar';
+  const corteHistorial = addDays(HOY, -7);
+  let ocultasHistorial = 0;
 
   let entradas30 = 0, salidas30 = 0;
   let saldoDia30 = saldoActual; // saldo real al día 30 (hoy + próximos 30 días, incluye vencidas)
@@ -2694,6 +2732,7 @@ function render(){
     if(montoMin > 0 && Math.abs(m.monto) < montoMin) return;
 
     filasVisiblesParaExportar.push(m);
+    if(ocultarHistorial && m.estado === 'ejecutado' && m.fecha < corteHistorial){ ocultasHistorial++; return; }
 
     if(m.esChequeUtilidad){
       grupoUtilidades.push({ m, running });
@@ -2767,6 +2806,17 @@ function render(){
   });
 
   if(filaGrupoUtilidades) pintarGrupoUtilidades(filaGrupoUtilidades, grupoUtilidades);
+  if(ocultasHistorial || verHistorialCompleto){
+    const aviso = document.createElement('tr');
+    aviso.innerHTML = `<td colspan="12" style="background:#EEF1F8; color:var(--navy); font-size:12.5px; padding:9px 20px;">
+      ${verHistorialCompleto
+        ? 'Mostrando el historial completo (más lento).'
+        : `No se muestran <b>${ocultasHistorial}</b> pagos ya registrados en Odoo de hace más de 7 días (siguen sumando en saldos, KPI y Excel).`}
+      <button type="button" id="btnHistorialCompleto" style="margin-left:8px; border:1px solid var(--navy); background:#fff; color:var(--navy); border-radius:6px; padding:3px 10px; cursor:pointer; font-size:12px; font-weight:600;">
+        ${verHistorialCompleto ? 'Ocultar historial' : 'Ver historial completo'}</button></td>`;
+    rowsEl.prepend(aviso);
+    aviso.querySelector('button').onclick = () => { verHistorialCompleto = !verHistorialCompleto; render(); };
+  }
 
   // Subtotal de lo que se ve con el filtro de monto activo (no toca KPI ni saldos).
   const avisoMonto = document.getElementById('avisoFiltroMonto');
@@ -2814,8 +2864,10 @@ function render(){
   renderBancos();
   renderObligaciones();
   renderSemanal();
-  renderIndices();
-  renderCobranzas();
+  // CAMBIO 28/10/2026: Rotación y Cobranzas solo se dibujan si están a la vista
+  // (al abrir su pestaña se dibujan igual). Antes se recalculaban en cada cambio.
+  if(document.getElementById('vistaIndices').style.display !== 'none') renderIndices();
+  if(document.getElementById('vistaCobranzas').style.display !== 'none') renderCobranzas();
   attachHandlers();
   actualizarContadorSeleccionados();
 }
@@ -3472,8 +3524,10 @@ let serviciosBusqueda = '';
 function esVendedoraServicios(vendedor){
   return /mar[ií]a?\s*isabel/i.test(String(vendedor || ''));
 }
+let cacheServicios = null;
 function serviciosBase(){
-  return cobServicios
+  if(cacheServicios) return cacheServicios;
+  return cacheServicios = cobServicios
     .filter(x => esVendedoraServicios(x.vendedor))
     .map(x => Object.assign({}, x, { _m: buscarMovimientoPorFactura(x.factura, x.cliente) }))
     .filter(x => x._m && x._m.origen !== 'hito_cobro_manual' && !esReconocimientoPorTexto(x.factura, x.cliente) && !esReconocimientoIngresos(x._m));
@@ -4951,6 +5005,14 @@ async function deshacerPagoManual(id){
   render();
 }
 
+// CAMBIO 28/10/2026: cada campo se engancha UNA sola vez. Antes attachHandlers()
+// corría dos veces por cada redibujo (Flujo + Cartera por cliente), así que
+// cada cambio de fecha/monto/banco se guardaba dos veces y redibujaba todo dos veces.
+function enganchar(el, clave){
+  if(el.dataset['h' + clave]) return false;
+  el.dataset['h' + clave] = '1';
+  return true;
+}
 function attachHandlers(){
   const botonSeleccionarTodos = document.getElementById('btnSeleccionarTodos');
   if(botonSeleccionarTodos){
@@ -4973,7 +5035,8 @@ function attachHandlers(){
       render();
     };
   }
-  document.querySelectorAll('input[type=date]').forEach(inp=>{
+  document.querySelectorAll('input[type=date][data-id]:not(.sem-fecha):not(.aging-fecha):not(.buscar-factura-fecha)').forEach(inp=>{
+    if(!enganchar(inp, 'Fecha')) return;
     inp.addEventListener('change', e=>{
       const id = parseInt(e.target.dataset.id);
       const m = movimientos.find(x=>x.id===id);
@@ -5011,6 +5074,7 @@ function attachHandlers(){
     });
   });
   document.querySelectorAll('input[data-monto-id]').forEach(inp=>{
+    if(!enganchar(inp, 'Monto')) return;
     inp.addEventListener('change', e=>{
       const id = parseInt(e.target.dataset.montoId);
       const m = movimientos.find(x=>x.id===id);
@@ -5032,6 +5096,7 @@ function attachHandlers(){
     });
   });
   document.querySelectorAll('select[data-banco-id]').forEach(sel=>{
+    if(!enganchar(sel, 'Banco')) return;
     sel.addEventListener('change', e=>{
       const id = parseInt(e.target.dataset.bancoId);
       const m = movimientos.find(x=>x.id===id);
@@ -5054,16 +5119,19 @@ function attachHandlers(){
     });
   });
   document.querySelectorAll('button[data-marcar-id]').forEach(btn=>{
+    if(!enganchar(btn, 'Marcar')) return;
     btn.addEventListener('click', e=>{
       marcarPagadoManual(parseInt(e.target.dataset.marcarId));
     });
   });
   document.querySelectorAll('button[data-undo-id]').forEach(btn=>{
+    if(!enganchar(btn, 'Undo')) return;
     btn.addEventListener('click', e=>{
       deshacerPagoManual(parseInt(e.target.dataset.undoId));
     });
   });
   document.querySelectorAll('.chk-pagar-hoy').forEach(chk=>{
+    if(!enganchar(chk, 'Chk')) return;
     chk.addEventListener('change', e=>{
       const id = parseInt(e.target.dataset.id);
       if(e.target.checked) movimientosSeleccionados.add(id);
@@ -5073,11 +5141,13 @@ function attachHandlers(){
     });
   });
   document.querySelectorAll('.btn-eliminar-manual').forEach(btn=>{
+    if(!enganchar(btn, 'Elim')) return;
     btn.addEventListener('click', e=>{
       confirmarEliminarManual(parseInt(e.currentTarget.dataset.eliminarId));
     });
   });
   document.querySelectorAll('.btn-borrar-factura').forEach(btn=>{
+    if(!enganchar(btn, 'Borrar')) return;
     btn.addEventListener('click', e=>{
       borrarFacturaDelFlujo(parseInt(e.currentTarget.dataset.borrarId));
     });
@@ -5716,7 +5786,18 @@ async function confirmarEliminarManual(id){
     alert('No se pudo eliminar: ' + error.message);
     return;
   }
-  await cargarDatos();
+  quitarMovimientoLocal(id);
+}
+
+// Quita una fila de la memoria del dashboard y redibuja (sin volver a pedir
+// todo a Supabase). La siguiente recarga completa trae lo mismo desde la base.
+function quitarMovimientoLocal(id){
+  movimientos = movimientos.filter(x => x.id !== id);
+  movimientosCartera = movimientosCartera.filter(x => x.id !== id);
+  movimientosSeleccionados.delete(id);
+  cacheServicios = null;
+  render();
+  renderOC();
 }
 
 // ============================================================
@@ -6228,7 +6309,8 @@ document.addEventListener('click', e=>{
 // ============================================================
 // Cada filtro: botón que abre un panel con buscador + casillas. Sin nada
 // marcado = sin filtro (todos). Se puede marcar uno o varios valores.
-const MAX_OPCIONES_VISIBLES = 400; // listas largas (Concepto): escribe para acotar
+const MAX_OPCIONES_VISIBLES = 400;
+const COLADOR_ES = new Intl.Collator('es', {sensitivity:'base', numeric:true}); // listas largas (Concepto): escribe para acotar
 
 function crearFiltroMultiple(clave, cfg){
   const f = {
@@ -6248,7 +6330,7 @@ function crearFiltroMultiple(clave, cfg){
   f.poblar = movs => {
     const set = new Set();
     movs.forEach(m => f.valoresDe(m).forEach(v => { if(v != null && String(v).trim()) set.add(String(v)); }));
-    f.disponibles = [...set].sort((a,b) => a.localeCompare(b, 'es', {sensitivity:'base', numeric:true}));
+    f.disponibles = [...set].sort(COLADOR_ES.compare);
     // Un valor marcado que ya no existe en los datos se quita del filtro
     // (excepto los textos puestos por "Ver en flujo general").
     if(!f.textoLibre) f.seleccion = new Set([...f.seleccion].filter(v => set.has(v)));
