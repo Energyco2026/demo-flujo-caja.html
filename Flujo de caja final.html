@@ -395,6 +395,14 @@
   .sem-aviso{margin:0 20px 18px; background:#FDF1D6; color:#7A5410; border-radius:8px; padding:11px 14px; font-size:13px; line-height:1.6;}
   .sem-aviso b{color:#5C3D06;}
   .sem-aviso button{margin-left:6px; border:1px solid #E0C48A; background:#fff; border-radius:6px; padding:3px 10px; cursor:pointer; font-size:12.5px; font-weight:600;}
+  .sem-gestion{display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:10px 20px; border-bottom:1px solid var(--line); background:#FAFBFC; font-size:12.5px;}
+  .sem-gestion input[type=date]{width:140px;}
+  .sem-gestion button{border:0; border-radius:6px; padding:7px 12px; background:var(--navy); color:#fff; font-weight:600; cursor:pointer; font-size:12px;}
+  .sem-gestion button:disabled{opacity:.45; cursor:default;}
+  .sem-msg{font-size:12px; font-weight:600;}
+  .sem-bloqueo{font-size:10.5px; color:var(--navy); margin-top:3px;}
+  .sem-movido{font-size:10.5px; color:var(--projected); font-weight:600; margin-top:3px;}
+  #semDetalleRows input[type=date]{border-color:var(--projected);}
   .sem-chart-wrap{position:relative; height:240px; padding:14px 20px 10px;}
 </style>
 </head>
@@ -663,8 +671,14 @@
       <div><div class="panel-title" id="semDetalleTitle">Detalle</div><div class="panel-note" id="semDetalleSub"></div></div>
       <button type="button" class="detail-close" id="semDetalleClose">Cerrar</button>
     </div>
+    <div class="sem-gestion" id="semGestionBar">
+      <span id="semSelCuenta">0 seleccionadas</span>
+      <span>Mover seleccionadas a: <input type="date" id="semFechaMasiva"></span>
+      <button type="button" id="semAplicarMasivo" disabled>Cambiar fecha</button>
+      <span class="sem-msg" id="semGestionMsg"></span>
+    </div>
     <div class="detail-scroll">
-      <table><thead><tr><th>Fecha pago</th><th>Vencía</th><th>Concepto</th><th>Proveedor / Cliente</th><th>P.O.</th><th>Banco</th><th>Monto</th></tr></thead><tbody id="semDetalleRows"></tbody></table>
+      <table><thead><tr><th style="width:32px;"><input type="checkbox" id="semSelTodos" title="Seleccionar todas las que se pueden editar"></th><th>Fecha pago / cobro</th><th>Vencía</th><th>Ahora cae en</th><th>Concepto</th><th>Proveedor / Cliente</th><th>P.O.</th><th>Banco</th><th>Monto</th></tr></thead><tbody id="semDetalleRows"></tbody></table>
     </div>
   </div>
 </div>
@@ -4859,9 +4873,10 @@ async function guardarFechaManual(id, nuevaFecha, valorAnterior, usuarioOverride
     editado_por: quien,
     editado_en: new Date().toISOString(),
   }).eq('id', id);
-  if(error){ console.error('No se pudo guardar la fecha:', error.message); return; }
+  if(error){ console.error('No se pudo guardar la fecha:', error.message); return false; }
   aplicarEdicionLocal(movimientos.find(x=>x.id===id), quien);
   registrarHistorialCambio(id, 'fecha_pago', valorAnterior, nuevoValor, quien);
+  return true;
 }
 
 async function guardarMontoManual(id, nuevoMonto, valorAnterior){
@@ -6784,7 +6799,7 @@ function calcularMatrizSemanal(){
   });
 
   return {
-    periodos, porPeriodo, suma, saldoBanco, viejas, excluir90,
+    periodos, porPeriodo, suma, saldoBanco, viejas, excluir90, periodoDe,
     filasIng: ordenarFilas([...filasIng], ORDEN_INGRESOS),
     filasEgr: ordenarFilas([...filasEgr], ORDEN_EGRESOS),
   };
@@ -6854,26 +6869,135 @@ function abrirDetalleSemanal(clave){
   mostrarDetalleSemanal(`${nombreFila} · ${p ? p.titulo + ' (' + p.sub + ')' : ''}`, semCeldas[clave] || [], false);
 }
 
+// Lista que está abierta en la ventana de detalle. Son los mismos objetos de
+// "movimientos", así que un cambio de fecha aquí es el mismo cambio que en el
+// Flujo de caja diario, Cobranzas y Obligaciones.
+let semDetalleLista = [], semDetalleConDias = false, semSeleccion = new Set();
+
+function semEditable(m){
+  return m.estado === 'proyectado' && puedeEditar(m) && !fechaBloqueada(m) && !m.esChequeUtilidad;
+}
+function semPeriodoTexto(m){
+  const d = semExportData;
+  if(!d || !d.periodoDe) return '';
+  const p = d.periodos.find(x => x.key === d.periodoDe(m));
+  return p ? (p.key === 'vencido' ? 'Vencido' : `${p.titulo} (${p.sub})`) : '';
+}
+
 function mostrarDetalleSemanal(titulo, lista, conDias){
-  const filas = [...lista].sort((a, b) => a.fecha - b.fecha || a.monto - b.monto);
-  const total = filas.reduce((s, m) => s + m.monto, 0);
+  semDetalleLista = [...lista];
+  semDetalleConDias = conDias;
+  semSeleccion = new Set();
   document.getElementById('semDetalleTitle').textContent = titulo;
-  document.getElementById('semDetalleSub').textContent = `${filas.length} documento${filas.length === 1 ? '' : 's'} · Total ${fmtMoney(total)}`;
+  document.getElementById('semGestionMsg').textContent = '';
+  document.getElementById('semFechaMasiva').value = '';
+  pintarDetalleSemanal();
+  document.getElementById('semDetalleOverlay').classList.add('open');
+}
+
+function pintarDetalleSemanal(){
+  const filas = [...semDetalleLista].sort((a, b) => a.fecha - b.fecha || a.monto - b.monto);
+  const total = filas.reduce((s, m) => s + m.monto, 0);
+  const editables = filas.filter(semEditable);
+  document.getElementById('semDetalleSub').textContent =
+    `${filas.length} documento${filas.length === 1 ? '' : 's'} · Total ${fmtMoney(total)}` +
+    (editables.length < filas.length ? ` · ${filas.length - editables.length} sin permiso de cambio de fecha` : '');
+  document.getElementById('semGestionBar').style.display = editables.length ? '' : 'none';
+
   document.getElementById('semDetalleRows').innerHTML = filas.length ? filas.map(m => {
     const vencia = m.fechaVencimiento || m.fechaOriginal;
+    const editable = semEditable(m);
+    let celdaFecha;
+    if(editable){
+      celdaFecha = `<input type="date" class="nums sem-fecha" data-id="${m.id}" value="${fmtDate(m.fecha)}">`;
+    } else {
+      celdaFecha = `<span class="nums">${fmtDate(m.fecha).split('-').reverse().join('/')}</span>`;
+      if(fechaBloqueada(m)) celdaFecha += `<div class="sem-bloqueo">🔒 Obligación: se cambia con "Negociar fecha" en Obligaciones financieras</div>`;
+      else if(m.estado === 'proyectado' && !puedeEditar(m)) celdaFecha += `<div class="sem-bloqueo">Sin permiso para editar</div>`;
+    }
+    if(m.pagadoManual) celdaFecha += ' <span class="badge pagado-hoy-badge">PAGADO HOY</span>';
+    if(m._semMovido) celdaFecha += `<div class="sem-movido">✓ Guardado — ya cambió en el flujo diario</div>`;
     return `<tr>
-      <td class="nums">${fmtDate(m.fecha).split('-').reverse().join('/')}${m.pagadoManual ? ' <span class="badge pagado-hoy-badge">PAGADO HOY</span>' : ''}</td>
-      <td class="nums">${vencia ? fmtDate(vencia).split('-').reverse().join('/') : '—'}${conDias ? `<div style="font-size:10.5px; color:var(--bad);">${diasVencidaCxP(m)} días</div>` : ''}</td>
+      <td>${editable ? `<input type="checkbox" class="sem-sel" data-id="${m.id}" ${semSeleccion.has(m.id) ? 'checked' : ''}>` : ''}</td>
+      <td>${celdaFecha}</td>
+      <td class="nums">${vencia ? fmtDate(vencia).split('-').reverse().join('/') : '—'}${semDetalleConDias ? `<div style="font-size:10.5px; color:var(--bad);">${diasVencidaCxP(m)} días</div>` : ''}</td>
+      <td style="font-size:12px;">${escapeHTML(semPeriodoTexto(m))}</td>
       <td>${escapeHTML(m.concepto || '—')}${linkOdoo(odooUrlMov(m))}</td>
       <td>${escapeHTML(m.proveedor || '—')}</td>
       <td>${escapeHTML(m.po || m.analitica || '—')}</td>
       <td>${escapeHTML(m.banco || 'Sin banco')}</td>
       <td class="nums ${m.monto > 0 ? 'amt-in' : 'amt-out'}">${fmtMoney(m.monto)}</td>
     </tr>`;
-  }).join('') : '<tr><td colspan="7" class="oc-detail-empty">Sin documentos.</td></tr>';
-  document.getElementById('semDetalleOverlay').classList.add('open');
+  }).join('') : '<tr><td colspan="9" class="oc-detail-empty">Sin documentos.</td></tr>';
+
+  document.querySelectorAll('#semDetalleRows .sem-fecha').forEach(inp => {
+    inp.addEventListener('change', () => {
+      if(!inp.value) return;
+      cambiarFechasSemanal([Number(inp.dataset.id)], inp.value);
+    });
+  });
+  document.querySelectorAll('#semDetalleRows .sem-sel').forEach(chk => {
+    chk.addEventListener('change', () => {
+      const id = Number(chk.dataset.id);
+      if(chk.checked) semSeleccion.add(id); else semSeleccion.delete(id);
+      actualizarGestionSemanal();
+    });
+  });
+  const todos = document.getElementById('semSelTodos');
+  todos.checked = editables.length > 0 && editables.every(m => semSeleccion.has(m.id));
+  todos.onchange = () => {
+    semSeleccion = todos.checked ? new Set(editables.map(m => m.id)) : new Set();
+    pintarDetalleSemanal();
+  };
+  actualizarGestionSemanal();
 }
-function cerrarDetalleSemanal(){ document.getElementById('semDetalleOverlay').classList.remove('open'); }
+
+function actualizarGestionSemanal(){
+  const n = semSeleccion.size;
+  document.getElementById('semSelCuenta').textContent = `${n} seleccionada${n === 1 ? '' : 's'}`;
+  document.getElementById('semAplicarMasivo').disabled = !(n > 0 && document.getElementById('semFechaMasiva').value);
+}
+
+// Guarda la fecha de pago/cobro (misma función y mismo historial que el
+// Flujo de caja diario) y vuelve a dibujar todas las pestañas.
+async function cambiarFechasSemanal(ids, valor){
+  const msg = document.getElementById('semGestionMsg');
+  const nueva = new Date(valor + 'T00:00:00');
+  const lista = ids.map(id => movimientos.find(x => x.id === id)).filter(m => m && semEditable(m));
+  if(!lista.length) return;
+  msg.style.color = 'var(--muted)';
+  msg.textContent = 'Guardando…';
+  let errores = 0;
+  for(const m of lista){
+    const anterior = fmtDate(m.fecha);
+    if(anterior === valor){ m._semMovido = true; continue; }
+    m.fecha = new Date(nueva);
+    m.esFechaManual = true;
+    let ok = false;
+    try{ ok = await guardarFechaManual(m.id, m.fecha, anterior); }
+    catch(err){ console.error(err); }
+    if(ok) m._semMovido = true;
+    else { errores++; m.fecha = new Date(anterior + 'T00:00:00'); }
+  }
+  render();               // Flujo diario, Obligaciones, Cobranzas y esta pestaña
+  pintarDetalleSemanal(); // la ventana sigue abierta con la fecha nueva
+  msg.style.color = errores ? 'var(--bad)' : 'var(--good)';
+  msg.textContent = errores
+    ? `No se pudieron guardar ${errores} cambio(s). Revisa la conexión y vuelve a intentar.`
+    : `✓ ${lista.length} fecha${lista.length === 1 ? '' : 's'} cambiada${lista.length === 1 ? '' : 's'} a ${valor.split('-').reverse().join('/')}.`;
+}
+
+document.getElementById('semFechaMasiva').addEventListener('change', actualizarGestionSemanal);
+document.getElementById('semAplicarMasivo').addEventListener('click', () => {
+  const valor = document.getElementById('semFechaMasiva').value;
+  if(!valor || !semSeleccion.size) return;
+  if(!confirm(`¿Cambiar la fecha de pago/cobro de ${semSeleccion.size} documento(s) a ${valor.split('-').reverse().join('/')}?`)) return;
+  const ids = [...semSeleccion];
+  semSeleccion = new Set();
+  cambiarFechasSemanal(ids, valor);
+});
+
+function cerrarDetalleSemanal(){ document.getElementById('semDetalleOverlay').classList.remove('open'); semDetalleLista.forEach(m => delete m._semMovido); }
 document.getElementById('semDetalleClose').addEventListener('click', cerrarDetalleSemanal);
 document.getElementById('semDetalleOverlay').addEventListener('click', e => { if(e.target.id === 'semDetalleOverlay') cerrarDetalleSemanal(); });
 document.addEventListener('keydown', e => { if(e.key === 'Escape') cerrarDetalleSemanal(); });
