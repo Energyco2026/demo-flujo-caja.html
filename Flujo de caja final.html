@@ -1508,10 +1508,7 @@ let facturacionRotacion = [];
 let anioActualRotacion = null;
 let ordenesCompra = [];
 let cuotasFormaPago = [];
-// Nota de retención: se activa cuando un pago COMPLETA el total de su OC
-// (lo ya pagado + este pago >= total de la OC). Es solo un aviso para quien
-// gira el pago: descontar la retención y pedir el % a Contabilidad.
-// "Ya pagado" = ejecutado en Odoo + anticipos manuales + marcados "Pagado hoy".
+// Nota de retención: solo cuando el anticipo es por el total del PEN (ver anticipoTotalPEN).
 const NOTA_RETENCION = 'Descontar retención — consultar % a Contabilidad';
 let cachePagadoOC = null;
 function pagadoPorOC(){
@@ -1541,13 +1538,18 @@ function completaOC(poInterno, monto, idMovimiento){
   const saldoAntes = oc.total - pagadoAntes;
   return saldoAntes > 0.01 && Math.abs(Number(monto)) >= saldoAntes - 1;
 }
+// Regla acordada: el aviso SOLO sale cuando el anticipo es por el TOTAL del PEN
+// (anticipo del 100 % de la OC). Anticipos parciales, facturas de Odoo e
+// importaciones no llevan aviso.
+function anticipoTotalPEN(poInterno, monto){
+  if(poInterno == null) return false;
+  const oc = ordenesCompra.find(o => String(o.id) === String(poInterno));
+  if(!oc || !(oc.total > 0)) return false;
+  return Math.abs(Number(monto)) >= oc.total - 1;
+}
 function notaRetencion(m){
-  // Las facturas que ya vienen de Odoo (account.move) no llevan aviso: la retención
-  // se emite con la factura y el saldo de Odoo ya la descuenta. Importaciones
-  // (proveedor del exterior) tampoco llevan retención local.
-  if(m && m.origen === 'account.move') return '';
-  return (m && m.estado === 'proyectado' && Number(m.monto) < 0 && completaOC(m.poInterno, m.monto, m.id))
-    ? NOTA_RETENCION : '';
+  if(!m || m.estado !== 'proyectado' || m.origen !== 'anticipo_oc_manual') return '';
+  return (Number(m.monto) < 0 && anticipoTotalPEN(m.poInterno, m.monto)) ? NOTA_RETENCION : '';
 }
 const BADGE_RETENCION = ` <span class="badge" title="Pago final de la OC: descontar la retención. Pedir el % a Contabilidad." style="background:#FFF3CD; color:#8A5A00; border:1px solid #E0A030;">⚠ Descontar retención · consultar % a Contabilidad</span>`;
 let presupuestosProyecto = [];
@@ -5134,7 +5136,7 @@ function renderOC(){
         ` : `
           <div class="oc-cuota-row" data-cuota-id="${c.id}" data-monto-restante="${c.montoRestante}">
             <div class="oc-cuota-info">
-              <span class="oc-cuota-pct">${c.pct}%</span>${completaOC(oc.id, c.montoRestante, null) ? BADGE_RETENCION : ''}
+              <span class="oc-cuota-pct">${c.pct}%</span>${anticipoTotalPEN(oc.id, c.montoRestante) ? BADGE_RETENCION : ''}
               <span class="oc-cuota-monto nums">${fmtMoney(c.montoRestante)}</span>
               ${c.montoRestante < c.montoOriginal - 0.01 ? `<span style="font-size:10px; color:var(--muted);">(de ${fmtMoney(c.montoOriginal)} — ya cubierto ${fmtMoney(c.montoOriginal - c.montoRestante)})</span>` : ''}
               ${c.fechaEfectiva && c.fechaOriginal && c.fechaEfectiva.getTime() !== c.fechaOriginal.getTime() ? `<span style="font-size:10px; color:var(--projected);" title="Se corrió porque una cuota anterior sigue sin confirmarse">(corrida desde ${fmtDate(c.fechaOriginal)})</span>` : ''}
