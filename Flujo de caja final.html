@@ -2212,20 +2212,18 @@ async function cargarDatos(){
     // estimación de cuándo se va a pagar. Se guarda igual que si la usuaria
     // hubiera movido la fecha a mano, para que mañana, si sigue sin
     // pagarse, se vuelva a correr a la nueva fecha de hoy.
-    const idsVencidasCorridas = [];
-    const fechasAnterioresVencidas = {};
+    // CAMBIO 28/10/2026: el corrimiento a hoy se hace SOLO en pantalla, ya no
+    // se guarda en Supabase. Antes se grababa como fecha_pago_manual y esa
+    // fecha "congelada" tapaba para siempre cualquier fecha nueva que llegara
+    // después de Odoo o de SharePoint (caso hitos PO 1704 VITA).
+    let vencidasCorridas = 0;
     movimientos.forEach(m=>{
       if(m.estado === 'proyectado' && m.fecha < HOY && !m.esChequeUtilidad){
-        fechasAnterioresVencidas[m.id] = fmtDate(m.fecha);
         m.fecha = new Date(HOY);
-        m.esFechaManual = true;
-        idsVencidasCorridas.push(m.id);
+        vencidasCorridas++;
       }
     });
-    if(idsVencidasCorridas.length){
-      console.log(`  ${idsVencidasCorridas.length} proyecciones vencidas corridas a hoy`);
-      idsVencidasCorridas.forEach(id => guardarFechaManual(id, HOY, fechasAnterioresVencidas[id], 'sistema (automático)'));
-    }
+    if(vencidasCorridas) console.log(`  ${vencidasCorridas} proyecciones vencidas mostradas en hoy (sin guardar)`);
 
     ordenesCompra = ocData.map(oc => ({
       id: oc.id,
