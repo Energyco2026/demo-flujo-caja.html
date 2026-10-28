@@ -1743,6 +1743,11 @@ sb.auth.getSession().then(({data})=>{
   else if(data.session) sb.auth.signOut();
 });
 
+// CAMBIO 28/10/2026: Supabase entrega máximo 1000 filas por pedido. Si el orden
+// no es único (ej. solo por fecha, con 20 filas del mismo día justo en el
+// corte de 1000), una fila puede salir en dos páginas (DUPLICADA) y otra no
+// salir. Por eso las tablas se ordenan también por su llave única (id) y
+// además se descartan repetidos por id como red de seguridad.
 async function fetchTabla(nombre, query=""){
   let todos = [];
   let desde = 0;
@@ -1755,6 +1760,12 @@ async function fetchTabla(nombre, query=""){
     todos = todos.concat(data);
     if(data.length < tamanoPagina) break;
     desde += tamanoPagina;
+  }
+  if(todos.length && todos[0].id != null){
+    const vistos = new Set();
+    const antes = todos.length;
+    todos = todos.filter(r => { if(vistos.has(r.id)) return false; vistos.add(r.id); return true; });
+    if(todos.length !== antes) console.warn(`${nombre}: ${antes - todos.length} fila(s) repetida(s) por paginación descartada(s)`);
   }
   return todos;
 }
@@ -2086,15 +2097,15 @@ async function cargarDatos(){
   try{
     const [bancosData, movData, ocData, presupuestoData, realDetalleData, compromisosDetalleData, ingresosData, facturacionData, cuotasData, comentariosCobranzaData] = await Promise.all([
       fetchTabla('bancos'),
-      fetchTabla('movimientos', q => q.order('fecha', {ascending: true})),
-      fetchTabla('ordenes_compra'),
+      fetchTabla('movimientos', q => q.order('fecha', {ascending: true}).order('id', {ascending: true})),
+      fetchTabla('ordenes_compra', q => q.order('id', {ascending: true})),
       fetchTabla('presupuesto_vs_comprometido_categoria'),
-      fetchTabla('presupuesto_real_categoria_detalle'),
+      fetchTabla('presupuesto_real_categoria_detalle', q => q.order('id', {ascending: true})),
       fetchTabla('oc_categoria_compromisos_detalle'),
       fetchTabla('presupuesto_proyecto_ingresos'),
-      fetchTabla('facturacion_rotacion', q => q.order('fecha', {ascending: true})),
-      fetchTabla('oc_forma_pago_sugerida'),
-      fetchTabla('comentarios_cobranza', q => q.order('fecha', {ascending: true})),
+      fetchTabla('facturacion_rotacion', q => q.order('fecha', {ascending: true}).order('odoo_id', {ascending: true})),
+      fetchTabla('oc_forma_pago_sugerida', q => q.order('id', {ascending: true})),
+      fetchTabla('comentarios_cobranza', q => q.order('fecha', {ascending: true}).order('id', {ascending: true})),
     ]);
     comentariosCobranza = comentariosCobranzaData;
 
