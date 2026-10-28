@@ -369,27 +369,33 @@
   .mf-lista{max-height:300px; overflow:auto;}
   .mf-nota{font-size:11px; color:var(--muted); padding:6px 2px;}
 
-  /* ---------- Pestaña Flujo semanal ---------- */
+  /* ---------- Pestaña Flujo semanal (matriz) ---------- */
   .sem-filtros{display:flex; align-items:center; gap:12px; flex-wrap:wrap; font-size:12.5px; color:var(--muted);}
   .sem-filtros select{font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px; background:#fff; color:var(--ink);}
-  #semTabla th.num, #semTabla td.num{text-align:right; white-space:nowrap;}
-  #semTabla th:nth-child(4), #semTabla td:nth-child(4){width:auto; padding-left:20px; padding-right:20px;}
-  #semTabla tr.sem-fila{cursor:pointer;}
-  #semTabla tr.sem-fila:hover td{background:#F3F5F9;}
-  #semTabla tr.sem-fila.actual td{background:#EEF3FB;}
-  #semTabla tr.sem-fila.pasada td{background:var(--executed); color:var(--executed-ink);}
-  #semTabla tr.sem-fila.negativa td.sem-saldo{color:var(--bad); font-weight:700;}
-  #semTabla tr.sem-detalle td{background:#FAFBFC; padding:0;}
-  .sem-flecha{display:inline-block; width:14px; color:var(--navy); font-size:11px;}
-  .sem-det-wrap{padding:12px 20px 16px 44px;}
-  .sem-grupos{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;}
-  .sem-grupo{background:#fff; border:1px solid var(--line); border-radius:7px; padding:6px 10px; font-size:11.5px;}
-  .sem-grupo b{font-family:'JetBrains Mono',monospace; font-weight:600;}
-  .sem-det-tabla{width:100%; font-size:12px; border-collapse:collapse;}
-  .sem-det-tabla th{font-size:10.5px; text-align:left; color:var(--muted); padding:5px 8px; border-bottom:1px solid var(--line); background:transparent;}
-  .sem-det-tabla td{padding:5px 8px; border-bottom:1px dashed var(--line);}
-  .sem-det-tabla td.num{text-align:right; font-family:'JetBrains Mono',monospace; white-space:nowrap;}
-  .sem-chart-wrap{position:relative; height:260px; padding:14px 20px 10px;}
+  .sem-filtros label{display:flex; align-items:center; gap:6px; cursor:pointer;}
+  .sem-matriz-wrap{overflow-x:auto; padding:0 20px 18px;}
+  #semMatriz{width:100%; border-collapse:collapse; font-size:13.5px; min-width:900px;}
+  #semMatriz th, #semMatriz td{padding:11px 14px; border-bottom:1px solid var(--line); text-align:right; white-space:nowrap;}
+  #semMatriz th:first-child, #semMatriz td:first-child{text-align:left; width:auto; padding-left:14px; padding-right:14px;}
+  #semMatriz thead th{background:transparent; position:static; box-shadow:none; font-size:11px; letter-spacing:.06em; color:var(--muted); vertical-align:bottom;}
+  #semMatriz thead th .sem-sub{display:block; text-transform:none; letter-spacing:0; font-weight:500; font-size:11px; margin-top:2px;}
+  #semMatriz thead th.sem-actual{color:#5B3FD9;}
+  #semMatriz td.sem-actual{background:#EFEBFC;}
+  #semMatriz tr.sem-saldo td{background:#ECE8FB; font-weight:700;}
+  #semMatriz tr.sem-seccion td{font-size:11.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; padding-top:9px; padding-bottom:9px;}
+  #semMatriz tr.sem-seccion.ing td{background:#E3F2E6; color:#2E7D46;}
+  #semMatriz tr.sem-seccion.egr td{background:#FBE5E1; color:var(--bad);}
+  #semMatriz tr.sem-total td{font-weight:700;}
+  #semMatriz td.nums{font-family:'JetBrains Mono',monospace;}
+  #semMatriz td.vacio{color:var(--muted);}
+  #semMatriz td.pos{color:#2E7D46;}
+  #semMatriz td.neg{color:var(--bad);}
+  #semMatriz td.clic{cursor:pointer;}
+  #semMatriz td.clic:hover{text-decoration:underline; text-decoration-style:dotted; text-underline-offset:4px; color:var(--navy);}
+  .sem-aviso{margin:0 20px 18px; background:#FDF1D6; color:#7A5410; border-radius:8px; padding:11px 14px; font-size:13px; line-height:1.6;}
+  .sem-aviso b{color:#5C3D06;}
+  .sem-aviso button{margin-left:6px; border:1px solid #E0C48A; background:#fff; border-radius:6px; padding:3px 10px; cursor:pointer; font-size:12.5px; font-weight:600;}
+  .sem-chart-wrap{position:relative; height:240px; padding:14px 20px 10px;}
 </style>
 </head>
 <body>
@@ -617,87 +623,51 @@
 </main>
 
 <main id="vistaSemanal" style="display:none;">
-  <div class="kpis">
-    <div class="kpi">
-      <div class="kpi-label">Saldo bancario actual</div>
-      <div class="kpi-val nums" id="semKpiInicial">—</div>
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <div class="panel-title">Flujo general por semana</div>
+        <div class="panel-note">Semanas de lunes a domingo. Toca una cifra para ver qué documentos la forman.</div>
+      </div>
+      <div class="sem-filtros">
+        <span>Banco: <select id="semFiltroBanco"></select></span>
+        <span>Semanas:
+          <select id="semFiltroHorizonte">
+            <option value="5" selected>5 semanas</option>
+            <option value="8">8 semanas</option>
+            <option value="13">13 semanas</option>
+          </select>
+        </span>
+        <label title="Saca del flujo las facturas de proveedores vencidas hace más de 90 días. No se borran: quedan listadas en el aviso de abajo."><input type="checkbox" id="semExcluir90"> Excluir CxP vencidas +90 días</label>
+        <button type="button" id="semExportar" class="btn-refrescar">⬇ Descargar Excel</button>
+      </div>
     </div>
-    <div class="kpi">
-      <div class="kpi-label">Entradas proyectadas</div>
-      <div class="kpi-val nums good" id="semKpiIn">—</div>
-      <div class="kpi-manual-note" id="semKpiHorizonte" style="color:var(--muted);"></div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-label">Salidas proyectadas</div>
-      <div class="kpi-val nums bad" id="semKpiOut">—</div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-label">Saldo al cierre del período</div>
-      <div class="kpi-val nums" id="semKpiFinal">—</div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-label">Semana más ajustada</div>
-      <div class="kpi-val nums" id="semKpiMin">—</div>
-      <div class="kpi-manual-note" id="semKpiMinNota" style="color:var(--muted);"></div>
-    </div>
-  </div>
+    <div class="sem-matriz-wrap"><table id="semMatriz"><thead id="semHead"></thead><tbody id="semBody"></tbody></table></div>
+    <div class="sem-aviso" id="semAviso" style="display:none;"></div>
+  </section>
 
   <section class="panel">
     <div class="panel-head">
       <div>
-        <div class="panel-title">Saldo al cierre de cada semana</div>
-        <div class="panel-note">Barras: entradas y salidas de la semana. Línea: saldo con que cierra.</div>
+        <div class="panel-title">Saldo final por semana</div>
+        <div class="panel-note">Barras: ingresos y egresos del período. Línea: saldo con que cierra.</div>
       </div>
     </div>
     <div class="sem-chart-wrap"><canvas id="semChart"></canvas></div>
   </section>
-
-  <section class="panel">
-    <div class="panel-head sticky-panel-head">
-      <div>
-        <div class="panel-title">Flujo por semana (lunes a domingo)</div>
-        <div class="panel-note">Mismos datos y saldos que el Flujo de caja diario. Clic en una semana para ver sus movimientos. Las fechas se cambian en la pestaña Flujo de caja.</div>
-      </div>
-      <div class="sem-filtros">
-        <span>Banco: <select id="semFiltroBanco"></select></span>
-        <span>Horizonte:
-          <select id="semFiltroHorizonte">
-            <option value="4">4 semanas</option>
-            <option value="8">8 semanas</option>
-            <option value="13" selected>13 semanas (trimestre)</option>
-            <option value="26">26 semanas</option>
-            <option value="999">Todas</option>
-          </select>
-        </span>
-        <span>Semanas pasadas (real):
-          <select id="semFiltroPasadas">
-            <option value="0" selected>No mostrar</option>
-            <option value="4">Últimas 4</option>
-            <option value="8">Últimas 8</option>
-          </select>
-        </span>
-        <button type="button" id="semExportar" class="btn-refrescar">⬇ Descargar Excel</button>
-      </div>
-    </div>
-    <div class="table-scroll"><table id="semTabla">
-      <thead>
-        <tr>
-          <th>Semana</th>
-          <th class="num">Saldo inicial</th>
-          <th class="num">Entradas</th>
-          <th class="num">Salidas</th>
-          <th class="num">Neto</th>
-          <th class="num">Saldo final</th>
-          <th class="num">Movimientos</th>
-        </tr>
-      </thead>
-      <tbody id="semRows"></tbody>
-    </table></div>
-  </section>
-  <div class="estado-error" style="background:#FFF8E8; color:#6B5420;">
-    La semana actual cuenta desde hoy: lo vencido sin pagar ya está corrido a hoy (igual que en el Flujo de caja). Los cheques de utilidades por retirar no se restan porque ya están descontados del saldo bancario. Las semanas pasadas muestran solo lo pagado y cobrado registrado en Odoo; no muestran saldo porque no se reconstruye el saldo bancario histórico.
-  </div>
 </main>
+
+<div class="detail-overlay" id="semDetalleOverlay" role="dialog" aria-modal="true" aria-labelledby="semDetalleTitle">
+  <div class="detail-dialog">
+    <div class="detail-dialog-head">
+      <div><div class="panel-title" id="semDetalleTitle">Detalle</div><div class="panel-note" id="semDetalleSub"></div></div>
+      <button type="button" class="detail-close" id="semDetalleClose">Cerrar</button>
+    </div>
+    <div class="detail-scroll">
+      <table><thead><tr><th>Fecha pago</th><th>Vencía</th><th>Concepto</th><th>Proveedor / Cliente</th><th>P.O.</th><th>Banco</th><th>Monto</th></tr></thead><tbody id="semDetalleRows"></tbody></table>
+    </div>
+  </div>
+</div>
 
 <main id="vistaObligaciones" style="display:none;">
   <div class="obl-aviso">
@@ -6664,15 +6634,18 @@ document.getElementById('negociacionOverlay').addEventListener('click', e=>{ if(
 document.addEventListener('keydown', e=>{ if(e.key === 'Escape') cerrarNegociacion(); });
 
 // ============================================================
-// Pestaña Flujo semanal (lunes a domingo)
+// Pestaña Flujo semanal — matriz por semana
 // ============================================================
-// Usa exactamente las mismas reglas del Flujo de caja diario:
+// Mismas reglas del Flujo de caja diario:
 //  - Saldo inicial = saldo bancario actual (bancos válidos).
-//  - Suma solo lo proyectado (las vencidas ya vienen corridas a hoy).
-//  - No resta cheques de utilidades por retirar ni cruces de anticipo.
+//  - Suma solo lo proyectado; no resta cheques de utilidades por retirar
+//    (ya descontados del banco) ni cruces de anticipo (no son caja).
+// Columna "Vencido": lo pendiente cuya fecha original ya pasó y que sigue
+// programado para hoy (el dashboard corre las vencidas a hoy al cargar).
+// Si a una vencida le pusiste una fecha futura, cae en esa semana.
 let semChart = null;
-let semAbiertas = new Set();
-let semFilasExport = [];
+let semCeldas = {};       // "fila|periodo" -> [movimientos]
+let semExportData = null;
 
 function inicioSemana(fecha){
   const d = new Date(fecha);
@@ -6680,27 +6653,58 @@ function inicioSemana(fecha){
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // lunes
   return d;
 }
-function numeroSemanaISO(fecha){
-  const d = new Date(Date.UTC(fecha.getFullYear(), fecha.getMonth(), fecha.getDate()));
-  const dia = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dia);
-  const inicioAnio = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return Math.ceil(((d - inicioAnio) / 86400000 + 1) / 7);
-}
-function etiquetaSemana(lunes){
+function rangoCorto(desde, hasta){
   const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
-  const domingo = addDays(lunes, 6);
-  const f = d => `${String(d.getDate()).padStart(2,'0')} ${meses[d.getMonth()]}`;
-  return { corta: `Sem ${numeroSemanaISO(lunes)}`, rango: `${f(lunes)} – ${f(domingo)} ${domingo.getFullYear()}` };
+  const f = d => `${d.getDate()} ${meses[d.getMonth()]}`;
+  return `${f(desde)} – ${f(hasta)}`;
 }
-function grupoSemanal(m){
-  if(m.categoriaObligacion) return 'Obligaciones (' + (NOMBRE_CATEGORIA_OBLIGACION[m.categoriaObligacion] || '') + ')';
-  if(m.origen === 'hito_cobro_manual') return 'Hitos de cobro';
-  if(/Cuentas por Cobrar/i.test(m.cuenta || '')) return 'Cobros a clientes';
-  if(m.origen === 'oc_forma_pago' || m.origen === 'anticipo_oc_manual') return 'Pagos de órdenes de compra';
-  if(/Cuentas por Pagar/i.test(m.cuenta || '')) return 'Pagos a proveedores';
+function fmt0(n){
+  const r = Math.round(n);
+  if(Math.abs(r) < 1) return '–';
+  return (r < 0 ? '-$ ' : '$ ') + Math.abs(r).toLocaleString('es-EC');
+}
+function tituloCase(texto){
+  return String(texto || '').toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase())
+    .replace(/\b(S\.?a\.?|C\.?a\.?)$/i, '').trim();
+}
+
+// Fila en la que cae cada movimiento.
+function filaSemanal(m){
+  if(m.monto > 0){
+    if(m.origen === 'hito_cobro_manual') return 'Hitos de cobro (sin facturar)';
+    if(/Cuentas por Cobrar/i.test(m.cuenta || '')) return 'Facturas por cobrar';
+    return 'Otros ingresos';
+  }
+  const c = m.categoriaObligacion;
+  if(c === 'prestamos') return 'Préstamos ' + (m.proveedor ? tituloCase(m.proveedor) : 'bancarios');
+  if(c === 'sri') return 'SRI';
+  if(c === 'iess') return 'IESS';
+  if(c === 'sueldos') return 'Sueldos';
+  if(c === 'decevale') return 'DECEVALE (emisión de obligaciones)';
+  if(c === 'otros') return 'Otros impostergables';
+  if(m.origen === 'oc_forma_pago' || m.origen === 'anticipo_oc_manual') return 'Órdenes de compra';
+  if(/Cuentas por Pagar/i.test(m.cuenta || '')) return 'Facturas de proveedores';
   if(m.origen === 'manual') return 'Movimientos manuales';
-  return 'Otros';
+  return 'Otros egresos';
+}
+const ORDEN_INGRESOS = ['Facturas por cobrar', 'Hitos de cobro (sin facturar)', 'Otros ingresos'];
+const ORDEN_EGRESOS = ['Facturas de proveedores', 'Órdenes de compra', 'Sueldos', 'IESS', 'SRI',
+  'DECEVALE (emisión de obligaciones)', '__PRESTAMOS__', 'Otros impostergables', 'Movimientos manuales', 'Otros egresos'];
+
+function ordenarFilas(nombres, orden){
+  const fijos = orden.filter(n => n !== '__PRESTAMOS__' && nombres.includes(n));
+  const prestamos = nombres.filter(n => n.startsWith('Préstamos ')).sort((a,b) => a.localeCompare(b, 'es'));
+  const resultado = [];
+  orden.forEach(n => {
+    if(n === '__PRESTAMOS__') resultado.push(...prestamos);
+    else if(fijos.includes(n)) resultado.push(n);
+  });
+  return resultado;
+}
+
+function diasVencidaCxP(m){
+  const ref = m.fechaVencimiento || m.fechaOriginal || m.fechaFactura;
+  return ref ? diasEntre(ref, HOY) : 0;
 }
 
 function poblarFiltroBancoSemanal(){
@@ -6712,155 +6716,169 @@ function poblarFiltroBancoSemanal(){
   sel.value = (previo === 'Todos' || bancos.includes(previo)) ? previo : 'Todos';
 }
 
-function calcularSemanas(){
+function calcularMatrizSemanal(){
   const banco = document.getElementById('semFiltroBanco').value || 'Todos';
-  const horizonte = Number(document.getElementById('semFiltroHorizonte').value) || 13;
-  const pasadas = Number(document.getElementById('semFiltroPasadas').value) || 0;
-  const pasaBanco = m => banco === 'Todos' || m.banco === banco;
+  const numSemanas = Number(document.getElementById('semFiltroHorizonte').value) || 5;
+  const excluir90 = document.getElementById('semExcluir90').checked;
   const lunesHoy = inicioSemana(HOY);
+  const manana = addDays(HOY, 1);
 
-  const saldoInicial = banco === 'Todos'
-    ? bancosDePagoValidos().reduce((s,b) => s + (Number(bancosBase[b]) || 0), 0)
-    : (Number(bancosBase[banco]) || 0);
-
-  // Proyectado futuro (desde hoy)
-  const proyectados = movimientos.filter(m =>
-    m.estado === 'proyectado' && !m.esChequeUtilidad && !esCruceAnticipo(m) && pasaBanco(m) && m.fecha >= HOY
-  );
-  // Lo que pudiera quedar con fecha pasada (no debería: se corre a hoy al cargar)
-  const atrasados = movimientos.filter(m =>
-    m.estado === 'proyectado' && !m.esChequeUtilidad && !esCruceAnticipo(m) && pasaBanco(m) && m.fecha < HOY
-  );
-  const ultimaFecha = proyectados.reduce((max, m) => m.fecha > max ? m.fecha : max, HOY);
-  const totalSemanasDatos = Math.floor((inicioSemana(ultimaFecha) - lunesHoy) / (7 * 86400000)) + 1;
-  const numSemanas = Math.max(1, Math.min(horizonte, totalSemanasDatos));
-
-  const semanas = [];
-  let saldo = saldoInicial;
+  // Columnas
+  const periodos = [{ key: 'vencido', titulo: 'Vencido', sub: 'acumulado' }];
   for(let i = 0; i < numSemanas; i++){
     const lunes = addDays(lunesHoy, i * 7);
-    const finSemana = addDays(lunes, 7);
-    const movs = proyectados.filter(m => m.fecha >= lunes && m.fecha < finSemana);
-    if(i === 0) movs.push(...atrasados);
-    // Última semana del horizonte "Todas": incluye todo lo que quede después.
-    const entradas = movs.filter(m => m.monto > 0).reduce((s,m) => s + m.monto, 0);
-    const salidas = movs.filter(m => m.monto < 0).reduce((s,m) => s + Math.abs(m.monto), 0);
-    const ini = saldo;
-    saldo = ini + entradas - salidas;
-    semanas.push({ tipo: i === 0 ? 'actual' : 'futura', lunes, movs, entradas, salidas, saldoIni: ini, saldoFin: saldo });
-  }
-  const fueraHorizonte = proyectados.filter(m => m.fecha >= addDays(lunesHoy, numSemanas * 7));
-
-  // Semanas pasadas: solo lo ejecutado en Odoo (sin saldo).
-  const historicas = [];
-  for(let i = pasadas; i >= 1; i--){
-    const lunes = addDays(lunesHoy, -7 * i);
-    const finSemana = addDays(lunes, 7);
-    const movs = movimientos.filter(m =>
-      m.estado === 'ejecutado' && !esCruceAnticipo(m) && pasaBanco(m) && m.fecha >= lunes && m.fecha < finSemana
-    );
-    historicas.push({
-      tipo: 'pasada', lunes, movs,
-      entradas: movs.filter(m => m.monto > 0).reduce((s,m) => s + m.monto, 0),
-      salidas: movs.filter(m => m.monto < 0).reduce((s,m) => s + Math.abs(m.monto), 0),
-      saldoIni: null, saldoFin: null,
+    periodos.push({
+      key: 's' + i,
+      titulo: i === 0 ? 'Esta semana' : i === 1 ? 'Próxima' : `Semana ${i + 1}`,
+      sub: rangoCorto(lunes, addDays(lunes, 6)),
+      actual: i === 0,
     });
   }
-  return { banco, saldoInicial, semanas, historicas, fueraHorizonte };
-}
+  const inicioDespues = addDays(lunesHoy, numSemanas * 7);
+  periodos.push({ key: 'despues', titulo: 'Después', sub: 'desde ' + rangoCorto(inicioDespues, inicioDespues).split(' – ')[0] });
 
-function detalleSemanaHTML(s){
-  const grupos = {};
-  s.movs.forEach(m => {
-    const g = grupoSemanal(m);
-    grupos[g] = grupos[g] || { entradas: 0, salidas: 0 };
-    if(m.monto > 0) grupos[g].entradas += m.monto; else grupos[g].salidas += Math.abs(m.monto);
+  const periodoDe = m => {
+    if(m.pagadoManual) return 's0';
+    if(m.fecha < manana && m.fechaOriginal && m.fechaOriginal < HOY) return 'vencido';
+    if(m.fecha < HOY) return 'vencido';
+    const idx = Math.floor((inicioSemana(m.fecha) - lunesHoy) / (7 * 86400000));
+    if(idx < 0) return 'vencido';
+    return idx < numSemanas ? 's' + idx : 'despues';
+  };
+
+  const base = movimientos.filter(m =>
+    m.estado === 'proyectado' && !m.esChequeUtilidad && !esCruceAnticipo(m) &&
+    Math.abs(m.monto) > 0.005 && (banco === 'Todos' || m.banco === banco)
+  );
+
+  // CxP vencidas hace más de 90 días (siempre se informan; se excluyen si está marcado)
+  const viejas = base.filter(m =>
+    m.monto < 0 && m.origen === 'account.move' && /Cuentas por Pagar/i.test(m.cuenta || '') &&
+    !m.categoriaObligacion && periodoDe(m) === 'vencido' && diasVencidaCxP(m) > 90
+  );
+  const idsViejas = new Set(viejas.map(m => m.id));
+  const incluidos = excluir90 ? base.filter(m => !idsViejas.has(m.id)) : base;
+
+  semCeldas = {};
+  const filasIng = new Set(), filasEgr = new Set();
+  incluidos.forEach(m => {
+    const fila = filaSemanal(m), per = periodoDe(m);
+    (m.monto > 0 ? filasIng : filasEgr).add(fila);
+    (semCeldas[fila + '|' + per] = semCeldas[fila + '|' + per] || []).push(m);
+    const tot = (m.monto > 0 ? '__TOTAL_ING__' : '__TOTAL_EGR__') + '|' + per;
+    (semCeldas[tot] = semCeldas[tot] || []).push(m);
   });
-  const chips = Object.entries(grupos)
-    .sort((a,b) => (b[1].entradas + b[1].salidas) - (a[1].entradas + a[1].salidas))
-    .map(([g, v]) => `<span class="sem-grupo">${escapeHTML(g)}: ${v.entradas > 0.005 ? `<b class="amt-in">+${fmtMoney(v.entradas)}</b> ` : ''}${v.salidas > 0.005 ? `<b class="amt-out">-${fmtMoney(v.salidas)}</b>` : ''}</span>`)
-    .join('');
-  const filas = [...s.movs].sort((a,b) => a.fecha - b.fecha || a.monto - b.monto).map(m => `
-    <tr>
-      <td class="nums">${fmtDate(m.fecha).split('-').reverse().join('/')}</td>
-      <td>${escapeHTML(m.concepto || '—')}${linkOdoo(odooUrlMov(m))}${m.pagadoManual ? ' <span class="badge pagado-hoy-badge">PAGADO HOY</span>' : ''}</td>
-      <td>${escapeHTML(m.proveedor || '—')}</td>
-      <td>${escapeHTML(grupoSemanal(m))}</td>
-      <td>${escapeHTML(m.banco || 'Sin banco')}</td>
-      <td class="num ${m.monto > 0 ? 'amt-in' : 'amt-out'}">${m.monto > 0 ? '+' : ''}${fmtMoney(m.monto)}</td>
-    </tr>`).join('');
-  return `<div class="sem-det-wrap">
-    ${chips ? `<div class="sem-grupos">${chips}</div>` : ''}
-    ${s.movs.length ? `<table class="sem-det-tabla"><thead><tr><th>Fecha</th><th>Concepto</th><th>Proveedor / Cliente</th><th>Grupo</th><th>Banco</th><th style="text-align:right;">Monto</th></tr></thead><tbody>${filas}</tbody></table>`
-      : '<div class="oc-detail-empty">Sin movimientos esta semana.</div>'}
-  </div>`;
+  const suma = (fila, per) => (semCeldas[fila + '|' + per] || []).reduce((s, m) => s + Math.abs(m.monto), 0);
+
+  const saldoBanco = banco === 'Todos'
+    ? bancosDePagoValidos().reduce((s, b) => s + (Number(bancosBase[b]) || 0), 0)
+    : (Number(bancosBase[banco]) || 0);
+
+  let saldo = saldoBanco;
+  const porPeriodo = periodos.map(p => {
+    const ing = suma('__TOTAL_ING__', p.key), egr = suma('__TOTAL_EGR__', p.key);
+    const r = { ini: saldo, ing, egr, neto: ing - egr };
+    saldo = saldo + ing - egr;
+    r.fin = saldo;
+    return r;
+  });
+
+  return {
+    periodos, porPeriodo, suma, saldoBanco, viejas, excluir90,
+    filasIng: ordenarFilas([...filasIng], ORDEN_INGRESOS),
+    filasEgr: ordenarFilas([...filasEgr], ORDEN_EGRESOS),
+  };
 }
 
 function renderSemanal(){
   const vista = document.getElementById('vistaSemanal');
   if(!vista || vista.style.display === 'none') return;
   poblarFiltroBancoSemanal();
-  const { saldoInicial, semanas, historicas, fueraHorizonte } = calcularSemanas();
+  const d = calcularMatrizSemanal();
+  semExportData = d;
+  const P = d.periodos;
+  const cls = p => p.actual ? ' sem-actual' : '';
 
-  const entradas = semanas.reduce((s,x) => s + x.entradas, 0);
-  const salidas = semanas.reduce((s,x) => s + x.salidas, 0);
-  const final = semanas.length ? semanas[semanas.length - 1].saldoFin : saldoInicial;
-  const minima = semanas.reduce((min, x) => (!min || x.saldoFin < min.saldoFin) ? x : min, null);
-  document.getElementById('semKpiInicial').textContent = fmtMoney(saldoInicial);
-  document.getElementById('semKpiIn').textContent = '+' + fmtMoney(entradas);
-  document.getElementById('semKpiOut').textContent = '-' + fmtMoney(salidas);
-  document.getElementById('semKpiHorizonte').textContent = `${semanas.length} semana${semanas.length === 1 ? '' : 's'}`;
-  const kFinal = document.getElementById('semKpiFinal');
-  kFinal.textContent = fmtMoney(final);
-  kFinal.className = 'kpi-val nums ' + (final < 0 ? 'bad' : 'good');
-  const kMin = document.getElementById('semKpiMin');
-  if(minima){
-    kMin.textContent = fmtMoney(minima.saldoFin);
-    kMin.className = 'kpi-val nums ' + (minima.saldoFin < 0 ? 'bad' : '');
-    const e = etiquetaSemana(minima.lunes);
-    document.getElementById('semKpiMinNota').textContent = `${e.corta} · ${e.rango}`;
+  document.getElementById('semHead').innerHTML = `<tr><th>Concepto</th>${P.map(p =>
+    `<th class="${cls(p).trim()}">${escapeHTML(p.titulo.toUpperCase())}<span class="sem-sub">${escapeHTML(p.sub)}</span></th>`).join('')}</tr>`;
+
+  const celdaMonto = (fila, p, extra = '') => {
+    const v = d.suma(fila, p.key);
+    const vacio = Math.round(v) === 0;
+    return `<td class="nums${cls(p)}${vacio ? ' vacio' : ' clic'}${extra}" ${vacio ? '' : `data-celda="${escapeHTML(fila + '|' + p.key)}"`}>${fmt0(v)}</td>`;
+  };
+  const filaSaldo = (titulo, campo) => `<tr class="sem-saldo"><td>${titulo}</td>${d.porPeriodo.map((r, i) =>
+    `<td class="nums${cls(P[i])}">${fmt0(r[campo])}</td>`).join('')}</tr>`;
+
+  let html = filaSaldo('Saldo inicial', 'ini');
+  html += `<tr class="sem-seccion ing"><td colspan="${P.length + 1}">Ingresos</td></tr>`;
+  html += d.filasIng.length
+    ? d.filasIng.map(f => `<tr><td>${escapeHTML(f)}</td>${P.map(p => celdaMonto(f, p)).join('')}</tr>`).join('')
+    : `<tr><td colspan="${P.length + 1}" class="vacio" style="text-align:left;">Sin ingresos proyectados.</td></tr>`;
+  html += `<tr class="sem-total"><td>Total ingresos</td>${P.map(p => celdaMonto('__TOTAL_ING__', p, ' pos')).join('')}</tr>`;
+  html += `<tr class="sem-seccion egr"><td colspan="${P.length + 1}">Egresos</td></tr>`;
+  html += d.filasEgr.length
+    ? d.filasEgr.map(f => `<tr><td>${escapeHTML(f)}</td>${P.map(p => celdaMonto(f, p)).join('')}</tr>`).join('')
+    : `<tr><td colspan="${P.length + 1}" class="vacio" style="text-align:left;">Sin egresos proyectados.</td></tr>`;
+  html += `<tr class="sem-total"><td>Total egresos</td>${P.map(p => celdaMonto('__TOTAL_EGR__', p, ' neg')).join('')}</tr>`;
+  html += `<tr class="sem-total"><td>Flujo neto</td>${d.porPeriodo.map((r, i) =>
+    `<td class="nums${cls(P[i])} ${r.neto < -0.5 ? 'neg' : 'pos'}">${fmt0(r.neto)}</td>`).join('')}</tr>`;
+  html += filaSaldo('Saldo final', 'fin');
+  const body = document.getElementById('semBody');
+  body.innerHTML = html;
+  // Saldos negativos en rojo
+  body.querySelectorAll('tr.sem-saldo td.nums').forEach(td => { if(td.textContent.startsWith('-')) td.style.color = 'var(--bad)'; });
+  body.querySelectorAll('td[data-celda]').forEach(td => td.addEventListener('click', () => abrirDetalleSemanal(td.dataset.celda)));
+
+  // Aviso de CxP vencidas +90 días
+  const aviso = document.getElementById('semAviso');
+  if(d.viejas.length){
+    const total = d.viejas.reduce((s, m) => s + Math.abs(m.monto), 0);
+    aviso.style.display = 'block';
+    aviso.innerHTML = d.excluir90
+      ? `El flujo <b>no incluye ${fmtMoney(total)}</b> en ${d.viejas.length} factura${d.viejas.length === 1 ? '' : 's'} de proveedores vencidas hace más de 90 días. Si alguna sí se va a pagar, ponle fecha en la pestaña Flujo de caja (o desmarca "Excluir CxP vencidas +90 días"). <button type="button" id="semVerViejas">Ver las ${d.viejas.length} facturas</button>`
+      : `La columna Vencido incluye <b>${fmtMoney(total)}</b> en ${d.viejas.length} factura${d.viejas.length === 1 ? '' : 's'} de proveedores vencidas hace más de 90 días. Revisa si de verdad se van a pagar; puedes sacarlas del flujo con "Excluir CxP vencidas +90 días". <button type="button" id="semVerViejas">Ver las ${d.viejas.length} facturas</button>`;
+    document.getElementById('semVerViejas').onclick = () => mostrarDetalleSemanal(
+      'Facturas de proveedores vencidas hace más de 90 días', d.viejas, true);
+  } else {
+    aviso.style.display = 'none';
   }
 
-  const todas = [...historicas, ...semanas];
-  semFilasExport = todas;
-  const rowsEl = document.getElementById('semRows');
-  rowsEl.innerHTML = todas.map(s => {
-    const clave = fmtDate(s.lunes);
-    const abierta = semAbiertas.has(clave);
-    const e = etiquetaSemana(s.lunes);
-    const neto = s.entradas - s.salidas;
-    const clases = ['sem-fila', s.tipo === 'actual' ? 'actual' : '', s.tipo === 'pasada' ? 'pasada' : '',
-      s.saldoFin != null && s.saldoFin < 0 ? 'negativa' : ''].join(' ');
-    const marca = s.tipo === 'actual' ? ' <span class="badge proj">ESTA SEMANA</span>'
-      : s.tipo === 'pasada' ? ' <span class="badge exec">REAL</span>' : '';
-    return `
-      <tr class="${clases}" data-sem="${clave}">
-        <td><span class="sem-flecha">${abierta ? '▼' : '▶'}</span><b>${e.corta}</b>${marca}<div style="font-size:11px; color:var(--muted); margin-left:14px;">${e.rango}</div></td>
-        <td class="num nums">${s.saldoIni == null ? '—' : fmtMoney(s.saldoIni)}</td>
-        <td class="num nums amt-in">${s.entradas > 0.005 ? '+' + fmtMoney(s.entradas) : '—'}</td>
-        <td class="num nums amt-out">${s.salidas > 0.005 ? '-' + fmtMoney(s.salidas) : '—'}</td>
-        <td class="num nums ${neto < 0 ? 'amt-out' : 'amt-in'}">${fmtMoney(neto)}</td>
-        <td class="num nums sem-saldo balance">${s.saldoFin == null ? '—' : fmtMoney(s.saldoFin)}</td>
-        <td class="num nums">${s.movs.length}</td>
-      </tr>
-      ${abierta ? `<tr class="sem-detalle"><td colspan="7">${detalleSemanaHTML(s)}</td></tr>` : ''}`;
-  }).join('') + (fueraHorizonte.length ? `
-      <tr><td colspan="7" style="font-size:12px; color:var(--muted); font-style:italic;">
-        Fuera del horizonte: ${fueraHorizonte.length} movimiento(s), neto ${fmtMoney(fueraHorizonte.reduce((s,m)=>s+m.monto,0))}. Amplía el horizonte para verlos.
-      </td></tr>` : '');
-
-  rowsEl.querySelectorAll('tr.sem-fila').forEach(tr => {
-    tr.addEventListener('click', () => {
-      const k = tr.dataset.sem;
-      if(semAbiertas.has(k)) semAbiertas.delete(k); else semAbiertas.add(k);
-      renderSemanal();
-    });
-  });
-
-  dibujarGraficoSemanal(semanas);
+  dibujarGraficoSemanal(d);
 }
 
-function dibujarGraficoSemanal(semanas){
+function abrirDetalleSemanal(clave){
+  const [fila, per] = clave.split('|');
+  const p = (semExportData?.periodos || []).find(x => x.key === per);
+  const nombreFila = fila === '__TOTAL_ING__' ? 'Total ingresos' : fila === '__TOTAL_EGR__' ? 'Total egresos' : fila;
+  mostrarDetalleSemanal(`${nombreFila} · ${p ? p.titulo + ' (' + p.sub + ')' : ''}`, semCeldas[clave] || [], false);
+}
+
+function mostrarDetalleSemanal(titulo, lista, conDias){
+  const filas = [...lista].sort((a, b) => a.fecha - b.fecha || a.monto - b.monto);
+  const total = filas.reduce((s, m) => s + m.monto, 0);
+  document.getElementById('semDetalleTitle').textContent = titulo;
+  document.getElementById('semDetalleSub').textContent = `${filas.length} documento${filas.length === 1 ? '' : 's'} · Total ${fmtMoney(total)}`;
+  document.getElementById('semDetalleRows').innerHTML = filas.length ? filas.map(m => {
+    const vencia = m.fechaVencimiento || m.fechaOriginal;
+    return `<tr>
+      <td class="nums">${fmtDate(m.fecha).split('-').reverse().join('/')}${m.pagadoManual ? ' <span class="badge pagado-hoy-badge">PAGADO HOY</span>' : ''}</td>
+      <td class="nums">${vencia ? fmtDate(vencia).split('-').reverse().join('/') : '—'}${conDias ? `<div style="font-size:10.5px; color:var(--bad);">${diasVencidaCxP(m)} días</div>` : ''}</td>
+      <td>${escapeHTML(m.concepto || '—')}${linkOdoo(odooUrlMov(m))}</td>
+      <td>${escapeHTML(m.proveedor || '—')}</td>
+      <td>${escapeHTML(m.po || m.analitica || '—')}</td>
+      <td>${escapeHTML(m.banco || 'Sin banco')}</td>
+      <td class="nums ${m.monto > 0 ? 'amt-in' : 'amt-out'}">${fmtMoney(m.monto)}</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="7" class="oc-detail-empty">Sin documentos.</td></tr>';
+  document.getElementById('semDetalleOverlay').classList.add('open');
+}
+function cerrarDetalleSemanal(){ document.getElementById('semDetalleOverlay').classList.remove('open'); }
+document.getElementById('semDetalleClose').addEventListener('click', cerrarDetalleSemanal);
+document.getElementById('semDetalleOverlay').addEventListener('click', e => { if(e.target.id === 'semDetalleOverlay') cerrarDetalleSemanal(); });
+document.addEventListener('keydown', e => { if(e.key === 'Escape') cerrarDetalleSemanal(); });
+
+function dibujarGraficoSemanal(d){
   const canvas = document.getElementById('semChart');
   if(!canvas) return;
   if(typeof Chart === 'undefined'){
@@ -6873,11 +6891,11 @@ function dibujarGraficoSemanal(semanas){
   if(semChart) semChart.destroy();
   semChart = new Chart(canvas, {
     data: {
-      labels: semanas.map(s => etiquetaSemana(s.lunes).corta),
+      labels: d.periodos.map(p => p.titulo),
       datasets: [
-        { type: 'bar', label: 'Entradas', data: semanas.map(s => s.entradas), backgroundColor: '#6F9A35', borderRadius: 3, order: 2 },
-        { type: 'bar', label: 'Salidas', data: semanas.map(s => -s.salidas), backgroundColor: '#B3401F', borderRadius: 3, order: 2 },
-        { type: 'line', label: 'Saldo final', data: semanas.map(s => s.saldoFin), borderColor: '#1F3864', backgroundColor: '#1F3864', tension: .25, pointRadius: 3, borderWidth: 2, order: 1 },
+        { type: 'bar', label: 'Ingresos', data: d.porPeriodo.map(r => r.ing), backgroundColor: '#6F9A35', borderRadius: 3, order: 2 },
+        { type: 'bar', label: 'Egresos', data: d.porPeriodo.map(r => -r.egr), backgroundColor: '#B3401F', borderRadius: 3, order: 2 },
+        { type: 'line', label: 'Saldo final', data: d.porPeriodo.map(r => r.fin), borderColor: '#1F3864', backgroundColor: '#1F3864', tension: .25, pointRadius: 3, borderWidth: 2, order: 1 },
       ],
     },
     options: {
@@ -6885,10 +6903,7 @@ function dibujarGraficoSemanal(semanas){
       interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
-        tooltip: { callbacks: {
-          title: items => { const s = semanas[items[0].dataIndex]; const e = etiquetaSemana(s.lunes); return `${e.corta} · ${e.rango}`; },
-          label: c => `${c.dataset.label}: ${fmtMoney(Math.abs(c.raw))}`,
-        } },
+        tooltip: { callbacks: { label: c => `${c.dataset.label}: ${fmtMoney(Math.abs(c.raw))}` } },
       },
       scales: {
         x: { stacked: true, grid: { display: false }, ticks: { font: { size: 10.5 } } },
@@ -6900,42 +6915,60 @@ function dibujarGraficoSemanal(semanas){
 
 function exportarSemanal(){
   if(typeof XLSX === 'undefined'){ alert('No se pudo cargar el generador de Excel. Recarga la página.'); return; }
-  if(!semFilasExport.length) return;
-  const resumen = semFilasExport.map(s => {
-    const e = etiquetaSemana(s.lunes);
-    return {
-      Semana: e.corta, Desde: fmtDate(s.lunes), Hasta: fmtDate(addDays(s.lunes, 6)),
-      Tipo: s.tipo === 'pasada' ? 'Real (Odoo)' : (s.tipo === 'actual' ? 'Semana actual' : 'Proyectado'),
-      'Saldo inicial': s.saldoIni == null ? '' : Number(s.saldoIni.toFixed(2)),
-      Entradas: Number(s.entradas.toFixed(2)),
-      Salidas: Number((-s.salidas).toFixed(2)),
-      Neto: Number((s.entradas - s.salidas).toFixed(2)),
-      'Saldo final': s.saldoFin == null ? '' : Number(s.saldoFin.toFixed(2)),
-      Movimientos: s.movs.length,
-    };
-  });
+  const d = semExportData;
+  if(!d) return;
+  const encabezado = ['Concepto', ...d.periodos.map(p => `${p.titulo} (${p.sub})`)];
+  const n = v => Number(v.toFixed(2));
+  const aoa = [encabezado];
+  aoa.push(['Saldo inicial', ...d.porPeriodo.map(r => n(r.ini))]);
+  aoa.push(['INGRESOS']);
+  d.filasIng.forEach(f => aoa.push([f, ...d.periodos.map(p => n(d.suma(f, p.key)))]));
+  aoa.push(['Total ingresos', ...d.porPeriodo.map(r => n(r.ing))]);
+  aoa.push(['EGRESOS']);
+  d.filasEgr.forEach(f => aoa.push([f, ...d.periodos.map(p => n(d.suma(f, p.key)))]));
+  aoa.push(['Total egresos', ...d.porPeriodo.map(r => n(r.egr))]);
+  aoa.push(['Flujo neto', ...d.porPeriodo.map(r => n(r.neto))]);
+  aoa.push(['Saldo final', ...d.porPeriodo.map(r => n(r.fin))]);
+  const h1 = XLSX.utils.aoa_to_sheet(aoa);
+  h1['!cols'] = [{ wch: 36 }, ...d.periodos.map(() => ({ wch: 20 }))];
+  const rango = XLSX.utils.decode_range(h1['!ref']);
+  for(let r = 1; r <= rango.e.r; r++) for(let c = 1; c <= rango.e.c; c++){
+    const celda = h1[XLSX.utils.encode_cell({ r, c })];
+    if(celda && typeof celda.v === 'number') celda.z = '$#,##0.00;-$#,##0.00';
+  }
+
   const detalle = [];
-  semFilasExport.forEach(s => {
-    const e = etiquetaSemana(s.lunes);
-    [...s.movs].sort((a,b) => a.fecha - b.fecha).forEach(m => detalle.push({
-      Semana: e.corta, Fecha: fmtDate(m.fecha), Grupo: grupoSemanal(m),
-      Concepto: m.concepto || '', 'Proveedor / Cliente': m.proveedor || '',
-      'Cuenta contable': m.cuenta || '', 'P.O.': m.po || '', Banco: m.banco || 'Sin banco',
-      Monto: Number(m.monto.toFixed(2)), Estado: m.pagadoManual ? 'pagado hoy (pendiente Odoo)' : (m.estado || ''),
-    }));
+  d.periodos.forEach(p => {
+    [...d.filasIng, ...d.filasEgr].forEach(f => {
+      (semCeldas[f + '|' + p.key] || []).forEach(m => detalle.push({
+        Periodo: `${p.titulo} (${p.sub})`, Fila: f,
+        'Fecha pago': fmtDate(m.fecha),
+        'Vencía': (m.fechaVencimiento || m.fechaOriginal) ? fmtDate(m.fechaVencimiento || m.fechaOriginal) : '',
+        Concepto: m.concepto || '', 'Proveedor / Cliente': m.proveedor || '',
+        'Cuenta contable': m.cuenta || '', 'P.O.': m.po || '', Banco: m.banco || 'Sin banco',
+        Monto: n(m.monto),
+      }));
+    });
   });
-  const h1 = XLSX.utils.json_to_sheet(resumen);
-  h1['!cols'] = [{wch:9},{wch:12},{wch:12},{wch:14},{wch:15},{wch:15},{wch:15},{wch:15},{wch:15},{wch:12}];
   const h2 = XLSX.utils.json_to_sheet(detalle);
-  h2['!cols'] = [{wch:9},{wch:12},{wch:28},{wch:46},{wch:34},{wch:32},{wch:14},{wch:26},{wch:14},{wch:24}];
+  h2['!cols'] = [{wch:26},{wch:30},{wch:12},{wch:12},{wch:46},{wch:34},{wch:32},{wch:14},{wch:26},{wch:14}];
   h2['!autofilter'] = { ref: h2['!ref'] || 'A1:J1' };
   const libro = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(libro, h1, 'Resumen semanal');
+  XLSX.utils.book_append_sheet(libro, h1, 'Flujo semanal');
   XLSX.utils.book_append_sheet(libro, h2, 'Detalle');
+  if(d.viejas.length){
+    const h3 = XLSX.utils.json_to_sheet(d.viejas.map(m => ({
+      'Vencía': fmtDate(m.fechaVencimiento || m.fechaOriginal), 'Días vencida': diasVencidaCxP(m),
+      Concepto: m.concepto || '', Proveedor: m.proveedor || '', Monto: n(m.monto),
+      'Incluida en el flujo': d.excluir90 ? 'No' : 'Sí',
+    })));
+    h3['!cols'] = [{wch:12},{wch:12},{wch:46},{wch:34},{wch:14},{wch:18}];
+    XLSX.utils.book_append_sheet(libro, h3, 'CxP vencidas +90 días');
+  }
   XLSX.writeFile(libro, `flujo_semanal_${fmtDate(new Date())}.xlsx`);
 }
 
-['semFiltroBanco','semFiltroHorizonte','semFiltroPasadas'].forEach(id =>
+['semFiltroBanco','semFiltroHorizonte','semExcluir90'].forEach(id =>
   document.getElementById(id).addEventListener('change', renderSemanal));
 document.getElementById('semExportar').addEventListener('click', exportarSemanal);
 </script>
