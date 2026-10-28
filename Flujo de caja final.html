@@ -1631,8 +1631,16 @@ function completaOC(poInterno, monto, idMovimiento){
   const saldoAntes = oc.total - pagadoAntes;
   return saldoAntes > 0.01 && Math.abs(Number(monto)) >= saldoAntes - 1;
 }
+// CAMBIO 28/10/2026: el aviso de retención va solo en pagos de OC que todavía
+// NO tienen factura (cuotas de forma de pago y anticipos manuales). En una
+// factura de proveedor (account.move) el saldo de Odoo ya viene neto de los
+// anticipos cruzados y de la retención registrada contra esa factura, así que
+// el aviso salía de más (caso facturas TRINA SOLAR, proveedor del exterior).
+const ORIGENES_CON_AVISO_RETENCION = new Set(['oc_forma_pago', 'anticipo_oc_manual']);
 function notaRetencion(m){
-  return (m && m.estado === 'proyectado' && Number(m.monto) < 0 && completaOC(m.poInterno, m.monto, m.id))
+  return (m && m.estado === 'proyectado' && Number(m.monto) < 0
+    && ORIGENES_CON_AVISO_RETENCION.has(m.origen)
+    && completaOC(m.poInterno, m.monto, m.id))
     ? NOTA_RETENCION : '';
 }
 const BADGE_RETENCION = ` <span class="badge" title="Pago final de la OC: descontar la retención. Pedir el % a Contabilidad." style="background:#FFF3CD; color:#8A5A00; border:1px solid #E0A030;">⚠ Descontar retención · consultar % a Contabilidad</span>`;
