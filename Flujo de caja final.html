@@ -495,7 +495,7 @@
         <button type="button" id="btnAgregarManual" title="Agregar movimiento manual" style="width:24px; height:24px; border-radius:50%; border:1px solid var(--navy); background:var(--navy); color:#fff; font-size:15px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0;">+</button>
       </div>
       <div class="panel-note" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-        <span><span class="badge exec toggle-estado" id="badgeExec" title="Clic para ver solo lo registrado en Odoo. Otro clic: ver todo">EJECUTADO / REGISTRADO</span> &nbsp;<span class="badge pagado-hoy-badge toggle-estado" id="badgePagadoHoy" title="Clic para ver solo lo marcado pagado hoy (aún sin registrar en Odoo). Otro clic: ver todo">PAGADO HOY</span> &nbsp;<span class="badge proj toggle-estado" id="badgeProy" title="Clic para ver solo lo proyectado. Otro clic: ver todo">PROYECTADO</span> <span style="font-size:11px; color:var(--muted);">(clic para filtrar)</span> &nbsp;<span style="font-size:11px; color:var(--muted);"><span class="marca-conc ok" style="margin-left:0;">✓</span> conciliado con el banco · <span class="marca-conc pend toggle-estado" id="badgeSinConciliar" title="Clic para ver solo lo registrado en Odoo que falta conciliar. Otro clic: ver todo">Sin conciliar</span> registrado en Odoo, falta conciliar</span></span>
+        <span><span class="badge exec toggle-estado" id="badgeExec" title="Clic para ver solo lo registrado en Odoo. Otro clic: ver todo">EJECUTADO / REGISTRADO</span> &nbsp;<span class="badge pagado-hoy-badge toggle-estado" id="badgePagadoHoy" title="Clic para ver solo lo marcado pagado hoy (aún sin registrar en Odoo). Otro clic: ver todo">PAGADO HOY</span> &nbsp;<span class="badge pagado-hoy-badge toggle-estado" id="badgePagadoAtrasado" title="Clic para ver solo lo marcado pagado en días anteriores que sigue sin registrarse en Odoo. Otro clic: ver todo" style="background:var(--bad-bg); color:var(--bad);">MARCADO Y NO REGISTRADO</span> &nbsp;<span class="badge proj toggle-estado" id="badgeProy" title="Clic para ver solo lo proyectado. Otro clic: ver todo">PROYECTADO</span> <span style="font-size:11px; color:var(--muted);">(clic para filtrar)</span> &nbsp;<span style="font-size:11px; color:var(--muted);"><span class="marca-conc ok" style="margin-left:0;">✓</span> conciliado con el banco · <span class="marca-conc pend toggle-estado" id="badgeSinConciliar" title="Clic para ver solo lo registrado en Odoo que falta conciliar. Otro clic: ver todo">Sin conciliar</span> registrado en Odoo, falta conciliar</span></span>
         <span style="display:flex; align-items:center; gap:6px; position:relative;">
           Mes:
           <button type="button" id="btnFiltroMes" style="font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px; background:#fff; color:var(--ink); cursor:pointer; min-width:150px; text-align:left;">Todos los meses</button>
@@ -1696,8 +1696,13 @@ async function intentarLogin(){
 function mostrarDashboard(){
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('dashboard').style.display = 'block';
-  // Por defecto se muestran todas; el usuario puede aislar las vencidas o excluirlas.
+  // Al cargar, todos los filtros arrancan limpios (Chrome restaura los campos al dar Actualizar)
   document.getElementById('filtroVencimiento').value = 'todas';
+  document.getElementById('filtroTipoMovimiento').selectedIndex = 0;
+  document.getElementById('filtroFechaDesde').value = '';
+  document.getElementById('filtroFechaHasta').value = '';
+  document.getElementById('filtroMontoMin').value = '';
+  document.getElementById('filtroBanco').value = '';
   // Rol cobranzas y cobranzas_servicios: no agregan movimientos manuales.
   if(!esRolCompleto()){
     const btnManual = document.getElementById('btnAgregarManual');
@@ -2440,6 +2445,7 @@ function claveMes(fecha){
 }
 
 let mesesSeleccionados = null; // null = todavía no inicializado; luego un Set con las claves "yyyy-mm" marcadas
+let clavesMesPrevias = []; // meses que existían en el render anterior
 
 function poblarFiltroMes(lista){
   const vistos = new Map(); // "2026-01" -> "Enero 2026"
@@ -2453,7 +2459,10 @@ function poblarFiltroMes(lista){
     mesesSeleccionados = new Set(claves); // por defecto: todos marcados (sin filtrar)
   } else {
     mesesSeleccionados = new Set([...mesesSeleccionados].filter(c => claves.includes(c)));
+    // Un mes que recién aparece en los datos entra marcado (el usuario nunca lo desmarcó)
+    claves.forEach(c => { if(!clavesMesPrevias.includes(c)) mesesSeleccionados.add(c); });
   }
+  clavesMesPrevias = claves;
 
   const listaEl = document.getElementById('listaMeses');
   listaEl.innerHTML = '';
@@ -2631,7 +2640,8 @@ function render(){
   const badgeProy = document.getElementById('badgeProy');
   const badgePagadoHoy = document.getElementById('badgePagadoHoy');
   const badgeSinConciliar = document.getElementById('badgeSinConciliar');
-  [[badgeExec,'ejecutado'],[badgePagadoHoy,'pagado_hoy'],[badgeProy,'proyectado'],[badgeSinConciliar,'sin_conciliar']].forEach(([el, cat])=>{
+  const badgePagadoAtrasado = document.getElementById('badgePagadoAtrasado');
+  [[badgeExec,'ejecutado'],[badgePagadoHoy,'pagado_hoy'],[badgePagadoAtrasado,'pagado_atrasado'],[badgeProy,'proyectado'],[badgeSinConciliar,'sin_conciliar']].forEach(([el, cat])=>{
     if(!el) return;
     el.classList.toggle('activo', filtroEstado === cat);
     el.classList.toggle('badge-off', filtroEstado !== 'todos' && filtroEstado !== cat);
@@ -2688,7 +2698,9 @@ function render(){
   // Siguen contando en saldos, KPI y Excel. Se muestran con "Ver historial
   // completo", o al filtrar por "Desde", por un mes o por EJECUTADO.
   const totalMeses = document.querySelectorAll('#listaMeses input[type=checkbox]').length;
-  const ocultarHistorial = !verHistorialCompleto && !inpDesde.value &&
+  // Si hay cualquier filtro de lista o "Hasta" activo, se muestra el historial completo de lo filtrado
+  const hayFiltroLista = Object.values(FILTROS_MULTI).some(f => f.seleccion.size > 0);
+  const ocultarHistorial = !verHistorialCompleto && !inpDesde.value && !inpHasta.value && !hayFiltroLista &&
     mesesSeleccionados.size === totalMeses && filtroEstado !== 'ejecutado' && filtroEstado !== 'sin_conciliar';
   const corteHistorial = addDays(HOY, -7);
   let ocultasHistorial = 0;
@@ -2718,6 +2730,9 @@ function render(){
     if(esCruceAnticipo(m)) return; // asiento contable, no es movimiento de banco
     if(filtroEstado === 'sin_conciliar'){
       if(!(m.estado === 'ejecutado' && m.conciliado === false)) return;
+    } else if(filtroEstado === 'pagado_atrasado'){
+      // Marcado "pagado hoy" en un día anterior a hoy y todavía sin registrar en Odoo
+      if(!(m.estado === 'proyectado' && m.pagadoManual && m.pagadoManual < fmtDateLocal(new Date()))) return;
     } else if(filtroEstado !== 'todos' && categoriaEstado(m) !== filtroEstado) return;
     if(fBanco !== 'Todas' && m.banco !== fBanco) return;
     if(!Object.values(FILTROS_MULTI).every(f => f.pasa(m))) return;
