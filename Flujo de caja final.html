@@ -794,7 +794,7 @@
       <div class="panel-note">Documentos publicados en Odoo; las notas de crédito se restan</div>
     </div>
     <div class="table-scroll"><table class="mini-table">
-      <thead><tr><th>Año</th><th>Ventas facturadas</th><th>NC clientes</th><th>Ventas netas</th><th>Compras facturadas</th><th>NC proveedores</th><th>Compras netas</th></tr></thead>
+      <thead><tr><th>Año</th><th>Ventas facturadas</th><th>NC clientes</th><th>Ventas netas</th><th title="Reversas de reconocimiento de ingresos registradas en el año (por analítica y cliente)">Reconocimiento de ingresos reversado</th><th>Compras facturadas</th><th>NC proveedores</th><th>Compras netas</th><th title="Reversas de reconocimiento de costos registradas en el año (por analítica y proveedor)">Reconocimiento de costos reversado</th></tr></thead>
       <tbody id="facturacionRotacionRows"></tbody>
     </table></div>
   </section>
@@ -823,6 +823,19 @@
     </div>
     <div class="detail-scroll">
       <table><thead><tr><th>Fecha</th><th>Número</th><th>Cliente / Proveedor</th><th>Tipo</th><th>Subtotal</th><th>Impuesto</th><th>Total</th></tr></thead><tbody id="ventasDetailRows"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<div class="detail-overlay" id="reconDetailOverlay" role="dialog" aria-modal="true" aria-labelledby="reconDetailTitle">
+  <div class="detail-dialog">
+    <div class="detail-dialog-head">
+      <div><div class="panel-title" id="reconDetailTitle">Reconocimiento reversado</div><div class="panel-note" id="reconDetailSummary"></div></div>
+      <button type="button" class="detail-close" id="reconDetailClose">Cerrar</button>
+    </div>
+    <div style="padding:0 16px 10px;"><input type="text" id="reconDetailFiltro" placeholder="Buscar analítica, cliente/proveedor o documento" style="width:100%; max-width:420px;"></div>
+    <div class="detail-scroll">
+      <table><thead><tr><th>Analítica</th><th>Cliente / Proveedor</th><th>Documento de reconocimiento</th><th>Asiento que lo aplicó</th><th>Fecha</th><th>Tipo</th><th>Monto</th></tr></thead><tbody id="reconDetailRows"></tbody></table>
     </div>
   </div>
 </div>
@@ -1600,6 +1613,7 @@ let cobVistaActual = 'porcliente';
 let movimientosCartera = [];
 let comentariosCobranza = [];
 let facturacionRotacion = [];
+let reconocimientoAplicaciones = [];
 let anioActualRotacion = null;
 let ordenesCompra = [];
 let cuotasFormaPago = [];
@@ -2159,6 +2173,20 @@ async function cargarDatos(){
       cobServicios = servicios;
     } catch(errAgente){
       console.error('No se pudieron cargar las vistas de Cobranzas del Agente Financiero:', errAgente);
+    }
+
+    try{
+      const reconData = await fetchTabla('reconocimiento_aplicaciones', q => q.order('fecha', {ascending: true}).order('id', {ascending: true}));
+      reconocimientoAplicaciones = reconData.map(r => ({
+        categoria: r.categoria, tipo: r.tipo, anio: Number(r.anio), fecha: r.fecha,
+        documento: r.documento || '', documentoOdooId: r.documento_odoo_id ? Number(r.documento_odoo_id) : null,
+        referencia: r.referencia || '', tercero: r.tercero || '', analitica: r.analitica || 'Sin analítica',
+        asiento: r.asiento || '', asientoOdooId: r.asiento_odoo_id ? Number(r.asiento_odoo_id) : null,
+        asientoRef: r.asiento_ref || '', cuentas: r.cuentas_asiento || '', monto: Number(r.monto) || 0,
+      }));
+    } catch(errRecon){
+      console.error('No se pudo cargar reconocimiento_aplicaciones:', errRecon);
+      reconocimientoAplicaciones = [];
     }
 
     bancosBase = Object.fromEntries(bancosData.map(b => [b.nombre, Number(b.saldo_base) || 0]));
@@ -4231,8 +4259,14 @@ function renderCobranzasDetalle(){
 }
 
 
+function totalReconocimientoReversado(categoria, anio){
+  return reconocimientoAplicaciones
+    .filter(r => r.tipo === 'reversa' && r.categoria === categoria && r.anio === anio)
+    .reduce((s,r)=>s+r.monto,0);
+}
+
 function renderFacturacionRotacion(publicadas){
-  const anios = [...new Set(publicadas.map(f=>f.anio))].sort((a,b)=>b-a);
+  const anios = [...new Set([...publicadas.map(f=>f.anio), ...reconocimientoAplicaciones.map(r=>r.anio).filter(Boolean)])].sort((a,b)=>b-a);
   const filas = anios.map(anio=>{
     const docs = publicadas.filter(f=>f.anio===anio);
     const ventas = docs.filter(f=>f.moveType==='out_invoice').reduce((s,f)=>s+f.total,0);
@@ -4244,16 +4278,21 @@ function renderFacturacionRotacion(publicadas){
       <td class="nums">${fmtMoney(ventas)}</td>
       <td class="nums amt-out">-${fmtMoney(ncClientes)}</td>
       <td class="nums amt-in clickable-cell" data-detalle="cxc" data-anio="${anio}" title="Clic para ver el detalle">${fmtMoney(ventas-ncClientes)}</td>
+      <td class="nums amt-out clickable-cell" data-recon="cxc" data-anio="${anio}" title="Clic para ver por analítica y cliente">-${fmtMoney(totalReconocimientoReversado('cxc', anio))}</td>
       <td class="nums">${fmtMoney(compras)}</td>
       <td class="nums amt-out">-${fmtMoney(ncProveedores)}</td>
       <td class="nums amt-out clickable-cell" data-detalle="cxp" data-anio="${anio}" title="Clic para ver el detalle">${fmtMoney(compras-ncProveedores)}</td>
+      <td class="nums amt-in clickable-cell" data-recon="cxp" data-anio="${anio}" title="Clic para ver por analítica y proveedor">-${fmtMoney(totalReconocimientoReversado('cxp', anio))}</td>
     </tr>`;
   });
   document.getElementById('facturacionRotacionRows').innerHTML = filas.length
     ? filas.join('')
-    : '<tr><td colspan="7" class="oc-detail-empty">Sin facturación cargada.</td></tr>';
+    : '<tr><td colspan="9" class="oc-detail-empty">Sin facturación cargada.</td></tr>';
   document.querySelectorAll('#facturacionRotacionRows [data-detalle]').forEach(celda=>{
     celda.addEventListener('click', ()=>abrirDetalleVentas(celda.dataset.detalle, Number(celda.dataset.anio)));
+  });
+  document.querySelectorAll('#facturacionRotacionRows [data-recon]').forEach(celda=>{
+    celda.addEventListener('click', ()=>abrirDetalleReconocimiento(celda.dataset.recon, Number(celda.dataset.anio)));
   });
 }
 
@@ -4624,6 +4663,66 @@ function abrirDetalleVentas(categoria, anio){
   renderVentasDetailRows('');
   document.getElementById('ventasDetailOverlay').classList.add('open');
 }
+// Detalle de reversas de reconocimiento: agrupado por analítica + cliente/
+// proveedor. Solo las filas tipo 'reversa' suman a la columna; las
+// aplicaciones por cobro/pago u otro asiento se muestran aparte, sin sumar,
+// para poder revisarlas.
+let reconDetalleActual = [];
+const ETIQUETA_TIPO_RECON = {reversa:'Reversa', cobro_pago:'Cobro / pago (no suma)', otro:'Otro asiento (no suma)'};
+
+function renderReconDetailRows(filtro){
+  const f = (filtro || '').trim();
+  const lista = f
+    ? reconDetalleActual.filter(r => coincideFiltroTexto(r.analitica, f) || coincideFiltroTexto(r.tercero, f) || coincideFiltroTexto(r.documento, f) || coincideFiltroTexto(r.asiento, f))
+    : reconDetalleActual;
+  const grupos = new Map();
+  lista.forEach(r => {
+    const clave = r.analitica + '||' + r.tercero;
+    if(!grupos.has(clave)) grupos.set(clave, []);
+    grupos.get(clave).push(r);
+  });
+  const html = [];
+  [...grupos.entries()].sort((a,b)=>a[0].localeCompare(b[0])).forEach(([, filas])=>{
+    const subtotal = filas.filter(r=>r.tipo==='reversa').reduce((s,r)=>s+r.monto,0);
+    html.push(`<tr style="background:var(--surface-2, #F4F2EC); font-weight:600;">
+      <td>${escapeHTML(filas[0].analitica)}</td><td>${escapeHTML(filas[0].tercero || '—')}</td>
+      <td colspan="4">Subtotal reversado</td><td class="nums">${fmtMoney(subtotal)}</td></tr>`);
+    filas.forEach(r => {
+      const suma = r.tipo === 'reversa';
+      html.push(`<tr${suma ? '' : ' style="color:#8A8A8A;"'}>
+        <td></td><td></td>
+        <td>${escapeHTML(r.documento || '—')}${linkOdoo(r.documentoOdooId ? ODOO_BASE + '/mail/view?model=account.move&res_id=' + encodeURIComponent(r.documentoOdooId) : null)}</td>
+        <td title="${escapeHTML(r.cuentas)}">${escapeHTML(r.asiento || '—')}${r.asientoRef ? ' · ' + escapeHTML(r.asientoRef) : ''}${linkOdoo(r.asientoOdooId ? ODOO_BASE + '/mail/view?model=account.move&res_id=' + encodeURIComponent(r.asientoOdooId) : null)}</td>
+        <td class="nums">${r.fecha ? fmtDate(new Date(r.fecha + 'T00:00:00')) : '—'}</td>
+        <td>${ETIQUETA_TIPO_RECON[r.tipo] || r.tipo}</td>
+        <td class="nums">${fmtMoney(r.monto)}</td></tr>`);
+    });
+  });
+  document.getElementById('reconDetailRows').innerHTML = html.length ? html.join('')
+    : `<tr><td colspan="7" class="oc-detail-empty">${f ? 'Sin resultados para esa búsqueda.' : 'No hay reversas registradas para este año.'}</td></tr>`;
+}
+
+function abrirDetalleReconocimiento(categoria, anio){
+  if(!anio) return;
+  reconDetalleActual = reconocimientoAplicaciones
+    .filter(r => r.categoria === categoria && r.anio === anio)
+    .sort((a,b)=> new Date(a.fecha) - new Date(b.fecha));
+  const reversado = reconDetalleActual.filter(r=>r.tipo==='reversa').reduce((s,r)=>s+r.monto,0);
+  const noSuma = reconDetalleActual.filter(r=>r.tipo!=='reversa').reduce((s,r)=>s+r.monto,0);
+  document.getElementById('reconDetailTitle').textContent =
+    `Reconocimiento de ${categoria === 'cxc' ? 'ingresos' : 'costos'} reversado · ${anio}`;
+  document.getElementById('reconDetailSummary').textContent =
+    `Reversado ${fmtMoney(reversado)}` + (noSuma > 0.005 ? ` · Otras aplicaciones no sumadas ${fmtMoney(noSuma)}` : '');
+  document.getElementById('reconDetailFiltro').value = '';
+  renderReconDetailRows('');
+  document.getElementById('reconDetailOverlay').classList.add('open');
+}
+function cerrarDetalleReconocimiento(){ document.getElementById('reconDetailOverlay').classList.remove('open'); }
+document.getElementById('reconDetailClose').addEventListener('click', cerrarDetalleReconocimiento);
+document.getElementById('reconDetailOverlay').addEventListener('click', e=>{ if(e.target.id==='reconDetailOverlay') cerrarDetalleReconocimiento(); });
+document.getElementById('reconDetailFiltro').addEventListener('input', e=>renderReconDetailRows(e.target.value));
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') cerrarDetalleReconocimiento(); });
+
 function cerrarDetalleVentas(){ document.getElementById('ventasDetailOverlay').classList.remove('open'); }
 document.getElementById('ventasDetailClose').addEventListener('click', cerrarDetalleVentas);
 document.getElementById('ventasDetailOverlay').addEventListener('click', e=>{ if(e.target.id==='ventasDetailOverlay') cerrarDetalleVentas(); });
