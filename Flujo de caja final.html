@@ -835,7 +835,7 @@
     </div>
     <div style="padding:0 16px 10px;"><input type="text" id="reconDetailFiltro" placeholder="Buscar analítica, cliente/proveedor o documento" style="width:100%; max-width:420px;"></div>
     <div class="detail-scroll">
-      <table><thead><tr><th>Analítica</th><th>Cliente / Proveedor</th><th>Documento de reconocimiento</th><th>Asiento que lo aplicó</th><th>Fecha</th><th>Tipo</th><th>Monto</th></tr></thead><tbody id="reconDetailRows"></tbody></table>
+      <table><thead><tr><th>Analítica</th><th>Cliente / Proveedor</th><th>Asiento (diario MSC)</th><th>Cuenta</th><th>Fecha</th><th>Tipo</th><th>Monto</th></tr></thead><tbody id="reconDetailRows"></tbody></table>
     </div>
   </div>
 </div>
@@ -2182,7 +2182,7 @@ async function cargarDatos(){
         documento: r.documento || '', documentoOdooId: r.documento_odoo_id ? Number(r.documento_odoo_id) : null,
         referencia: r.referencia || '', tercero: r.tercero || '', analitica: r.analitica || 'Sin analítica',
         asiento: r.asiento || '', asientoOdooId: r.asiento_odoo_id ? Number(r.asiento_odoo_id) : null,
-        asientoRef: r.asiento_ref || '', cuentas: r.cuentas_asiento || '', monto: Number(r.monto) || 0,
+        asientoRef: r.asiento_ref || '', cuentas: r.cuentas_asiento || '', cuenta: r.cuenta || r.cuentas_asiento || '', monto: Number(r.monto) || 0,
       }));
     } catch(errRecon){
       console.error('No se pudo cargar reconocimiento_aplicaciones:', errRecon);
@@ -4668,12 +4668,12 @@ function abrirDetalleVentas(categoria, anio){
 // aplicaciones por cobro/pago u otro asiento se muestran aparte, sin sumar,
 // para poder revisarlas.
 let reconDetalleActual = [];
-const ETIQUETA_TIPO_RECON = {reversa:'Reversa', cobro_pago:'Cobro / pago (no suma)', otro:'Otro asiento (no suma)'};
+const ETIQUETA_TIPO_RECON = {reversa:'Reversa', otro:'Sin glosa de reversa (no suma)'};
 
 function renderReconDetailRows(filtro){
   const f = (filtro || '').trim();
   const lista = f
-    ? reconDetalleActual.filter(r => coincideFiltroTexto(r.analitica, f) || coincideFiltroTexto(r.tercero, f) || coincideFiltroTexto(r.documento, f) || coincideFiltroTexto(r.asiento, f))
+    ? reconDetalleActual.filter(r => coincideFiltroTexto(r.analitica, f) || coincideFiltroTexto(r.tercero, f) || coincideFiltroTexto(r.asiento, f) || coincideFiltroTexto(r.asientoRef, f) || coincideFiltroTexto(r.cuenta, f))
     : reconDetalleActual;
   const grupos = new Map();
   lista.forEach(r => {
@@ -4691,8 +4691,8 @@ function renderReconDetailRows(filtro){
       const suma = r.tipo === 'reversa';
       html.push(`<tr${suma ? '' : ' style="color:#8A8A8A;"'}>
         <td></td><td></td>
-        <td>${escapeHTML(r.documento || '—')}${linkOdoo(r.documentoOdooId ? ODOO_BASE + '/mail/view?model=account.move&res_id=' + encodeURIComponent(r.documentoOdooId) : null)}</td>
-        <td title="${escapeHTML(r.cuentas)}">${escapeHTML(r.asiento || '—')}${r.asientoRef ? ' · ' + escapeHTML(r.asientoRef) : ''}${linkOdoo(r.asientoOdooId ? ODOO_BASE + '/mail/view?model=account.move&res_id=' + encodeURIComponent(r.asientoOdooId) : null)}</td>
+        <td>${escapeHTML(r.asiento || '—')}${r.asientoRef ? ' · ' + escapeHTML(r.asientoRef) : ''}${linkOdoo(r.asientoOdooId ? ODOO_BASE + '/mail/view?model=account.move&res_id=' + encodeURIComponent(r.asientoOdooId) : null)}</td>
+        <td>${escapeHTML(r.cuenta || '—')}</td>
         <td class="nums">${r.fecha ? fmtDate(new Date(r.fecha + 'T00:00:00')) : '—'}</td>
         <td>${ETIQUETA_TIPO_RECON[r.tipo] || r.tipo}</td>
         <td class="nums">${fmtMoney(r.monto)}</td></tr>`);
