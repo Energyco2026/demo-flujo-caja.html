@@ -3719,6 +3719,7 @@ const FACTURAS_EXCLUIDAS_SERVICIOS = new Set([
   '001-003-000001388', // GUTIERREZ GAVILANES MELANIA SISSI
   '001-003-000002258', // INDUSTRIAS BIOSEM INDBIOSEM S.A. — reembolso de viáticos
   '001-003-000002402', // COMPLYCORP S.A. — venta de paneles
+  '001-003-000001742', // HOYOS GARCES FREDDY JEFFERSON — planta solar
 ]);
 function esFacturaExcluidaDeServicios(x){
   const num = extraerNumeroFactura(x.factura) || extraerNumeroFactura(x._m && x._m.concepto);
@@ -3786,6 +3787,20 @@ function renderResumenServicios(){
   const filtroTxt = document.getElementById('serviciosFiltroActivo');
   if(filtroTxt) filtroTxt.textContent = serviciosFiltroRango ? `Filtrando por: ${serviciosFiltroRango} días (clic de nuevo en la barra para quitar el filtro)` : '';
 }
+// Enlace a la orden de venta (sale.order) relacionada con una factura de
+// Servicios. El ID viene de la vista agente_facturas_servicio_v1
+// (orden_venta_odoo_id). Para las facturas de saldos iniciales, que entran
+// a Servicios por otra regla, se busca la misma vista por el id de la factura.
+function linkOrdenVentaServicio(x){
+  let ovId = x.orden_venta_odoo_id, ovNombre = x.orden_venta;
+  if(ovId == null && x._m && x._m.odooId != null){
+    const fila = cobServicios.find(r => Number(r.odoo_id) === x._m.odooId);
+    if(fila){ ovId = fila.orden_venta_odoo_id; ovNombre = fila.orden_venta; }
+  }
+  if(ovId == null || !Number.isFinite(Number(ovId))) return '';
+  const url = ODOO_BASE + '/mail/view?model=sale.order&res_id=' + Number(ovId);
+  return ` <a class="odoo-link" href="${url}" target="_blank" rel="noopener" title="Abrir orden de venta ${escapeHTML(ovNombre || '')} en Odoo" onclick="event.stopPropagation()">${escapeHTML(ovNombre || 'Orden de venta')} ↗</a>`;
+}
 function renderServiciosLista(){
   const grupos = serviciosAgrupados();
   grupos.sort((a,b) => serviciosOrden === 'cliente' ? a.cliente.localeCompare(b.cliente)
@@ -3820,7 +3835,7 @@ function renderServiciosLista(){
         }
         return `<div style="display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:6px 8px; border-bottom:1px dashed var(--line);">
           <span style="width:8px; height:8px; border-radius:50%; background:${colorPorAntiguedad(dias)}; flex-shrink:0;"></span>
-          <span style="flex:1; min-width:120px; font-size:13px;">${escapeHTML(x.factura || '')}</span>
+          <span style="flex:1; min-width:120px; font-size:13px;">${escapeHTML(x.factura || '')}${linkOdoo(odooUrlMov(m), 'Abrir factura en Odoo').replace('Odoo ↗','Factura ↗')}${linkOrdenVentaServicio(x)}</span>
           <span style="font-size:12px; color:var(--muted); width:90px;">${m.fechaFactura ? fmtDate(m.fechaFactura).split('-').reverse().join('/') : '—'}</span>
           <span style="font-size:12px; color:var(--muted); width:70px;">${dias != null ? dias+' días' : '—'}</span>
           <span style="font-size:13px; width:90px; text-align:right;">${fmtMoney(x._m.monto)}</span>
