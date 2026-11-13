@@ -3712,6 +3712,11 @@ const FACTURAS_EXCLUIDAS_SERVICIOS = new Set([
   '001-003-000002731', // ACME AGRO C.A. — saldo planta solar contra entrega de medidor
   '001-003-000001661', // CONSORCIO LST SANTA ELENA - PE — saldo de obra
   '001-003-000001335', // CONSORCIO LST SANTA ELENA - PE — saldo de obra
+  '001-003-000001744', // ALCIVAR ALAVA VICTOR HUGO
+  '001-003-000002122', // NICOLÁS PEREZ LAPENTTI
+  '001-003-000000677', // CONSORCIO GUABO 2020
+  '001-003-000001217', // BAREK ORTI ALFONSO XAVIER
+  '001-003-000001388', // GUTIERREZ GAVILANES MELANIA SISSI
 ]);
 function esFacturaExcluidaDeServicios(x){
   const num = extraerNumeroFactura(x.factura) || extraerNumeroFactura(x._m && x._m.concepto);
