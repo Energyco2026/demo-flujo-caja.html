@@ -404,6 +404,36 @@
   .sem-movido{font-size:10.5px; color:var(--projected); font-weight:600; margin-top:3px;}
   #semDetalleRows input[type=date]{border-color:var(--projected);}
   .sem-chart-wrap{position:relative; height:240px; padding:14px 20px 10px;}
+  /* ===== Pestaña Flujo de Proyectos (app Control de Proyectos) ===== */
+  .fp-filtros{display:flex; align-items:center; gap:12px; flex-wrap:wrap; font-size:12.5px; color:var(--muted);}
+  .fp-filtros select{font-family:'Inter',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 8px; background:#fff; color:var(--ink); max-width:320px;}
+  .fp-filtros label{display:flex; align-items:center; gap:6px; cursor:pointer;}
+  .fp-wrap{overflow-x:auto; padding:0 20px 18px;}
+  .fp-matriz{width:100%; border-collapse:collapse; font-size:13px; min-width:900px;}
+  .fp-matriz th,.fp-matriz td{padding:9px 12px; border-bottom:1px solid var(--line); text-align:right; white-space:nowrap;}
+  .fp-matriz th:first-child,.fp-matriz td:first-child{text-align:left; max-width:330px; overflow:hidden; text-overflow:ellipsis;}
+  .fp-matriz thead th{font-size:11px; letter-spacing:.05em; color:var(--muted); vertical-align:bottom; position:static; box-shadow:none;}
+  .fp-matriz th.fp-actual{color:#5B3FD9;} .fp-matriz td.fp-actual{background:#EFEBFC;}
+  .fp-matriz th.fp-venc,.fp-matriz td.fp-venc{background:#FDF1D6;}
+  .fp-matriz td.nums{font-family:'JetBrains Mono',monospace;}
+  .fp-matriz td.vacio{color:var(--muted);}
+  .fp-matriz td.pos{color:#2E7D46;} .fp-matriz td.neg{color:var(--bad);}
+  .fp-matriz td.clic{cursor:pointer;} .fp-matriz td.clic:hover{text-decoration:underline dotted; color:var(--navy);}
+  .fp-matriz td.sel{outline:2px solid var(--navy); outline-offset:-2px;}
+  .fp-matriz tr.fp-sec td{font-size:11.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;}
+  .fp-matriz tr.fp-sec.ing td{background:#E3F2E6; color:#2E7D46;}
+  .fp-matriz tr.fp-sec.egr td{background:#FBE5E1; color:var(--bad);}
+  .fp-matriz tr.fp-tot td{font-weight:700;}
+  .fp-matriz tr.fp-neto td{background:#ECE8FB; font-weight:700;}
+  .fp-badge{display:inline-block; font-size:10.5px; font-weight:700; border-radius:10px; padding:2px 8px; white-space:nowrap;}
+  .fp-badge.si{background:#E3F2E6; color:#2E7D46;}
+  .fp-badge.no{background:#EEF0F3; color:#5A6472;}
+  .fp-badge.venc{background:#FDF1D6; color:#7A5410;}
+  .fp-badge.ppa{background:#EAF0FC; color:var(--navy);}
+  .fp-detalle td{font-size:12.5px; vertical-align:top;}
+  .fp-detalle td.monto{font-family:'JetBrains Mono',monospace; text-align:right; white-space:nowrap;}
+  .fp-aviso{margin:14px 20px; background:#EAF0FC; border:1px solid #C9D6F0; color:var(--navy); border-radius:8px; padding:10px 14px; font-size:12.5px; line-height:1.55;}
+  .fp-quitar{border:1px solid var(--line); background:#fff; border-radius:6px; padding:3px 10px; cursor:pointer; font-size:12px; margin-left:8px;}
 </style>
 </head>
 <body>
@@ -445,6 +475,7 @@
   <button type="button" class="view-tab" data-view="obligaciones">Obligaciones financieras</button>
   <button type="button" class="view-tab" data-view="indices">Rotación CxC / CxP</button>
   <button type="button" class="view-tab" data-view="presupuesto">Presupuesto por Proyecto</button>
+  <button type="button" class="view-tab" data-view="proyectos" id="tabProyectos">Flujo de Proyectos</button>
   <button type="button" class="view-tab" data-view="cobranzas">Cobranzas</button>
   <button type="button" class="view-tab" data-view="auditoriaHitos" id="tabAuditoriaHitos" style="display:none;">Auditoría de hitos</button>
 </div>
@@ -682,6 +713,56 @@
     </div>
   </div>
 </div>
+
+<main id="vistaProyectos" style="display:none;">
+  <div class="kpis" id="fpKpis"></div>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <div class="panel-title">Flujo de Proyectos</div>
+        <div class="panel-note">Datos de la app Control de Proyectos (cuotas programadas e hitos de cobro). Solo lectura: las fechas se corrigen en la app. <span id="fpActualizado"></span></div>
+      </div>
+      <div class="fp-filtros">
+        <span>Proyecto: <select id="fpFiltroProyecto"></select></span>
+        <span>Ver por:
+          <select id="fpFiltroPeriodo">
+            <option value="semana">Semana</option>
+            <option value="mes" selected>Mes</option>
+          </select>
+        </span>
+        <span>Períodos:
+          <select id="fpFiltroHorizonte">
+            <option value="6" selected>6</option>
+            <option value="9">9</option>
+            <option value="13">13</option>
+          </select>
+        </span>
+        <label title="Proyectos PPA (SMI, Claro Ibarra): sus egresos se financian con desembolsos"><input type="checkbox" id="fpIncluirPPA" checked> Incluir PPA</label>
+        <label title="Muestra solo lo que también se carga al flujo general (sin OC ni factura en Odoo)"><input type="checkbox" id="fpSoloFlujoGeneral"> Solo lo que entra al flujo general</label>
+        <button type="button" id="fpExportar" class="btn-refrescar">⬇ Descargar Excel</button>
+      </div>
+    </div>
+    <div class="fp-aviso">Ingresos = hitos de cobro pendientes (monto del hito − cobrado). Egresos = cuotas en estado <b>Programado</b>. Lo que ya tiene OC o factura en Odoo viene en tu flujo general desde Odoo; aquí se ve igual, marcado "No entra" con el motivo. Toca una cifra para ver su detalle abajo.</div>
+    <div class="fp-wrap"><table class="fp-matriz"><thead id="fpHead"></thead><tbody id="fpBody"></tbody></table></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <div class="panel-title">Detalle <span id="fpDetalleFiltro" style="font-weight:500; font-size:13px; color:var(--muted);"></span></div>
+        <div class="panel-note" id="fpDetalleNota"></div>
+      </div>
+      <div class="fp-filtros">
+        <label><input type="checkbox" id="fpMostrarPagados"> Mostrar cuotas pagadas e hitos cobrados</label>
+      </div>
+    </div>
+    <div class="table-scroll" style="max-height:520px;"><table class="fp-detalle">
+      <thead><tr><th>Tipo</th><th>Fecha</th><th>P.O.</th><th>Concepto</th><th>Proveedor / Cliente</th><th>Categoría · Segmento</th><th style="text-align:right;">Monto</th><th>Flujo general</th></tr></thead>
+      <tbody id="fpDetalleRows"></tbody>
+    </table></div>
+  </section>
+</main>
 
 <main id="vistaObligaciones" style="display:none;">
   <div class="obl-aviso">
@@ -1749,6 +1830,9 @@ function mostrarDashboard(){
   // Pestaña "Auditoría de hitos": solo visible para smaya.
   const tabAudHitos = document.getElementById('tabAuditoriaHitos');
   if(tabAudHitos) tabAudHitos.style.display = veAuditoriaHitos() ? '' : 'none';
+  // Pestaña "Flujo de Proyectos": solo rol completo.
+  const tabProy = document.getElementById('tabProyectos');
+  if(tabProy) tabProy.style.display = esRolCompleto() ? '' : 'none';
   prepararBotonOdoo();
   cargarDatos();
 }
@@ -6368,6 +6452,291 @@ function exportarPagosDeHoy(){
 }
 document.getElementById('btnDescargarPagosHoy').addEventListener('click', exportarPagosDeHoy);
 
+
+// ============================================================
+// Pestaña "Flujo de Proyectos" — app Control de Proyectos
+// Lee pagos_control_proyectos e hitos_control_proyectos (los llena
+// sync_control_proyectos.py). Solo lectura: las fechas se corrigen en la app.
+// ============================================================
+const FP_PROYECTOS_PPA = new Set(['2075','1756']);
+let fpCuotas = null, fpHitos = null, fpCargando = false, fpCelda = null, fpFiltrosListos = false;
+
+async function fpLeerTodo(tabla){
+  let salida = [], desde = 0;
+  while(true){
+    const {data, error} = await sb.from(tabla).select('*').range(desde, desde + 999);
+    if(error) throw error;
+    salida = salida.concat(data || []);
+    if(!data || data.length < 1000) break;
+    desde += 1000;
+  }
+  return salida;
+}
+
+async function cargarFlujoProyectos(forzar){
+  if(fpCargando) return;
+  if(fpCuotas && fpHitos && !forzar){ renderFlujoProyectos(); return; }
+  fpCargando = true;
+  document.getElementById('fpBody').innerHTML = '<tr><td colspan="20" style="color:var(--muted);">Cargando datos de la app Control de Proyectos…</td></tr>';
+  try{
+    [fpCuotas, fpHitos] = await Promise.all([fpLeerTodo('pagos_control_proyectos'), fpLeerTodo('hitos_control_proyectos')]);
+  }catch(err){
+    console.error('Flujo de Proyectos:', err);
+    document.getElementById('fpBody').innerHTML = '<tr><td colspan="20" style="color:var(--bad);">No se pudieron leer las tablas de Control de Proyectos: ' + escapeHTML(err.message || String(err)) + '</td></tr>';
+    fpCargando = false;
+    return;
+  }
+  fpCargando = false;
+  fpPrepararFiltros();
+  renderFlujoProyectos();
+}
+
+function fpEsPPA(po, tipo){
+  return FP_PROYECTOS_PPA.has(String(po)) || /ppa/i.test(String(tipo || ''));
+}
+
+function fpPrepararFiltros(){
+  const sel = document.getElementById('fpFiltroProyecto');
+  const actual = sel.value;
+  const nombres = new Map();
+  fpCuotas.forEach(c => { if(!nombres.has(c.po)) nombres.set(c.po, c.proyecto_nombre || ''); });
+  fpHitos.forEach(h => { if(!nombres.has(h.po)) nombres.set(h.po, h.proyecto_nombre || ''); });
+  const lista = [...nombres.entries()].sort((a,b) => String(a[0]).localeCompare(String(b[0]), 'es', {numeric:true}));
+  sel.innerHTML = '<option value="">Todos los proyectos</option>' +
+    lista.map(([po, nom]) => `<option value="${escapeHTML(po)}">${escapeHTML(po)} · ${escapeHTML(nom)}</option>`).join('');
+  if(actual && nombres.has(actual)) sel.value = actual;
+  if(!fpFiltrosListos){
+    ['fpFiltroProyecto','fpFiltroPeriodo','fpFiltroHorizonte','fpIncluirPPA','fpSoloFlujoGeneral','fpMostrarPagados'].forEach(id => {
+      document.getElementById(id).addEventListener('change', () => { if(id !== 'fpMostrarPagados') fpCelda = null; renderFlujoProyectos(); });
+    });
+    document.getElementById('fpExportar').addEventListener('click', fpExportarExcel);
+    fpFiltrosListos = true;
+  }
+}
+
+// ---- períodos ----
+function fpInicioPeriodo(fechaTxt, tipo){
+  const d = new Date(fechaTxt + 'T00:00:00');
+  if(tipo === 'mes') return fechaTxt.slice(0,7);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return fmtDateLocal(d);
+}
+function fpListaPeriodos(tipo, n){
+  const hoy = new Date();
+  const lista = [];
+  if(tipo === 'mes'){
+    for(let i = 0; i < n; i++){
+      const d = new Date(hoy.getFullYear(), hoy.getMonth() + i, 1);
+      lista.push(fmtDateLocal(d).slice(0,7));
+    }
+  }else{
+    const lunes = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+    lunes.setDate(lunes.getDate() - ((lunes.getDay() + 6) % 7));
+    for(let i = 0; i < n; i++){
+      const d = new Date(lunes); d.setDate(lunes.getDate() + 7*i);
+      lista.push(fmtDateLocal(d));
+    }
+  }
+  return lista;
+}
+function fpEtiquetaPeriodo(clave, tipo){
+  if(tipo === 'mes'){
+    const [a, m] = clave.split('-');
+    return new Date(+a, +m - 1, 1).toLocaleDateString('es-EC', {month:'short', year:'numeric'});
+  }
+  const d = new Date(clave + 'T00:00:00');
+  return 'Sem ' + String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0');
+}
+
+// ---- items normalizados ----
+function fpItems(){
+  const po = document.getElementById('fpFiltroProyecto').value;
+  const ppa = document.getElementById('fpIncluirPPA').checked;
+  const soloFG = document.getElementById('fpSoloFlujoGeneral').checked;
+  const items = [];
+  fpCuotas.forEach(c => {
+    if(po && c.po !== po) return;
+    if(!ppa && fpEsPPA(c.po)) return;
+    if(soloFG && !c.en_flujo_general) return;
+    const programado = String(c.estado || '').toLowerCase() === 'programado';
+    items.push({
+      tipo: 'Egreso', pendiente: programado, po: c.po, proyecto: c.proyecto_nombre || '',
+      fecha: c.fecha_vigente || null,
+      concepto: (c.item || '') + (c.cuota_n ? ` (cuota ${c.cuota_n})` : ''),
+      tercero: c.proveedor || '', grupo: c.categoria || 'Sin categoría',
+      categoria: [c.categoria, c.segmento].filter(Boolean).join(' · '),
+      monto: -Math.abs(Number(c.monto) || 0),
+      enFG: !!c.en_flujo_general, motivo: c.motivo_exclusion || '',
+      extra: [c.oc_no ? 'OC ' + c.oc_no : '', c.factura_no ? 'Fact ' + c.factura_no : '', c.fecha_real ? 'Real ' + c.fecha_real : ''].filter(Boolean).join(' · '),
+      ppa: fpEsPPA(c.po)
+    });
+  });
+  fpHitos.forEach(h => {
+    if(po && h.po !== po) return;
+    if(!ppa && fpEsPPA(h.po, h.tipo_proyecto)) return;
+    if(soloFG && !h.en_flujo_general) return;
+    const pend = Number(h.pendiente) || 0;
+    items.push({
+      tipo: 'Ingreso', pendiente: pend > 0, po: h.po, proyecto: h.proyecto_nombre || '',
+      fecha: h.fecha_flujo || null,
+      concepto: 'Hito: ' + (h.descripcion || ''),
+      tercero: h.cliente || '', grupo: 'Hito: ' + (h.descripcion || ''),
+      categoria: (h.pct ? Number(h.pct).toFixed(2) + '% contrato' : ''),
+      monto: pend > 0 ? pend : (Number(h.cobrado) || 0),
+      enFG: !!h.en_flujo_general, motivo: h.motivo_exclusion || '',
+      extra: [h.fecha_real ? 'Cobrado ' + h.fecha_real : '', Number(h.cobrado) > 0 ? 'Cobrado ' + fmtMoney(Number(h.cobrado)) : ''].filter(Boolean).join(' · '),
+      ppa: fpEsPPA(h.po, h.tipo_proyecto)
+    });
+  });
+  return items;
+}
+
+function renderFlujoProyectos(){
+  if(!fpCuotas || !fpHitos) return;
+  const tipo = document.getElementById('fpFiltroPeriodo').value;
+  const n = +document.getElementById('fpFiltroHorizonte').value;
+  const poSel = document.getElementById('fpFiltroProyecto').value;
+  const hoyTxt = fmtDateLocal(new Date());
+  const periodos = fpListaPeriodos(tipo, n);
+  const primero = periodos[0], ultimo = periodos[periodos.length - 1];
+  const items = fpItems();
+  const activos = items.filter(i => i.pendiente);
+
+  // columna de cada item
+  const colDe = i => {
+    if(!i.fecha) return 'sinfecha';
+    const p = fpInicioPeriodo(i.fecha, tipo);
+    if(i.fecha < hoyTxt && p < primero) return 'vencido';
+    if(p < primero) return 'vencido';
+    if(p > ultimo) return 'despues';
+    return p;
+  };
+  const columnas = ['vencido', ...periodos, 'despues'];
+  if(activos.some(i => !i.fecha)) columnas.push('sinfecha');
+
+  // filas: por proyecto (todos) o por categoría/hito (un proyecto)
+  const claveFila = i => poSel ? i.grupo : i.po;
+  const etiquetaFila = i => poSel ? i.grupo : `${i.po} · ${i.proyecto}` + (i.ppa ? ' [PPA]' : '');
+  const matriz = {Ingreso: new Map(), Egreso: new Map()};
+  activos.forEach(i => {
+    const m = matriz[i.tipo];
+    const k = claveFila(i);
+    if(!m.has(k)) m.set(k, {etiqueta: etiquetaFila(i), vals: {}});
+    const c = colDe(i);
+    m.get(k).vals[c] = (m.get(k).vals[c] || 0) + i.monto;
+  });
+
+  const nombreCol = c => c === 'vencido' ? 'Vencido' : c === 'despues' ? 'Después' : c === 'sinfecha' ? 'Sin fecha' : fpEtiquetaPeriodo(c, tipo);
+  const clsCol = c => c === 'vencido' ? 'fp-venc' : (c === periodos[0] ? 'fp-actual' : '');
+  document.getElementById('fpHead').innerHTML = '<tr><th>' + (poSel ? 'Concepto' : 'Proyecto') + '</th>' +
+    columnas.map(c => `<th class="${clsCol(c)}">${nombreCol(c)}</th>`).join('') + '<th>Total</th></tr>';
+
+  const celda = (v, seccion, fila, col) => {
+    const sel = fpCelda && fpCelda.seccion === seccion && fpCelda.fila === fila && fpCelda.col === col ? ' sel' : '';
+    if(!v) return `<td class="nums vacio ${clsCol(col)}">—</td>`;
+    const attrs = seccion ? ` data-sec="${seccion}" data-fila="${escapeHTML(fila)}" data-col="${col}"` : '';
+    return `<td class="nums ${v < 0 ? 'neg' : 'pos'} ${clsCol(col)}${seccion ? ' clic' : ''}${sel}"${attrs}>${fmtMoney(v)}</td>`;
+  };
+  const totalesSeccion = m => {
+    const t = {};
+    m.forEach(f => columnas.forEach(c => { t[c] = (t[c] || 0) + (f.vals[c] || 0); }));
+    return t;
+  };
+  const suma = vals => columnas.reduce((s, c) => s + (vals[c] || 0), 0);
+
+  let html = '';
+  [['Ingreso','ing','Ingresos — hitos de cobro pendientes'], ['Egreso','egr','Egresos — cuotas programadas']].forEach(([sec, cls, titulo]) => {
+    html += `<tr class="fp-sec ${cls}"><td colspan="${columnas.length + 2}">${titulo}</td></tr>`;
+    const filas = [...matriz[sec].entries()].sort((a,b) => Math.abs(suma(b[1].vals)) - Math.abs(suma(a[1].vals)));
+    if(!filas.length) html += `<tr><td colspan="${columnas.length + 2}" style="color:var(--muted);">Sin ${sec === 'Ingreso' ? 'hitos pendientes' : 'cuotas programadas'} con estos filtros.</td></tr>`;
+    filas.forEach(([k, f]) => {
+      html += `<tr><td title="${escapeHTML(f.etiqueta)}">${escapeHTML(f.etiqueta)}</td>` +
+        columnas.map(c => celda(f.vals[c] || 0, sec, k, c)).join('') +
+        `<td class="nums" style="font-weight:600;">${fmtMoney(suma(f.vals))}</td></tr>`;
+    });
+    const t = totalesSeccion(matriz[sec]);
+    html += `<tr class="fp-tot"><td>Total ${sec === 'Ingreso' ? 'ingresos' : 'egresos'}</td>` +
+      columnas.map(c => celda(t[c] || 0, sec, '__total__', c)).join('') + `<td class="nums">${fmtMoney(suma(t))}</td></tr>`;
+  });
+  const ti = totalesSeccion(matriz.Ingreso), te = totalesSeccion(matriz.Egreso);
+  let acum = 0;
+  const neto = {}, acumulado = {};
+  columnas.forEach(c => { neto[c] = (ti[c] || 0) + (te[c] || 0); acum += neto[c]; acumulado[c] = acum; });
+  html += '<tr class="fp-neto"><td>Neto del período (cobro − pago)</td>' + columnas.map(c => celda(neto[c], null, null, c)).join('') + `<td class="nums">${fmtMoney(suma(neto))}</td></tr>`;
+  html += '<tr class="fp-neto"><td>Neto acumulado</td>' + columnas.map(c => celda(acumulado[c], null, null, c)).join('') + '<td></td></tr>';
+  document.getElementById('fpBody').innerHTML = html;
+  document.querySelectorAll('#fpBody td.clic').forEach(td => td.addEventListener('click', () => {
+    const nueva = {seccion: td.dataset.sec, fila: td.dataset.fila, col: td.dataset.col};
+    fpCelda = (fpCelda && fpCelda.seccion === nueva.seccion && fpCelda.fila === nueva.fila && fpCelda.col === nueva.col) ? null : nueva;
+    renderFlujoProyectos();
+  }));
+
+  // ---- KPIs ----
+  const sumaSi = f => activos.filter(f).reduce((s, i) => s + i.monto, 0);
+  const porCobrar = sumaSi(i => i.tipo === 'Ingreso');
+  const porPagar = sumaSi(i => i.tipo === 'Egreso');
+  const vencCuotas = activos.filter(i => i.tipo === 'Egreso' && i.fecha && i.fecha < hoyTxt);
+  const vencHitos = activos.filter(i => i.tipo === 'Ingreso' && i.fecha && i.fecha < hoyTxt);
+  const kpi = (lbl, val, cls, nota) => `<div class="kpi"><div class="kpi-label">${lbl}</div><div class="kpi-val ${cls}">${val}</div>${nota ? `<div style="font-size:11.5px;color:var(--muted);margin-top:6px;">${nota}</div>` : ''}</div>`;
+  document.getElementById('fpKpis').innerHTML =
+    kpi('Por cobrar (hitos)', fmtMoney(porCobrar), 'good', activos.filter(i => i.tipo === 'Ingreso').length + ' hitos pendientes') +
+    kpi('Por pagar (programado)', fmtMoney(porPagar), 'bad', activos.filter(i => i.tipo === 'Egreso').length + ' cuotas') +
+    kpi('Neto', fmtMoney(porCobrar + porPagar), (porCobrar + porPagar) >= 0 ? 'good' : 'bad', 'cobros − pagos pendientes') +
+    kpi('Cuotas vencidas sin pagar', fmtMoney(vencCuotas.reduce((s,i)=>s+i.monto,0)), vencCuotas.length ? 'bad' : '', vencCuotas.length + ' cuotas con fecha pasada en la app') +
+    kpi('Hitos vencidos sin cobrar', fmtMoney(vencHitos.reduce((s,i)=>s+i.monto,0)), '', vencHitos.length + ' hitos con fecha pasada');
+
+  const ult = [...fpCuotas, ...fpHitos].map(x => x.actualizado).filter(Boolean).sort().pop();
+  document.getElementById('fpActualizado').textContent = ult ? '· Última sincronización: ' + fmtFechaHora(ult) : '';
+
+  // ---- detalle ----
+  const mostrarPagados = document.getElementById('fpMostrarPagados').checked;
+  let detalle = items.filter(i => mostrarPagados || i.pendiente);
+  let filtroTxt = '';
+  if(fpCelda){
+    detalle = detalle.filter(i => i.pendiente && i.tipo === fpCelda.seccion && colDe(i) === fpCelda.col &&
+      (fpCelda.fila === '__total__' || claveFila(i) === fpCelda.fila));
+    const filaTxt = fpCelda.fila === '__total__' ? 'Total' : (matriz[fpCelda.seccion].get(fpCelda.fila) || {}).etiqueta || fpCelda.fila;
+    filtroTxt = `— ${fpCelda.seccion === 'Ingreso' ? 'Ingresos' : 'Egresos'} · ${escapeHTML(filaTxt)} · ${nombreCol(fpCelda.col)} <button type="button" class="fp-quitar" id="fpQuitarFiltro">Quitar filtro</button>`;
+  }
+  detalle.sort((a,b) => String(a.fecha || '9999').localeCompare(String(b.fecha || '9999')) || a.po.localeCompare(b.po));
+  document.getElementById('fpDetalleFiltro').innerHTML = filtroTxt;
+  const q = document.getElementById('fpQuitarFiltro');
+  if(q) q.addEventListener('click', () => { fpCelda = null; renderFlujoProyectos(); });
+  const total = detalle.reduce((s,i) => s + (i.pendiente ? i.monto : 0), 0);
+  document.getElementById('fpDetalleNota').textContent = `${detalle.length} filas · pendiente ${fmtMoney(total)}`;
+  window._fpDetalleActual = detalle;
+  document.getElementById('fpDetalleRows').innerHTML = detalle.slice(0, 1500).map(i => {
+    const venc = i.pendiente && i.fecha && i.fecha < hoyTxt;
+    const estado = !i.pendiente ? `<span class="fp-badge no">${i.tipo === 'Ingreso' ? 'Cobrado' : 'Pagado'}</span>`
+      : i.enFG ? '<span class="fp-badge si">Entra</span>'
+      : `<span class="fp-badge no" title="${escapeHTML(i.motivo)}">No entra</span><div style="font-size:11px;color:var(--muted);margin-top:3px;white-space:normal;max-width:260px;">${escapeHTML(i.motivo)}</div>`;
+    return `<tr${i.pendiente ? '' : ' style="opacity:.6;"'}>
+      <td>${i.tipo === 'Ingreso' ? '<span style="color:#2E7D46;font-weight:600;">Ingreso</span>' : '<span style="color:var(--bad);font-weight:600;">Egreso</span>'}</td>
+      <td style="white-space:nowrap;">${i.fecha ? escapeHTML(i.fecha) : '<i>sin fecha</i>'}${venc ? ' <span class="fp-badge venc">vencido</span>' : ''}</td>
+      <td style="white-space:nowrap;">${escapeHTML(i.po)}${i.ppa ? ' <span class="fp-badge ppa">PPA</span>' : ''}</td>
+      <td style="white-space:normal;min-width:240px;">${escapeHTML(i.concepto)}${i.extra ? `<div style="font-size:11px;color:var(--muted);">${escapeHTML(i.extra)}</div>` : ''}</td>
+      <td>${escapeHTML(i.tercero)}</td>
+      <td style="white-space:normal;">${escapeHTML(i.categoria)}</td>
+      <td class="monto ${i.monto < 0 ? 'neg' : 'pos'}" style="color:${i.monto < 0 ? 'var(--bad)' : '#2E7D46'};">${fmtMoney(i.monto)}</td>
+      <td>${estado}</td></tr>`;
+  }).join('') || '<tr><td colspan="8" style="color:var(--muted);">Sin filas con estos filtros.</td></tr>';
+}
+
+function fpExportarExcel(){
+  const detalle = window._fpDetalleActual || [];
+  const filas = detalle.map(i => ({
+    'Tipo': i.tipo, 'Fecha': i.fecha || '', 'P.O.': i.po, 'Proyecto': i.proyecto, 'PPA': i.ppa ? 'Sí' : '',
+    'Concepto': i.concepto, 'Proveedor / Cliente': i.tercero, 'Categoría · Segmento': i.categoria,
+    'Monto': i.monto, 'Estado': i.pendiente ? 'Pendiente' : (i.tipo === 'Ingreso' ? 'Cobrado' : 'Pagado'),
+    'Entra al flujo general': i.pendiente ? (i.enFG ? 'Sí' : 'No') : '', 'Motivo': i.motivo, 'Referencias': i.extra
+  }));
+  const hoja = XLSX.utils.json_to_sheet(filas);
+  hoja['!cols'] = [{wch:9},{wch:11},{wch:7},{wch:34},{wch:5},{wch:50},{wch:30},{wch:28},{wch:14},{wch:11},{wch:10},{wch:50},{wch:30}];
+  const libro = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(libro, hoja, 'Flujo de Proyectos');
+  XLSX.writeFile(libro, `flujo_proyectos_${fmtDateLocal(new Date())}.xlsx`);
+}
+
 document.querySelectorAll('.view-tab').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     const vista = btn.dataset.view;
@@ -6379,6 +6748,8 @@ document.querySelectorAll('.view-tab').forEach(btn=>{
     document.getElementById('vistaPresupuesto').style.display = vista === 'presupuesto' ? '' : 'none';
     document.getElementById('vistaCobranzas').style.display = vista === 'cobranzas' ? '' : 'none';
     document.getElementById('vistaAuditoriaHitos').style.display = vista === 'auditoriaHitos' ? '' : 'none';
+    document.getElementById('vistaProyectos').style.display = vista === 'proyectos' ? '' : 'none';
+    if(vista === 'proyectos') cargarFlujoProyectos();
     if(vista === 'auditoriaHitos'){ cargarAuditoriaHitos(); renderPorConciliar(); renderOCPorCruzar(); }
     if(vista === 'indices') renderIndices();
     if(vista === 'semanal') renderSemanal();
