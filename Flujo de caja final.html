@@ -3717,6 +3717,8 @@ const FACTURAS_EXCLUIDAS_SERVICIOS = new Set([
   '001-003-000000677', // CONSORCIO GUABO 2020
   '001-003-000001217', // BAREK ORTI ALFONSO XAVIER
   '001-003-000001388', // GUTIERREZ GAVILANES MELANIA SISSI
+  '001-003-000002258', // INDUSTRIAS BIOSEM INDBIOSEM S.A. — reembolso de viáticos
+  '001-003-000002402', // COMPLYCORP S.A. — venta de paneles
 ]);
 function esFacturaExcluidaDeServicios(x){
   const num = extraerNumeroFactura(x.factura) || extraerNumeroFactura(x._m && x._m.concepto);
