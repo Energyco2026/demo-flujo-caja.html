@@ -3721,6 +3721,7 @@ const FACTURAS_EXCLUIDAS_SERVICIOS = new Set([
   '001-003-000002402', // COMPLYCORP S.A. — venta de paneles
   '001-003-000001742', // HOYOS GARCES FREDDY JEFFERSON — planta solar
   '001-003-000002910', // NATURPHARMA S.A. — venta de planta solar
+  '001-003-000003032', // CUETO PORTES MARIA ISABEL — venta de generador
 ]);
 function esFacturaExcluidaDeServicios(x){
   const num = extraerNumeroFactura(x.factura) || extraerNumeroFactura(x._m && x._m.concepto);
