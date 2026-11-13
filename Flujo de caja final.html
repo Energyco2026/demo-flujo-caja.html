@@ -3701,7 +3701,21 @@ function serviciosBase(){
   // vino por la vendedora.
   const ids = new Set(deVendedora.map(x => x._m.id));
   const saldosIni = saldosInicialesParaServicios().filter(x => !ids.has(x._m.id));
-  return cacheServicios = deVendedora.concat(saldosIni);
+  // Facturas que María Isabel confirmó que NO son de servicio (saldos de
+  // obras/proyectos): se sacan de Servicios y vuelven a Cartera por cliente.
+  return cacheServicios = deVendedora.concat(saldosIni)
+    .filter(x => !esFacturaExcluidaDeServicios(x));
+}
+// Lista manual de facturas que NO van en Servicios aunque cumplan la regla
+// (vendedora o saldo inicial < $1.000). Agregar aquí el número completo.
+const FACTURAS_EXCLUIDAS_SERVICIOS = new Set([
+  '001-003-000002731', // ACME AGRO C.A. — saldo planta solar contra entrega de medidor
+  '001-003-000001661', // CONSORCIO LST SANTA ELENA - PE — saldo de obra
+  '001-003-000001335', // CONSORCIO LST SANTA ELENA - PE — saldo de obra
+]);
+function esFacturaExcluidaDeServicios(x){
+  const num = extraerNumeroFactura(x.factura) || extraerNumeroFactura(x._m && x._m.concepto);
+  return !!num && FACTURAS_EXCLUIDAS_SERVICIOS.has(num);
 }
 function serviciosAgrupados(){
   let base = serviciosBase();
