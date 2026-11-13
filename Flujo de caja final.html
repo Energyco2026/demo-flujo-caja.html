@@ -433,6 +433,22 @@
   .fp-detalle td{font-size:12.5px; vertical-align:top;}
   .fp-detalle td.monto{font-family:'JetBrains Mono',monospace; text-align:right; white-space:nowrap;}
   .fp-aviso{margin:14px 20px; background:#EAF0FC; border:1px solid #C9D6F0; color:var(--navy); border-radius:8px; padding:10px 14px; font-size:12.5px; line-height:1.55;}
+  .fp-detalle td{white-space:nowrap; padding-top:7px; padding-bottom:7px;}
+  .fp-detalle td.fp-concepto{max-width:380px; overflow:hidden; text-overflow:ellipsis;}
+  .fp-detalle td.fp-tercero{max-width:220px; overflow:hidden; text-overflow:ellipsis;}
+  .fp-detalle tr.fp-fila{cursor:pointer;}
+  .fp-detalle tr.fp-fila:hover td{background:#F5F7FA;}
+  .fp-detalle tr.fp-fila.abierta td{background:#EEF2F8;}
+  .fp-badge.carga{background:#FDF1D6; color:#7A5410;}
+  .fp-badge.en{background:#E3F2E6; color:#2E7D46;}
+  .fp-flecha{display:inline-block; width:12px; color:var(--muted); transition:transform .15s;}
+  tr.abierta .fp-flecha{transform:rotate(90deg);}
+  .fp-exp td{background:#FAFBFC; white-space:normal; padding:12px 18px 14px;}
+  .fp-exp-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:8px 22px; font-size:12.5px;}
+  .fp-exp-grid div span{display:block; font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted);}
+  .fp-exp-motivo{margin-top:10px; font-size:12.5px; padding:8px 12px; border-radius:6px; background:#fff; border:1px solid var(--line);}
+  .fp-link-app{color:var(--navy); font-weight:600; text-decoration:none; white-space:nowrap;}
+  .fp-link-app:hover{text-decoration:underline;}
   .fp-quitar{border:1px solid var(--line); background:#fff; border-radius:6px; padding:3px 10px; cursor:pointer; font-size:12px; margin-left:8px;}
 </style>
 </head>
@@ -721,7 +737,7 @@
     <div class="panel-head">
       <div>
         <div class="panel-title">Flujo de Proyectos</div>
-        <div class="panel-note">Datos de la app Control de Proyectos (cuotas programadas e hitos de cobro). Solo lectura: las fechas se corrigen en la app. <span id="fpActualizado"></span></div>
+        <div class="panel-note">Datos de la app Control de Proyectos (cuotas programadas e hitos de cobro). Solo lectura: las fechas se corrigen en la app. <span id="fpActualizado"></span> · <a class="fp-link-app" href="https://controlproyectoenergycontrol.netlify.app/index.html" target="_blank" rel="noopener">Abrir app Control de Proyectos ↗</a></div>
       </div>
       <div class="fp-filtros">
         <span>Proyecto: <select id="fpFiltroProyecto"></select></span>
@@ -743,7 +759,7 @@
         <button type="button" id="fpExportar" class="btn-refrescar">⬇ Descargar Excel</button>
       </div>
     </div>
-    <div class="fp-aviso">Ingresos = hitos de cobro pendientes (monto del hito − cobrado). Egresos = cuotas en estado <b>Programado</b>. Lo que ya tiene OC o factura en Odoo viene en tu flujo general desde Odoo; aquí se ve igual, marcado "No entra" con el motivo. Toca una cifra para ver su detalle abajo.</div>
+    <div class="fp-aviso"><b>Columna "Flujo general":</b> <span class="fp-badge en">✓ En flujo general</span> ya está cargado en tu pestaña Flujo de caja · <span class="fp-badge carga">Por cargar</span> cumple las reglas pero todavía no se ha cargado · <span class="fp-badge no">No entra</span> ya viene de Odoo (OC/factura) o se excluyó; toca la fila para ver el motivo.<br>Ingresos = hitos de cobro pendientes (monto del hito − cobrado). Egresos = cuotas en estado <b>Programado</b>. Lo que ya tiene OC o factura en Odoo viene en tu flujo general desde Odoo; aquí se ve igual, marcado "No entra" con el motivo. Toca una cifra para ver su detalle abajo.</div>
     <div class="fp-wrap"><table class="fp-matriz"><thead id="fpHead"></thead><tbody id="fpBody"></tbody></table></div>
   </section>
 
@@ -758,7 +774,7 @@
       </div>
     </div>
     <div class="table-scroll" style="max-height:520px;"><table class="fp-detalle">
-      <thead><tr><th>Tipo</th><th>Fecha</th><th>P.O.</th><th>Concepto</th><th>Proveedor / Cliente</th><th>Categoría · Segmento</th><th style="text-align:right;">Monto</th><th>Flujo general</th></tr></thead>
+      <thead><tr><th>Tipo</th><th>Fecha</th><th>P.O.</th><th>Concepto</th><th>Proveedor / Cliente</th><th style="text-align:right;">Monto</th><th>Flujo general</th></tr></thead>
       <tbody id="fpDetalleRows"></tbody>
     </table></div>
   </section>
@@ -6459,6 +6475,22 @@ document.getElementById('btnDescargarPagosHoy').addEventListener('click', export
 // sync_control_proyectos.py). Solo lectura: las fechas se corrigen en la app.
 // ============================================================
 const FP_PROYECTOS_PPA = new Set(['2075','1756']);
+const FP_URL_APP = 'https://controlproyectoenergycontrol.netlify.app/index.html';
+
+// Filas de la app que ya están cargadas (visibles) en el flujo general.
+function fpCargadosEnFlujo(){
+  const set = new Set();
+  (typeof movimientosCartera !== 'undefined' ? movimientosCartera : []).forEach(m => {
+    if(m.origen === 'control_proyectos_pago' || m.origen === 'control_proyectos_hito') set.add(m.origen + '|' + m.odoo_id);
+  });
+  return set;
+}
+function fpEstadoFG(i, cargados){
+  if(!i.pendiente) return {cls:'no', txt: i.tipo === 'Ingreso' ? 'Cobrado' : 'Pagado'};
+  if(cargados.has(i.origen + '|' + i.id)) return {cls:'en', txt:'✓ En flujo general'};
+  if(i.enFG) return {cls:'carga', txt:'Por cargar'};
+  return {cls:'no', txt:'No entra'};
+}
 let fpCuotas = null, fpHitos = null, fpCargando = false, fpCelda = null, fpFiltrosListos = false;
 
 async function fpLeerTodo(tabla){
@@ -6568,7 +6600,7 @@ function fpItems(){
       monto: -Math.abs(Number(c.monto) || 0),
       enFG: !!c.en_flujo_general, motivo: c.motivo_exclusion || '',
       extra: [c.oc_no ? 'OC ' + c.oc_no : '', c.factura_no ? 'Fact ' + c.factura_no : '', c.fecha_real ? 'Real ' + c.fecha_real : ''].filter(Boolean).join(' · '),
-      ppa: fpEsPPA(c.po)
+      ppa: fpEsPPA(c.po), origen: 'control_proyectos_pago', id: c.id_cuota, raw: c
     });
   });
   fpHitos.forEach(h => {
@@ -6585,7 +6617,7 @@ function fpItems(){
       monto: pend > 0 ? pend : (Number(h.cobrado) || 0),
       enFG: !!h.en_flujo_general, motivo: h.motivo_exclusion || '',
       extra: [h.fecha_real ? 'Cobrado ' + h.fecha_real : '', Number(h.cobrado) > 0 ? 'Cobrado ' + fmtMoney(Number(h.cobrado)) : ''].filter(Boolean).join(' · '),
-      ppa: fpEsPPA(h.po, h.tipo_proyecto)
+      ppa: fpEsPPA(h.po, h.tipo_proyecto), origen: 'control_proyectos_hito', id: h.id_hito, raw: h
     });
   });
   return items;
@@ -6705,21 +6737,52 @@ function renderFlujoProyectos(){
   const total = detalle.reduce((s,i) => s + (i.pendiente ? i.monto : 0), 0);
   document.getElementById('fpDetalleNota').textContent = `${detalle.length} filas · pendiente ${fmtMoney(total)}`;
   window._fpDetalleActual = detalle;
-  document.getElementById('fpDetalleRows').innerHTML = detalle.slice(0, 1500).map(i => {
+  const cargados = fpCargadosEnFlujo();
+  window._fpCargados = cargados;
+  const fx = v => v ? escapeHTML(v) : '—';
+  const expandido = i => {
+    const r = i.raw || {};
+    const campos = i.tipo === 'Egreso' ? [
+      ['Proyecto', i.po + ' · ' + i.proyecto], ['Categoría', r.categoria], ['Segmento', r.segmento], ['Cuota N°', r.cuota_n],
+      ['Fecha original', r.fecha_original], ['Fecha vigente', r.fecha_vigente], ['Fecha real (pago)', r.fecha_real],
+      ['Estado en la app', r.estado], ['OC', r.oc_no], ['Factura', r.factura_no], ['Clasificación', r.clasificacion]
+    ] : [
+      ['Proyecto', i.po + ' · ' + i.proyecto], ['Cliente', r.cliente], ['% del contrato', r.pct != null ? Number(r.pct).toFixed(2) + '%' : ''],
+      ['Monto contrato', r.monto_contrato != null ? fmtMoney(Number(r.monto_contrato)) : ''], ['Monto del hito', r.monto_hito != null ? fmtMoney(Number(r.monto_hito)) : ''],
+      ['Cobrado', r.cobrado != null ? fmtMoney(Number(r.cobrado)) : ''], ['Pendiente', r.pendiente != null ? fmtMoney(Number(r.pendiente)) : ''],
+      ['Fecha contractual', r.fecha_contractual], ['Fecha estimada', r.fecha_estimada], ['Fecha real (cobro)', r.fecha_real], ['Fecha usada en el flujo', r.fecha_flujo]
+    ];
+    const est = fpEstadoFG(i, cargados);
+    const explicacion = est.cls === 'en' ? 'Esta fila ya está cargada y visible en tu pestaña Flujo de caja.'
+      : est.cls === 'carga' ? 'Cumple las reglas (sin OC ni factura en Odoo). Se verá en Flujo de caja cuando se active la carga (cargar_control_proyectos_flujo.py).'
+      : !i.pendiente ? (i.tipo === 'Ingreso' ? 'Hito ya cobrado según la app.' : 'Cuota marcada como pagada/registrada en la app (puede ser salida de bodega, OC a mano o importada del Excel de Costos).')
+      : 'No entra al flujo general: ' + (i.motivo || 'sin motivo registrado') + '.';
+    return `<tr class="fp-exp"><td colspan="7">
+      <div class="fp-exp-grid">${campos.map(([k,v]) => `<div><span>${k}</span>${fx(v)}</div>`).join('')}</div>
+      ${r.observaciones ? `<div class="fp-exp-motivo"><b>Observaciones:</b> ${escapeHTML(r.observaciones)}</div>` : ''}
+      <div class="fp-exp-motivo"><b>Flujo general:</b> ${escapeHTML(explicacion)}</div>
+      <div style="margin-top:10px;"><a class="fp-link-app" href="${FP_URL_APP}" target="_blank" rel="noopener">Ver el proyecto ${escapeHTML(i.po)} en la app Control de Proyectos ↗</a></div>
+    </td></tr>`;
+  };
+  const visibles = detalle.slice(0, 1500);
+  document.getElementById('fpDetalleRows').innerHTML = visibles.map((i, idx) => {
     const venc = i.pendiente && i.fecha && i.fecha < hoyTxt;
-    const estado = !i.pendiente ? `<span class="fp-badge no">${i.tipo === 'Ingreso' ? 'Cobrado' : 'Pagado'}</span>`
-      : i.enFG ? '<span class="fp-badge si">Entra</span>'
-      : `<span class="fp-badge no" title="${escapeHTML(i.motivo)}">No entra</span><div style="font-size:11px;color:var(--muted);margin-top:3px;white-space:normal;max-width:260px;">${escapeHTML(i.motivo)}</div>`;
-    return `<tr${i.pendiente ? '' : ' style="opacity:.6;"'}>
-      <td>${i.tipo === 'Ingreso' ? '<span style="color:#2E7D46;font-weight:600;">Ingreso</span>' : '<span style="color:var(--bad);font-weight:600;">Egreso</span>'}</td>
-      <td style="white-space:nowrap;">${i.fecha ? escapeHTML(i.fecha) : '<i>sin fecha</i>'}${venc ? ' <span class="fp-badge venc">vencido</span>' : ''}</td>
-      <td style="white-space:nowrap;">${escapeHTML(i.po)}${i.ppa ? ' <span class="fp-badge ppa">PPA</span>' : ''}</td>
-      <td style="white-space:normal;min-width:240px;">${escapeHTML(i.concepto)}${i.extra ? `<div style="font-size:11px;color:var(--muted);">${escapeHTML(i.extra)}</div>` : ''}</td>
-      <td>${escapeHTML(i.tercero)}</td>
-      <td style="white-space:normal;">${escapeHTML(i.categoria)}</td>
-      <td class="monto ${i.monto < 0 ? 'neg' : 'pos'}" style="color:${i.monto < 0 ? 'var(--bad)' : '#2E7D46'};">${fmtMoney(i.monto)}</td>
-      <td>${estado}</td></tr>`;
-  }).join('') || '<tr><td colspan="8" style="color:var(--muted);">Sin filas con estos filtros.</td></tr>';
+    const est = fpEstadoFG(i, cargados);
+    return `<tr class="fp-fila" data-idx="${idx}"${i.pendiente ? '' : ' style="opacity:.6;"'}>
+      <td><span class="fp-flecha">▸</span> ${i.tipo === 'Ingreso' ? '<span style="color:#2E7D46;font-weight:600;">Ingreso</span>' : '<span style="color:var(--bad);font-weight:600;">Egreso</span>'}</td>
+      <td>${i.fecha ? escapeHTML(i.fecha) : '<i>sin fecha</i>'}${venc ? ' <span class="fp-badge venc">vencido</span>' : ''}</td>
+      <td>${escapeHTML(i.po)}${i.ppa ? ' <span class="fp-badge ppa">PPA</span>' : ''}</td>
+      <td class="fp-concepto" title="${escapeHTML(i.concepto)}">${escapeHTML(i.concepto)}</td>
+      <td class="fp-tercero" title="${escapeHTML(i.tercero)}">${escapeHTML(i.tercero)}</td>
+      <td class="monto" style="color:${i.monto < 0 ? 'var(--bad)' : '#2E7D46'};">${fmtMoney(i.monto)}</td>
+      <td><span class="fp-badge ${est.cls}" title="Toca la fila para ver el detalle">${est.txt}</span></td></tr>`;
+  }).join('') || '<tr><td colspan="7" style="color:var(--muted);">Sin filas con estos filtros.</td></tr>';
+  document.querySelectorAll('#fpDetalleRows tr.fp-fila').forEach(tr => tr.addEventListener('click', () => {
+    const sig = tr.nextElementSibling;
+    if(sig && sig.classList.contains('fp-exp')){ sig.remove(); tr.classList.remove('abierta'); return; }
+    tr.insertAdjacentHTML('afterend', expandido(visibles[+tr.dataset.idx]));
+    tr.classList.add('abierta');
+  }));
 }
 
 function fpExportarExcel(){
@@ -6728,7 +6791,7 @@ function fpExportarExcel(){
     'Tipo': i.tipo, 'Fecha': i.fecha || '', 'P.O.': i.po, 'Proyecto': i.proyecto, 'PPA': i.ppa ? 'Sí' : '',
     'Concepto': i.concepto, 'Proveedor / Cliente': i.tercero, 'Categoría · Segmento': i.categoria,
     'Monto': i.monto, 'Estado': i.pendiente ? 'Pendiente' : (i.tipo === 'Ingreso' ? 'Cobrado' : 'Pagado'),
-    'Entra al flujo general': i.pendiente ? (i.enFG ? 'Sí' : 'No') : '', 'Motivo': i.motivo, 'Referencias': i.extra
+    'Flujo general': fpEstadoFG(i, window._fpCargados || new Set()).txt.replace('✓ ', ''), 'Motivo': i.motivo, 'Referencias': i.extra
   }));
   const hoja = XLSX.utils.json_to_sheet(filas);
   hoja['!cols'] = [{wch:9},{wch:11},{wch:7},{wch:34},{wch:5},{wch:50},{wch:30},{wch:28},{wch:14},{wch:11},{wch:10},{wch:50},{wch:30}];
