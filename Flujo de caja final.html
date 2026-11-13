@@ -3668,12 +3668,40 @@ function esVendedoraServicios(vendedor){
   return /mar[ií]a?\s*isabel/i.test(String(vendedor || ''));
 }
 let cacheServicios = null;
+// Facturas de SALDOS INICIALES (cargadas en Odoo como apertura al 31/12/2025):
+// el concepto empieza directo con el número "001-003-..." (sin "Fact") y la
+// fecha de factura es anterior a 2026. Las que tienen saldo pendiente menor a
+// LIMITE_SALDO_INICIAL_SERVICIOS se mandan a Servicios (pedido explícito);
+// las demás siguen en Cartera por cliente.
+const LIMITE_SALDO_INICIAL_SERVICIOS = 1000;
+const FECHA_CORTE_SALDOS_INICIALES = new Date('2026-01-01T00:00:00');
+function esSaldoInicialCxc(m){
+  return m.origen === 'account.move' &&
+    /^\s*\d{3}-\d{3}-\d{9}/.test(String(m.concepto || '')) &&
+    m.fechaFactura && m.fechaFactura < FECHA_CORTE_SALDOS_INICIALES;
+}
+function saldosInicialesParaServicios(){
+  return cxcAbiertas()
+    .filter(m => esSaldoInicialCxc(m) && Math.abs(m.monto) < LIMITE_SALDO_INICIAL_SERVICIOS)
+    .map(m => ({
+      factura: extraerNumeroFactura(m.concepto) || m.concepto,
+      cliente: m.proveedor,
+      vendedor: 'Saldo inicial',
+      esSaldoInicial: true,
+      _m: m,
+    }));
+}
 function serviciosBase(){
   if(cacheServicios) return cacheServicios;
-  return cacheServicios = cobServicios
+  const deVendedora = cobServicios
     .filter(x => esVendedoraServicios(x.vendedor))
     .map(x => Object.assign({}, x, { _m: buscarMovimientoPorFactura(x.factura, x.cliente) }))
     .filter(x => x._m && x._m.origen !== 'hito_cobro_manual' && !esReconocimientoPorTexto(x.factura, x.cliente) && !esReconocimientoIngresos(x._m));
+  // Se agregan los saldos iniciales pequeños sin duplicar si alguno ya
+  // vino por la vendedora.
+  const ids = new Set(deVendedora.map(x => x._m.id));
+  const saldosIni = saldosInicialesParaServicios().filter(x => !ids.has(x._m.id));
+  return cacheServicios = deVendedora.concat(saldosIni);
 }
 function serviciosAgrupados(){
   let base = serviciosBase();
