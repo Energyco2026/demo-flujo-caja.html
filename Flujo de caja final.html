@@ -434,6 +434,14 @@
   .fp-badge.ppa{background:#EAF0FC; color:var(--navy);}
   .fp-detalle td{font-size:12.5px; vertical-align:top;}
   .fp-detalle td.monto{font-family:'JetBrains Mono',monospace; text-align:right; white-space:nowrap;}
+  .fp-matriz tr.fp-sec td.fp-sec-nom{cursor:pointer; user-select:none; white-space:nowrap;}
+  .fp-matriz tr.fp-sec td.fp-sec-nom:hover{text-decoration:underline;}
+  .fp-matriz tr.fp-sec td.nums{font-size:12.5px; letter-spacing:0; text-transform:none;}
+  .fp-sec-flecha{display:inline-block; width:14px; transition:transform .15s;}
+  .fp-sec-flecha.abierta{transform:rotate(90deg);}
+  .fp-ayuda summary{cursor:pointer; font-weight:600; list-style:none;}
+  .fp-ayuda summary::-webkit-details-marker{display:none;}
+  .fp-ayuda[open] summary{margin-bottom:6px;}
   .fp-aviso{margin:14px 20px; background:#EAF0FC; border:1px solid #C9D6F0; color:var(--navy); border-radius:8px; padding:10px 14px; font-size:12.5px; line-height:1.55;}
   .fp-detalle td{white-space:nowrap; padding-top:7px; padding-bottom:7px;}
   .fp-detalle td.fp-concepto{max-width:380px; overflow:hidden; text-overflow:ellipsis;}
@@ -768,7 +776,13 @@
         <button type="button" id="fpExportar" class="btn-refrescar">⬇ Descargar Excel</button>
       </div>
     </div>
-    <div class="fp-aviso"><b>Columna "Flujo general":</b> <span class="fp-badge en">✓ En flujo general</span> ya está cargado en tu pestaña Flujo de caja · <span class="fp-btn-pagar" style="cursor:default;">Pagar ▸</span> cuota sin OC ni factura: elige el banco y se va a tu Flujo de caja · <span class="fp-badge no">No entra</span> ya viene de Odoo (OC/factura) o se excluyó; toca la fila para ver el motivo.<br>Ingresos = hitos de cobro pendientes (monto del hito − cobrado). Egresos = cuotas en estado <b>Programado</b>. Lo que ya tiene OC o factura en Odoo viene en tu flujo general desde Odoo; aquí se ve igual, marcado "No entra" con el motivo. Toca una cifra para ver su detalle abajo.</div>
+    <details class="fp-aviso fp-ayuda"><summary>ℹ️ Cómo leer esta pestaña (clic para ver)</summary>
+      <b>Ingresos</b> = hitos de cobro pendientes de la app (monto del hito − cobrado).<br>
+      <b>Egresos — cuotas de la app (sin OC):</b> presupuesto. Todavía no hay OC ni factura en Odoo. <span class="fp-btn-pagar" style="cursor:default;">Pagar ▸</span> = eliges el banco y pasa a tu Flujo de caja; después dice <span class="fp-badge en">✓ En flujo general</span>.<br>
+      <b>Egresos — OC de Odoo (PEN):</b> ya existen en Odoo (OC, factura o forma de pago) y ya están en tu Flujo de caja. Aquí solo se ven; la fecha, el monto y el banco se cambian en Flujo de caja. <span class="fp-badge odoo">✓ Flujo general · Odoo</span><br>
+      <span class="fp-badge no">No entra</span> = cuota de la app que ya está cubierta por Odoo o se excluyó (ej. EnergyControl); no se suma para no duplicar. Abre la fila para ver el motivo.<br>
+      Clic en el nombre de un bloque (Ingresos / Egresos) para abrir o cerrar sus proyectos. Clic en una cifra para ver el detalle abajo.
+    </details>
     <div class="fp-wrap"><table class="fp-matriz"><thead id="fpHead"></thead><tbody id="fpBody"></tbody></table></div>
   </section>
 
@@ -6581,6 +6595,7 @@ function fpEstadoFG(i, cargados){
   return {cls:'no', txt:'No entra'};
 }
 let fpCuotas = null, fpHitos = null, fpCargando = false, fpCelda = null, fpFiltrosListos = false;
+const fpAbiertas = new Set(); // bloques desplegados (Ingreso / Egreso / OC); empiezan cerrados
 
 // ---- Botón "Pagar": manda una cuota proyectada de la app al flujo general ----
 // Solo egresos pendientes que cumplen las reglas (sin OC/factura en Odoo).
@@ -6859,20 +6874,22 @@ function renderFlujoProyectos(){
   const suma = vals => columnas.reduce((s, c) => s + (vals[c] || 0), 0);
 
   let html = '';
-  const secciones = [['Ingreso','ing','Ingresos — hitos de cobro pendientes'], ['Egreso','egr', incluirOC ? 'Egresos — cuotas programadas en la app (sin OC)' : 'Egresos — cuotas programadas']];
-  if(incluirOC) secciones.push(['OC','oc','Egresos — OC de Odoo (PEN) en tu flujo general']);
+  const secciones = [['Ingreso','ing','Ingresos — hitos de cobro pendientes'], ['Egreso','egr', incluirOC ? 'Egresos — presupuesto de la app (sin OC, por pagar)' : 'Egresos — cuotas programadas']];
+  if(incluirOC) secciones.push(['OC','oc','Egresos — OC de Odoo (PEN), ya en tu flujo general']);
   secciones.forEach(([sec, cls, titulo]) => {
-    html += `<tr class="fp-sec ${cls}"><td colspan="${columnas.length + 2}">${titulo}</td></tr>`;
     const filas = [...matriz[sec].entries()].sort((a,b) => Math.abs(suma(b[1].vals)) - Math.abs(suma(a[1].vals)));
+    const abierta = fpAbiertas.has(sec) || !!poSel;
+    const t = totalesSeccion(matriz[sec]);
+    // Fila del bloque: nombre (clic abre/cierra) + totales por período (clic = detalle del total)
+    html += `<tr class="fp-sec ${cls}"><td class="fp-sec-nom" data-toggle-sec="${sec}" title="Clic para ${abierta ? 'cerrar' : 'ver'} los proyectos"><span class="fp-sec-flecha${abierta ? ' abierta' : ''}">▸</span> ${titulo} <span style="font-weight:500; letter-spacing:0; text-transform:none;">(${filas.length})</span></td>` +
+      columnas.map(c => celda(t[c] || 0, sec, '__total__', c)).join('') + `<td class="nums" style="font-weight:700;">${fmtMoney(suma(t))}</td></tr>`;
+    if(!abierta) return;
     if(!filas.length) html += `<tr><td colspan="${columnas.length + 2}" style="color:var(--muted);">Sin ${sec === 'Ingreso' ? 'hitos pendientes' : sec === 'OC' ? 'OC pendientes en el flujo general' : 'cuotas programadas'} con estos filtros.</td></tr>`;
     filas.forEach(([k, f]) => {
-      html += `<tr><td title="${escapeHTML(f.etiqueta)}">${escapeHTML(f.etiqueta)}</td>` +
+      html += `<tr><td title="${escapeHTML(f.etiqueta)}" style="padding-left:30px;">${escapeHTML(f.etiqueta)}</td>` +
         columnas.map(c => celda(f.vals[c] || 0, sec, k, c)).join('') +
         `<td class="nums" style="font-weight:600;">${fmtMoney(suma(f.vals))}</td></tr>`;
     });
-    const t = totalesSeccion(matriz[sec]);
-    html += `<tr class="fp-tot"><td>Total ${sec === 'Ingreso' ? 'ingresos' : sec === 'OC' ? 'OC Odoo (PEN)' : 'egresos app'}</td>` +
-      columnas.map(c => celda(t[c] || 0, sec, '__total__', c)).join('') + `<td class="nums">${fmtMoney(suma(t))}</td></tr>`;
   });
   const ti = totalesSeccion(matriz.Ingreso), te = totalesSeccion(matriz.Egreso), toc = totalesSeccion(matriz.OC);
   let acum = 0;
@@ -6881,6 +6898,11 @@ function renderFlujoProyectos(){
   html += '<tr class="fp-neto"><td>Neto del período (cobro − pago)</td>' + columnas.map(c => celda(neto[c], null, null, c)).join('') + `<td class="nums">${fmtMoney(suma(neto))}</td></tr>`;
   html += '<tr class="fp-neto"><td>Neto acumulado</td>' + columnas.map(c => celda(acumulado[c], null, null, c)).join('') + '<td></td></tr>';
   document.getElementById('fpBody').innerHTML = html;
+  document.querySelectorAll('#fpBody [data-toggle-sec]').forEach(td => td.addEventListener('click', () => {
+    const k = td.dataset.toggleSec;
+    if(fpAbiertas.has(k)) fpAbiertas.delete(k); else fpAbiertas.add(k);
+    renderFlujoProyectos();
+  }));
   document.querySelectorAll('#fpBody td.clic').forEach(td => td.addEventListener('click', () => {
     const nueva = {seccion: td.dataset.sec, fila: td.dataset.fila, col: td.dataset.col};
     fpCelda = (fpCelda && fpCelda.seccion === nueva.seccion && fpCelda.fila === nueva.fila && fpCelda.col === nueva.col) ? null : nueva;
