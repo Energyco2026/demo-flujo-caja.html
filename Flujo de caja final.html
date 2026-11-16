@@ -449,6 +449,12 @@
   .fp-exp-motivo{margin-top:10px; font-size:12.5px; padding:8px 12px; border-radius:6px; background:#fff; border:1px solid var(--line);}
   .fp-link-app{color:var(--navy); font-weight:600; text-decoration:none; white-space:nowrap;}
   .fp-link-app:hover{text-decoration:underline;}
+  .fp-btn-pagar{border:none; background:var(--navy); color:#fff; border-radius:6px; padding:4px 12px; cursor:pointer; font-size:12px; font-weight:600;}
+  .fp-btn-pagar:hover{opacity:.9;}
+  .fp-btn-pagar:disabled{opacity:.5; cursor:default;}
+  .fp-pagar-form{display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:12px; padding:10px 12px; border-radius:8px; background:#EEF2F8; border:1px solid #D5DEEC; font-size:12.5px;}
+  .fp-pagar-form select, .fp-pagar-form input{font-size:12.5px; border:1px solid var(--line); border-radius:6px; padding:4px 6px; background:#fff;}
+  .fp-pagar-msg{font-size:12px;}
   .fp-quitar{border:1px solid var(--line); background:#fff; border-radius:6px; padding:3px 10px; cursor:pointer; font-size:12px; margin-left:8px;}
 </style>
 </head>
@@ -759,7 +765,7 @@
         <button type="button" id="fpExportar" class="btn-refrescar">⬇ Descargar Excel</button>
       </div>
     </div>
-    <div class="fp-aviso"><b>Columna "Flujo general":</b> <span class="fp-badge en">✓ En flujo general</span> ya está cargado en tu pestaña Flujo de caja · <span class="fp-badge carga">Por cargar</span> cumple las reglas pero todavía no se ha cargado · <span class="fp-badge no">No entra</span> ya viene de Odoo (OC/factura) o se excluyó; toca la fila para ver el motivo.<br>Ingresos = hitos de cobro pendientes (monto del hito − cobrado). Egresos = cuotas en estado <b>Programado</b>. Lo que ya tiene OC o factura en Odoo viene en tu flujo general desde Odoo; aquí se ve igual, marcado "No entra" con el motivo. Toca una cifra para ver su detalle abajo.</div>
+    <div class="fp-aviso"><b>Columna "Flujo general":</b> <span class="fp-badge en">✓ En flujo general</span> ya está cargado en tu pestaña Flujo de caja · <span class="fp-btn-pagar" style="cursor:default;">Pagar ▸</span> cuota sin OC ni factura: elige el banco y se va a tu Flujo de caja · <span class="fp-badge no">No entra</span> ya viene de Odoo (OC/factura) o se excluyó; toca la fila para ver el motivo.<br>Ingresos = hitos de cobro pendientes (monto del hito − cobrado). Egresos = cuotas en estado <b>Programado</b>. Lo que ya tiene OC o factura en Odoo viene en tu flujo general desde Odoo; aquí se ve igual, marcado "No entra" con el motivo. Toca una cifra para ver su detalle abajo.</div>
     <div class="fp-wrap"><table class="fp-matriz"><thead id="fpHead"></thead><tbody id="fpBody"></tbody></table></div>
   </section>
 
@@ -6547,17 +6553,79 @@ const FP_URL_APP = 'https://controlproyectoenergycontrol.netlify.app/index.html'
 function fpCargadosEnFlujo(){
   const set = new Set();
   (typeof movimientosCartera !== 'undefined' ? movimientosCartera : []).forEach(m => {
-    if(m.origen === 'control_proyectos_pago' || m.origen === 'control_proyectos_hito') set.add(m.origen + '|' + m.odoo_id);
+    if(m.origen === 'control_proyectos_pago' || m.origen === 'control_proyectos_hito') set.add(m.origen + '|' + m.odooId);
   });
   return set;
 }
 function fpEstadoFG(i, cargados){
   if(!i.pendiente) return {cls:'no', txt: i.tipo === 'Ingreso' ? 'Cobrado' : 'Pagado'};
   if(cargados.has(i.origen + '|' + i.id)) return {cls:'en', txt:'✓ En flujo general'};
-  if(i.enFG) return {cls:'carga', txt:'Por cargar'};
+  if(i.enFG) return {cls:'carga', txt: i.tipo === 'Egreso' ? 'Por pagar' : 'Por cargar'};
   return {cls:'no', txt:'No entra'};
 }
 let fpCuotas = null, fpHitos = null, fpCargando = false, fpCelda = null, fpFiltrosListos = false;
+
+// ---- Botón "Pagar": manda una cuota proyectada de la app al flujo general ----
+// Solo egresos pendientes que cumplen las reglas (sin OC/factura en Odoo).
+// Crea UNA fila en movimientos (origen control_proyectos_pago, odoo_id = id de la cuota)
+// con el banco elegido. Desde ahí se maneja como cualquier proyectado del flujo general.
+function fpPuedePagar(i, cargados){
+  return esRolCompleto() && i.tipo === 'Egreso' && i.pendiente && i.enFG && !cargados.has(i.origen + '|' + i.id);
+}
+function fpMovEnFlujo(i){
+  return (movimientosCartera || []).find(m => m.origen === i.origen && String(m.odooId) === String(i.id));
+}
+function fpFormPagar(i){
+  const hoy = fmtDateLocal(new Date());
+  const fechaDef = (i.fecha && i.fecha >= hoy) ? i.fecha : hoy;
+  return `<div class="fp-pagar-form" data-fp-pagar>
+    <b>Enviar al flujo general:</b>
+    <label>Banco <select data-fp-banco>${opcionesBancoAnticipo()}</select></label>
+    <label>Fecha de pago <input type="date" data-fp-fecha value="${fechaDef}"></label>
+    <span>Monto <b>${fmtMoney(i.monto)}</b></span>
+    <button type="button" class="fp-btn-pagar" data-fp-confirmar>Pagar</button>
+    <span class="fp-pagar-msg" data-fp-msg></span>
+  </div>`;
+}
+async function fpPagar(i, cont){
+  const banco = cont.querySelector('[data-fp-banco]').value;
+  const fecha = cont.querySelector('[data-fp-fecha]').value;
+  const msg = cont.querySelector('[data-fp-msg]');
+  const btn = cont.querySelector('[data-fp-confirmar]');
+  if(!banco){ msg.style.color = 'var(--bad)'; msg.textContent = 'Selecciona el banco.'; return; }
+  if(!fecha){ msg.style.color = 'var(--bad)'; msg.textContent = 'Ingresa la fecha de pago.'; return; }
+  const c = i.raw || {};
+  btn.disabled = true; msg.style.color = 'var(--muted)'; msg.textContent = 'Enviando al flujo general…';
+  const fila = {
+    origen: 'control_proyectos_pago',
+    odoo_id: Number(c.id_cuota),
+    concepto: `Proyecto ${c.po} · ${c.categoria || ''} · ${c.item || ''}${c.cuota_n ? ' (cuota ' + c.cuota_n + ')' : ''}`.slice(0, 500),
+    proveedor: (c.proveedor || '').trim() || 'Por Definir',
+    cuenta_contable: '2101 · Cuentas por Pagar',
+    monto: -Math.abs(Number(c.monto) || 0),
+    fecha,
+    banco_manual: banco,
+    estado: 'proyectado',
+    proyecto_codigo: c.po,
+    oculto: false,
+    eliminado: false
+  };
+  const { error } = await sb.from('movimientos').upsert(fila, { onConflict: 'origen,odoo_id' });
+  if(error){ msg.style.color = 'var(--bad)'; msg.textContent = 'No se pudo enviar: ' + error.message; btn.disabled = false; return; }
+  msg.style.color = 'var(--good)'; msg.textContent = '✓ Enviado al flujo general.';
+  await cargarDatos();
+  renderFlujoProyectos();
+}
+async function fpQuitarDelFlujo(i, cont){
+  const m = fpMovEnFlujo(i);
+  const msg = cont.querySelector('[data-fp-msg]');
+  if(!m) return;
+  if(!confirm('¿Quitar esta cuota de tu flujo general? Vuelve a quedar "Por pagar" aquí.')) return;
+  const { error } = await sb.from('movimientos').delete().eq('id', m.id);
+  if(error){ msg.style.color = 'var(--bad)'; msg.textContent = 'No se pudo quitar: ' + error.message; return; }
+  await cargarDatos();
+  renderFlujoProyectos();
+}
 
 async function fpLeerTodo(tabla){
   let salida = [], desde = 0;
@@ -6820,10 +6888,15 @@ function renderFlujoProyectos(){
     ];
     const est = fpEstadoFG(i, cargados);
     const explicacion = est.cls === 'en' ? 'Esta fila ya está cargada y visible en tu pestaña Flujo de caja.'
-      : est.cls === 'carga' ? 'Cumple las reglas (sin OC ni factura en Odoo). Se verá en Flujo de caja cuando se active la carga (cargar_control_proyectos_flujo.py).'
+      : est.cls === 'carga' ? (i.tipo === 'Egreso' ? 'Cumple las reglas (sin OC ni factura en Odoo). Elige el banco y pulsa "Pagar" para que entre a tu Flujo de caja.' : 'Cumple las reglas. Se verá en Flujo de caja cuando se active la carga de hitos.')
       : !i.pendiente ? (i.tipo === 'Ingreso' ? 'Hito ya cobrado según la app.' : 'Cuota marcada como pagada/registrada en la app (puede ser salida de bodega, OC a mano o importada del Excel de Costos).')
       : 'No entra al flujo general: ' + (i.motivo || 'sin motivo registrado') + '.';
+    const enFlujo = est.cls === 'en' && i.tipo === 'Egreso' ? fpMovEnFlujo(i) : null;
+    const bloquePago = fpPuedePagar(i, cargados) ? fpFormPagar(i)
+      : (enFlujo && esRolCompleto()) ? `<div class="fp-pagar-form" data-fp-pagar><b>En tu flujo general:</b> ${escapeHTML(enFlujo.banco || 'sin banco')} · ${enFlujo.fecha instanceof Date ? fmtDateLocal(enFlujo.fecha) : ''} · ${fmtMoney(enFlujo.monto)} <button type="button" class="fp-quitar" data-fp-quitar>Quitar del flujo</button><span class="fp-pagar-msg" data-fp-msg></span></div>`
+      : '';
     return `<tr class="fp-exp"><td colspan="7">
+      ${bloquePago}
       <div class="fp-exp-grid">${campos.map(([k,v]) => `<div><span>${k}</span>${fx(v)}</div>`).join('')}</div>
       ${r.observaciones ? `<div class="fp-exp-motivo"><b>Observaciones:</b> ${escapeHTML(r.observaciones)}</div>` : ''}
       <div class="fp-exp-motivo"><b>Flujo general:</b> ${escapeHTML(explicacion)}</div>
@@ -6841,13 +6914,23 @@ function renderFlujoProyectos(){
       <td class="fp-concepto" title="${escapeHTML(i.concepto)}">${escapeHTML(i.concepto)}</td>
       <td class="fp-tercero" title="${escapeHTML(i.tercero)}">${escapeHTML(i.tercero)}</td>
       <td class="monto" style="color:${i.monto < 0 ? 'var(--bad)' : '#2E7D46'};">${fmtMoney(i.monto)}</td>
-      <td><span class="fp-badge ${est.cls}" title="Toca la fila para ver el detalle">${est.txt}</span></td></tr>`;
+      <td>${fpPuedePagar(i, cargados) ? `<button type="button" class="fp-btn-pagar" data-fp-abrir title="Elegir banco y enviar al flujo general">Pagar ▸</button>` : `<span class="fp-badge ${est.cls}" title="Toca la fila para ver el detalle">${est.txt}</span>`}</td></tr>`;
   }).join('') || '<tr><td colspan="7" style="color:var(--muted);">Sin filas con estos filtros.</td></tr>';
-  document.querySelectorAll('#fpDetalleRows tr.fp-fila').forEach(tr => tr.addEventListener('click', () => {
+  document.querySelectorAll('#fpDetalleRows tr.fp-fila').forEach(tr => tr.addEventListener('click', (ev) => {
     const sig = tr.nextElementSibling;
-    if(sig && sig.classList.contains('fp-exp')){ sig.remove(); tr.classList.remove('abierta'); return; }
-    tr.insertAdjacentHTML('afterend', expandido(visibles[+tr.dataset.idx]));
+    const abierto = sig && sig.classList.contains('fp-exp');
+    if(ev.target.closest('[data-fp-abrir]') && abierto) return; // "Pagar ▸" con la fila ya abierta: no cerrar
+    if(abierto){ sig.remove(); tr.classList.remove('abierta'); return; }
+    const item = visibles[+tr.dataset.idx];
+    tr.insertAdjacentHTML('afterend', expandido(item));
     tr.classList.add('abierta');
+    const exp = tr.nextElementSibling;
+    const cont = exp.querySelector('[data-fp-pagar]');
+    if(cont){
+      const b1 = cont.querySelector('[data-fp-confirmar]'); if(b1) b1.addEventListener('click', () => fpPagar(item, cont));
+      const b2 = cont.querySelector('[data-fp-quitar]'); if(b2) b2.addEventListener('click', () => fpQuitarDelFlujo(item, cont));
+      const sel = cont.querySelector('[data-fp-banco]'); if(sel) sel.focus();
+    }
   }));
 }
 
