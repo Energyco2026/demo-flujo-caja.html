@@ -6003,6 +6003,8 @@ async function actualizarDesdeOdoo(){
           if(c.resultado === 'success'){
             notaActOdoo('✓ Datos actualizados desde Odoo ' + horaCorta(c.actualizado), '#86EFAC');
             await cargarDatos();
+            // También refresca la pestaña Flujo de Proyectos (app Control de Proyectos) si ya se había abierto.
+            if(fpCuotas || fpHitos) await cargarFlujoProyectos(true);
           } else {
             notaActOdoo('La actualización terminó con error en GitHub. Revisa Actions del repo flujo-caja.', '#FCA5A5');
           }
