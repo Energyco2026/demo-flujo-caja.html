@@ -423,6 +423,8 @@
   .fp-matriz tr.fp-sec td{font-size:11.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;}
   .fp-matriz tr.fp-sec.ing td{background:#E3F2E6; color:#2E7D46;}
   .fp-matriz tr.fp-sec.egr td{background:#FBE5E1; color:var(--bad);}
+  .fp-matriz tr.fp-sec.oc td{background:#F3E8F7; color:#6B3A86;}
+  .fp-badge.odoo{background:#F3E8F7; color:#6B3A86;}
   .fp-matriz tr.fp-tot td{font-weight:700;}
   .fp-matriz tr.fp-neto td{background:#ECE8FB; font-weight:700;}
   .fp-badge{display:inline-block; font-size:10.5px; font-weight:700; border-radius:10px; padding:2px 8px; white-space:nowrap;}
@@ -762,6 +764,7 @@
         </span>
         <label title="Proyectos PPA (SMI, Claro Ibarra): sus egresos se financian con desembolsos"><input type="checkbox" id="fpIncluirPPA" checked> Incluir PPA</label>
         <label title="Muestra solo lo que también se carga al flujo general (sin OC ni factura en Odoo)"><input type="checkbox" id="fpSoloFlujoGeneral"> Solo lo que entra al flujo general</label>
+        <label title="Agrega los pagos pendientes de OC de Odoo (PEN) que ya están en tu flujo general, según la analítica de la OC"><input type="checkbox" id="fpIncluirOC" checked> OC de Odoo (PEN)</label>
         <button type="button" id="fpExportar" class="btn-refrescar">⬇ Descargar Excel</button>
       </div>
     </div>
@@ -2359,6 +2362,8 @@ async function cargarDatos(){
         fechaFactura: m.fecha_factura ? new Date(m.fecha_factura + 'T00:00:00') : null,
         fechaVencimiento: m.fecha_vencimiento ? new Date(m.fecha_vencimiento + 'T00:00:00') : null,
         fecha: new Date((m.fecha_pago_manual || m.fecha) + 'T00:00:00'),
+        // Fecha programada (texto) tal como está guardada, antes de correr vencidas a hoy en pantalla.
+        fechaProgramada: m.fecha_pago_manual || m.fecha,
         // Fecha programada originalmente (antes de cualquier cambio manual).
         fechaOriginal: new Date(m.fecha + 'T00:00:00'),
         esFechaManual: !!m.fecha_pago_manual,
@@ -6557,7 +6562,19 @@ function fpCargadosEnFlujo(){
   });
   return set;
 }
+// Proyecto (número) de un movimiento del flujo general: sale de la analítica/P.O. comercial de la OC.
+function fpProyectoDeMov(m){
+  const t = String(m.po || m.analitica || '');
+  const x = t.match(/\d{3,5}/);
+  return x ? x[0] : '';
+}
+// Cuota de la app que no se suma cuando se muestran las OC de Odoo, porque ese
+// mismo pago ya viene de Odoo (tiene OC, factura o es posible duplicado). EnergyControl no.
+function fpCubiertaPorOdoo(i){
+  return i.sec === 'Egreso' && !i.enFG && /OC|factura|duplicado/i.test(i.motivo || '') && !/interno|energycontrol/i.test(i.motivo || '');
+}
 function fpEstadoFG(i, cargados){
+  if(i.sec === 'OC') return {cls:'odoo', txt:'✓ Flujo general · Odoo'};
   if(!i.pendiente) return {cls:'no', txt: i.tipo === 'Ingreso' ? 'Cobrado' : 'Pagado'};
   if(cargados.has(i.origen + '|' + i.id)) return {cls:'en', txt:'✓ En flujo general'};
   if(i.enFG) return {cls:'carga', txt: i.tipo === 'Egreso' ? 'Por pagar' : 'Por cargar'};
@@ -6570,7 +6587,7 @@ let fpCuotas = null, fpHitos = null, fpCargando = false, fpCelda = null, fpFiltr
 // Crea UNA fila en movimientos (origen control_proyectos_pago, odoo_id = id de la cuota)
 // con el banco elegido. Desde ahí se maneja como cualquier proyectado del flujo general.
 function fpPuedePagar(i, cargados){
-  return esRolCompleto() && i.tipo === 'Egreso' && i.pendiente && i.enFG && !cargados.has(i.origen + '|' + i.id);
+  return esRolCompleto() && i.sec === 'Egreso' && i.pendiente && i.enFG && !cargados.has(i.origen + '|' + i.id);
 }
 function fpMovEnFlujo(i){
   return (movimientosCartera || []).find(m => m.origen === i.origen && String(m.odooId) === String(i.id));
@@ -6672,7 +6689,7 @@ function fpPrepararFiltros(){
     lista.map(([po, nom]) => `<option value="${escapeHTML(po)}">${escapeHTML(po)} · ${escapeHTML(nom)}</option>`).join('');
   if(actual && nombres.has(actual)) sel.value = actual;
   if(!fpFiltrosListos){
-    ['fpFiltroProyecto','fpFiltroPeriodo','fpFiltroHorizonte','fpIncluirPPA','fpSoloFlujoGeneral','fpMostrarPagados'].forEach(id => {
+    ['fpFiltroProyecto','fpFiltroPeriodo','fpFiltroHorizonte','fpIncluirPPA','fpSoloFlujoGeneral','fpIncluirOC','fpMostrarPagados'].forEach(id => {
       document.getElementById(id).addEventListener('change', () => { if(id !== 'fpMostrarPagados') fpCelda = null; renderFlujoProyectos(); });
     });
     document.getElementById('fpExportar').addEventListener('click', fpExportarExcel);
@@ -6726,7 +6743,7 @@ function fpItems(){
     if(soloFG && !c.en_flujo_general) return;
     const programado = String(c.estado || '').toLowerCase() === 'programado';
     items.push({
-      tipo: 'Egreso', pendiente: programado, po: c.po, proyecto: c.proyecto_nombre || '',
+      tipo: 'Egreso', sec: 'Egreso', pendiente: programado, po: c.po, proyecto: c.proyecto_nombre || '',
       fecha: c.fecha_vigente || null,
       concepto: (c.item || '') + (c.cuota_n ? ` (cuota ${c.cuota_n})` : ''),
       tercero: c.proveedor || '', grupo: c.categoria || 'Sin categoría',
@@ -6743,7 +6760,7 @@ function fpItems(){
     if(soloFG && !h.en_flujo_general) return;
     const pend = Number(h.pendiente) || 0;
     items.push({
-      tipo: 'Ingreso', pendiente: pend > 0, po: h.po, proyecto: h.proyecto_nombre || '',
+      tipo: 'Ingreso', sec: 'Ingreso', pendiente: pend > 0, po: h.po, proyecto: h.proyecto_nombre || '',
       fecha: h.fecha_flujo || null,
       concepto: 'Hito: ' + (h.descripcion || ''),
       tercero: h.cliente || '', grupo: 'Hito: ' + (h.descripcion || ''),
@@ -6754,6 +6771,35 @@ function fpItems(){
       ppa: fpEsPPA(h.po, h.tipo_proyecto), origen: 'control_proyectos_hito', id: h.id_hito, raw: h
     });
   });
+  // ---- OC de Odoo (PEN) que ya están en el flujo general, de los proyectos de la app ----
+  if(document.getElementById('fpIncluirOC').checked){
+    const nombres = new Map();
+    fpCuotas.forEach(c => { if(!nombres.has(c.po)) nombres.set(c.po, c.proyecto_nombre || ''); });
+    fpHitos.forEach(h => { if(!nombres.has(h.po)) nombres.set(h.po, h.proyecto_nombre || ''); });
+    const ocPorId = new Map((ordenesCompra || []).map(o => [String(o.id), o]));
+    (movimientosCartera || []).forEach(m => {
+      if(m.estado !== 'proyectado' || !(m.monto < 0) || m.pagadoManual) return;
+      if(!esPENInterno(m.poInterno)) return;
+      if(String(m.fechaProgramada || '') < FECHA_MINIMA) return;
+      const proy = fpProyectoDeMov(m);
+      if(!proy || !nombres.has(proy)) return;
+      if(po && proy !== po) return;
+      if(!ppa && fpEsPPA(proy)) return;
+      const oc = ocPorId.get(String(m.poInterno)) || {};
+      const pen = String(m.poInterno);
+      items.push({
+        tipo: 'Egreso', sec: 'OC', pendiente: true, po: proy, proyecto: nombres.get(proy) || '',
+        fecha: m.fechaProgramada || null,
+        concepto: pen + ' · ' + (m.concepto || ''),
+        tercero: m.proveedor || oc.proveedor || '', grupo: pen + ' · ' + (m.proveedor || oc.proveedor || ''),
+        categoria: 'OC Odoo · ' + (oc.analitica || m.po || ''),
+        monto: Number(m.monto) || 0,
+        enFG: true, motivo: '',
+        extra: [m.banco ? 'Banco ' + m.banco : '', m.origen || ''].filter(Boolean).join(' · '),
+        ppa: fpEsPPA(proy), origen: 'odoo_oc', id: m.id, mov: m, oc
+      });
+    });
+  }
   return items;
 }
 
@@ -6766,7 +6812,9 @@ function renderFlujoProyectos(){
   const periodos = fpListaPeriodos(tipo, n);
   const primero = periodos[0], ultimo = periodos[periodos.length - 1];
   const items = fpItems();
-  const activos = items.filter(i => i.pendiente);
+  const incluirOC = document.getElementById('fpIncluirOC').checked;
+  // Con las OC de Odoo a la vista, las cuotas de la app que ya vienen de Odoo no se suman (no duplicar).
+  const activos = items.filter(i => i.pendiente && !(incluirOC && fpCubiertaPorOdoo(i)));
 
   // columna de cada item
   const colDe = i => {
@@ -6783,9 +6831,9 @@ function renderFlujoProyectos(){
   // filas: por proyecto (todos) o por categoría/hito (un proyecto)
   const claveFila = i => poSel ? i.grupo : i.po;
   const etiquetaFila = i => poSel ? i.grupo : `${i.po} · ${i.proyecto}` + (i.ppa ? ' [PPA]' : '');
-  const matriz = {Ingreso: new Map(), Egreso: new Map()};
+  const matriz = {Ingreso: new Map(), Egreso: new Map(), OC: new Map()};
   activos.forEach(i => {
-    const m = matriz[i.tipo];
+    const m = matriz[i.sec];
     const k = claveFila(i);
     if(!m.has(k)) m.set(k, {etiqueta: etiquetaFila(i), vals: {}});
     const c = colDe(i);
@@ -6811,23 +6859,25 @@ function renderFlujoProyectos(){
   const suma = vals => columnas.reduce((s, c) => s + (vals[c] || 0), 0);
 
   let html = '';
-  [['Ingreso','ing','Ingresos — hitos de cobro pendientes'], ['Egreso','egr','Egresos — cuotas programadas']].forEach(([sec, cls, titulo]) => {
+  const secciones = [['Ingreso','ing','Ingresos — hitos de cobro pendientes'], ['Egreso','egr', incluirOC ? 'Egresos — cuotas programadas en la app (sin OC)' : 'Egresos — cuotas programadas']];
+  if(incluirOC) secciones.push(['OC','oc','Egresos — OC de Odoo (PEN) en tu flujo general']);
+  secciones.forEach(([sec, cls, titulo]) => {
     html += `<tr class="fp-sec ${cls}"><td colspan="${columnas.length + 2}">${titulo}</td></tr>`;
     const filas = [...matriz[sec].entries()].sort((a,b) => Math.abs(suma(b[1].vals)) - Math.abs(suma(a[1].vals)));
-    if(!filas.length) html += `<tr><td colspan="${columnas.length + 2}" style="color:var(--muted);">Sin ${sec === 'Ingreso' ? 'hitos pendientes' : 'cuotas programadas'} con estos filtros.</td></tr>`;
+    if(!filas.length) html += `<tr><td colspan="${columnas.length + 2}" style="color:var(--muted);">Sin ${sec === 'Ingreso' ? 'hitos pendientes' : sec === 'OC' ? 'OC pendientes en el flujo general' : 'cuotas programadas'} con estos filtros.</td></tr>`;
     filas.forEach(([k, f]) => {
       html += `<tr><td title="${escapeHTML(f.etiqueta)}">${escapeHTML(f.etiqueta)}</td>` +
         columnas.map(c => celda(f.vals[c] || 0, sec, k, c)).join('') +
         `<td class="nums" style="font-weight:600;">${fmtMoney(suma(f.vals))}</td></tr>`;
     });
     const t = totalesSeccion(matriz[sec]);
-    html += `<tr class="fp-tot"><td>Total ${sec === 'Ingreso' ? 'ingresos' : 'egresos'}</td>` +
+    html += `<tr class="fp-tot"><td>Total ${sec === 'Ingreso' ? 'ingresos' : sec === 'OC' ? 'OC Odoo (PEN)' : 'egresos app'}</td>` +
       columnas.map(c => celda(t[c] || 0, sec, '__total__', c)).join('') + `<td class="nums">${fmtMoney(suma(t))}</td></tr>`;
   });
-  const ti = totalesSeccion(matriz.Ingreso), te = totalesSeccion(matriz.Egreso);
+  const ti = totalesSeccion(matriz.Ingreso), te = totalesSeccion(matriz.Egreso), toc = totalesSeccion(matriz.OC);
   let acum = 0;
   const neto = {}, acumulado = {};
-  columnas.forEach(c => { neto[c] = (ti[c] || 0) + (te[c] || 0); acum += neto[c]; acumulado[c] = acum; });
+  columnas.forEach(c => { neto[c] = (ti[c] || 0) + (te[c] || 0) + (toc[c] || 0); acum += neto[c]; acumulado[c] = acum; });
   html += '<tr class="fp-neto"><td>Neto del período (cobro − pago)</td>' + columnas.map(c => celda(neto[c], null, null, c)).join('') + `<td class="nums">${fmtMoney(suma(neto))}</td></tr>`;
   html += '<tr class="fp-neto"><td>Neto acumulado</td>' + columnas.map(c => celda(acumulado[c], null, null, c)).join('') + '<td></td></tr>';
   document.getElementById('fpBody').innerHTML = html;
@@ -6840,14 +6890,16 @@ function renderFlujoProyectos(){
   // ---- KPIs ----
   const sumaSi = f => activos.filter(f).reduce((s, i) => s + i.monto, 0);
   const porCobrar = sumaSi(i => i.tipo === 'Ingreso');
-  const porPagar = sumaSi(i => i.tipo === 'Egreso');
-  const vencCuotas = activos.filter(i => i.tipo === 'Egreso' && i.fecha && i.fecha < hoyTxt);
+  const porPagar = sumaSi(i => i.sec === 'Egreso');
+  const porPagarOC = sumaSi(i => i.sec === 'OC');
+  const vencCuotas = activos.filter(i => i.sec === 'Egreso' && i.fecha && i.fecha < hoyTxt);
   const vencHitos = activos.filter(i => i.tipo === 'Ingreso' && i.fecha && i.fecha < hoyTxt);
   const kpi = (lbl, val, cls, nota) => `<div class="kpi"><div class="kpi-label">${lbl}</div><div class="kpi-val ${cls}">${val}</div>${nota ? `<div style="font-size:11.5px;color:var(--muted);margin-top:6px;">${nota}</div>` : ''}</div>`;
   document.getElementById('fpKpis').innerHTML =
     kpi('Por cobrar (hitos)', fmtMoney(porCobrar), 'good', activos.filter(i => i.tipo === 'Ingreso').length + ' hitos pendientes') +
-    kpi('Por pagar (programado)', fmtMoney(porPagar), 'bad', activos.filter(i => i.tipo === 'Egreso').length + ' cuotas') +
-    kpi('Neto', fmtMoney(porCobrar + porPagar), (porCobrar + porPagar) >= 0 ? 'good' : 'bad', 'cobros − pagos pendientes') +
+    kpi('Por pagar (programado)', fmtMoney(porPagar), 'bad', activos.filter(i => i.sec === 'Egreso').length + ' cuotas de la app') +
+    (incluirOC ? kpi('OC de Odoo por pagar', fmtMoney(porPagarOC), 'bad', activos.filter(i => i.sec === 'OC').length + ' pagos de OC (PEN)') : '') +
+    kpi('Neto', fmtMoney(porCobrar + porPagar + porPagarOC), (porCobrar + porPagar + porPagarOC) >= 0 ? 'good' : 'bad', 'cobros − pagos pendientes') +
     kpi('Cuotas vencidas sin pagar', fmtMoney(vencCuotas.reduce((s,i)=>s+i.monto,0)), vencCuotas.length ? 'bad' : '', vencCuotas.length + ' cuotas con fecha pasada en la app') +
     kpi('Hitos vencidos sin cobrar', fmtMoney(vencHitos.reduce((s,i)=>s+i.monto,0)), '', vencHitos.length + ' hitos con fecha pasada');
 
@@ -6859,10 +6911,10 @@ function renderFlujoProyectos(){
   let detalle = items.filter(i => mostrarPagados || i.pendiente);
   let filtroTxt = '';
   if(fpCelda){
-    detalle = detalle.filter(i => i.pendiente && i.tipo === fpCelda.seccion && colDe(i) === fpCelda.col &&
+    detalle = detalle.filter(i => i.pendiente && i.sec === fpCelda.seccion && !(incluirOC && fpCubiertaPorOdoo(i)) && colDe(i) === fpCelda.col &&
       (fpCelda.fila === '__total__' || claveFila(i) === fpCelda.fila));
     const filaTxt = fpCelda.fila === '__total__' ? 'Total' : (matriz[fpCelda.seccion].get(fpCelda.fila) || {}).etiqueta || fpCelda.fila;
-    filtroTxt = `— ${fpCelda.seccion === 'Ingreso' ? 'Ingresos' : 'Egresos'} · ${escapeHTML(filaTxt)} · ${nombreCol(fpCelda.col)} <button type="button" class="fp-quitar" id="fpQuitarFiltro">Quitar filtro</button>`;
+    filtroTxt = `— ${fpCelda.seccion === 'Ingreso' ? 'Ingresos' : fpCelda.seccion === 'OC' ? 'OC Odoo (PEN)' : 'Egresos'} · ${escapeHTML(filaTxt)} · ${nombreCol(fpCelda.col)} <button type="button" class="fp-quitar" id="fpQuitarFiltro">Quitar filtro</button>`;
   }
   detalle.sort((a,b) => String(a.fecha || '9999').localeCompare(String(b.fecha || '9999')) || a.po.localeCompare(b.po));
   document.getElementById('fpDetalleFiltro').innerHTML = filtroTxt;
@@ -6876,6 +6928,16 @@ function renderFlujoProyectos(){
   const fx = v => v ? escapeHTML(v) : '—';
   const expandido = i => {
     const r = i.raw || {};
+    if(i.sec === 'OC'){
+      const m = i.mov || {}, oc = i.oc || {};
+      const camposOC = [['OC (PEN)', m.poInterno], ['Proyecto', i.po + ' · ' + i.proyecto], ['Analítica de la OC', oc.analitica || m.po],
+        ['Proveedor', i.tercero], ['Concepto', m.concepto], ['Fecha en el flujo', m.fechaProgramada], ['Banco', m.banco],
+        ['Cuenta', m.cuenta], ['Origen', m.origen], ['Estado OC en Odoo', oc.estadoOdoo], ['Facturación', oc.estadoFacturacion], ['Total OC', oc.total != null ? fmtMoney(oc.total) : '']];
+      return `<tr class="fp-exp"><td colspan="7">
+        <div class="fp-exp-grid">${camposOC.map(([k,v]) => `<div><span>${k}</span>${fx(v)}</div>`).join('')}</div>
+        <div class="fp-exp-motivo"><b>Flujo general:</b> Este pago viene de Odoo y ya está en tu pestaña Flujo de caja. La fecha, el monto y el banco se editan allá.</div>
+      </td></tr>`;
+    }
     const campos = i.tipo === 'Egreso' ? [
       ['Proyecto', i.po + ' · ' + i.proyecto], ['Categoría', r.categoria], ['Segmento', r.segmento], ['Cuota N°', r.cuota_n],
       ['Fecha original', r.fecha_original], ['Fecha vigente', r.fecha_vigente], ['Fecha real (pago)', r.fecha_real],
@@ -6908,7 +6970,7 @@ function renderFlujoProyectos(){
     const venc = i.pendiente && i.fecha && i.fecha < hoyTxt;
     const est = fpEstadoFG(i, cargados);
     return `<tr class="fp-fila" data-idx="${idx}"${i.pendiente ? '' : ' style="opacity:.6;"'}>
-      <td><span class="fp-flecha">▸</span> ${i.tipo === 'Ingreso' ? '<span style="color:#2E7D46;font-weight:600;">Ingreso</span>' : '<span style="color:var(--bad);font-weight:600;">Egreso</span>'}</td>
+      <td><span class="fp-flecha">▸</span> ${i.tipo === 'Ingreso' ? '<span style="color:#2E7D46;font-weight:600;">Ingreso</span>' : i.sec === 'OC' ? '<span style="color:#6B3A86;font-weight:600;">OC Odoo</span>' : '<span style="color:var(--bad);font-weight:600;">Egreso</span>'}</td>
       <td>${i.fecha ? escapeHTML(i.fecha) : '<i>sin fecha</i>'}${venc ? ' <span class="fp-badge venc">vencido</span>' : ''}</td>
       <td>${escapeHTML(i.po)}${i.ppa ? ' <span class="fp-badge ppa">PPA</span>' : ''}</td>
       <td class="fp-concepto" title="${escapeHTML(i.concepto)}">${escapeHTML(i.concepto)}</td>
@@ -6937,7 +6999,7 @@ function renderFlujoProyectos(){
 function fpExportarExcel(){
   const detalle = window._fpDetalleActual || [];
   const filas = detalle.map(i => ({
-    'Tipo': i.tipo, 'Fecha': i.fecha || '', 'P.O.': i.po, 'Proyecto': i.proyecto, 'PPA': i.ppa ? 'Sí' : '',
+    'Tipo': i.sec === 'OC' ? 'OC Odoo' : i.tipo, 'Fecha': i.fecha || '', 'P.O.': i.po, 'Proyecto': i.proyecto, 'PPA': i.ppa ? 'Sí' : '',
     'Concepto': i.concepto, 'Proveedor / Cliente': i.tercero, 'Categoría · Segmento': i.categoria,
     'Monto': i.monto, 'Estado': i.pendiente ? 'Pendiente' : (i.tipo === 'Ingreso' ? 'Cobrado' : 'Pagado'),
     'Flujo general': fpEstadoFG(i, window._fpCargados || new Set()).txt.replace('✓ ', ''), 'Motivo': i.motivo, 'Referencias': i.extra
