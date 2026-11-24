@@ -2841,7 +2841,9 @@ function render(){
   const fDesde = inpDesde.value ? new Date(inpDesde.value + 'T00:00:00') : null;
   const fHasta = inpHasta.value ? new Date(inpHasta.value + 'T23:59:59') : null;
 
-  const sorted = [...movimientos].sort((a,b)=> a.fecha - b.fecha);
+  // Orden: fecha de pago (el saldo proyectado depende de esto); en la misma fecha de pago,
+  // primero la factura más antigua (fecha de factura y luego número de factura).
+  const sorted = [...movimientos].sort(compararMovimientosPorAntiguedad);
   // El saldo bancario real solo incluye cuentas bancarias válidas.
   // Se excluyen tarjetas, cajas, efectivo, anticipos y saldos auxiliares.
   const saldoActual = bancosDePagoValidos()
@@ -6417,12 +6419,24 @@ function hojaResumenBanco(filas){
   return hoja;
 }
 
+// Desempate por antigüedad: fecha de factura más antigua primero y, si es igual,
+// número de factura menor primero (ej. 037857 antes que 037859).
+function desempatePorAntiguedad(a,b){
+  const fa = a.fechaFactura ? a.fechaFactura.getTime() : Infinity;
+  const fb = b.fechaFactura ? b.fechaFactura.getTime() : Infinity;
+  if(fa !== fb) return fa - fb;
+  return String(a.concepto || '').localeCompare(String(b.concepto || ''), 'es', {numeric:true});
+}
+function compararMovimientosPorAntiguedad(a,b){
+  return (a.fecha - b.fecha) || desempatePorAntiguedad(a,b);
+}
+
 function exportarExcel(){
   const filas = [...filasVisiblesParaExportar].sort((a,b)=>{
     // Ordenado por banco primero (para girar banco por banco), luego por fecha
     const bA = a.banco || '', bB = b.banco || '';
     if(bA !== bB) return bA.localeCompare(bB);
-    return a.fecha - b.fecha;
+    return compararMovimientosPorAntiguedad(a,b);
   });
   if(typeof XLSX === 'undefined'){
     alert('No se pudo cargar el generador de Excel. Revisa la conexión a internet y vuelve a intentarlo.');
