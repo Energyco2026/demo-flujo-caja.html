@@ -787,7 +787,7 @@
     <details class="fp-aviso fp-ayuda"><summary>ℹ️ Cómo leer esta pestaña (clic para ver)</summary>
       <b>Ingresos</b> = hitos de cobro pendientes de la app (monto del hito − cobrado).<br>
       <b>Egresos — cuotas de la app (sin OC):</b> presupuesto. Todavía no hay OC ni factura en Odoo. <span class="fp-btn-pagar" style="cursor:default;">Pagar ▸</span> = eliges el banco y pasa a tu Flujo de caja; después dice <span class="fp-badge en">✓ En flujo general</span>.<br>
-      <b>Egresos — OC de Odoo (PEN):</b> ya existen en Odoo (OC, factura o forma de pago) y ya están en tu Flujo de caja. Aquí solo se ven; la fecha, el monto y el banco se cambian en Flujo de caja. <span class="fp-badge odoo">✓ Flujo general · Odoo</span><br>
+      <b>Egresos — OC de Odoo (PEN):</b> ya existen en Odoo (OC, factura o forma de pago) y ya están en tu Flujo de caja. Aquí solo se ven; la fecha, el monto y el banco se cambian en Flujo de caja. <span class="fp-badge odoo">✓ Flujo general · Odoo</span>. Las OC confirmadas en Odoo que aún no tienen factura ni cuota confirmada salen con su forma de pago sugerida y la marca <span class="fp-badge carga">OC sin pago confirmado</span> (todavía no están en tu Flujo de caja).<br>
       <span class="fp-badge no">No entra</span> = cuota de la app que ya está cubierta por Odoo o se excluyó (ej. EnergyControl); no se suma para no duplicar. Abre la fila para ver el motivo.<br>
       Clic en el nombre de un bloque (Ingresos / Egresos) para abrir o cerrar sus proyectos. Clic en una cifra para ver el detalle abajo.
     </details>
@@ -5469,6 +5469,43 @@ function attachHandlers(){
   });
 }
 
+// Cuotas sugeridas (nota de forma de pago de la OC) sin confirmar, con corrimiento
+// en cascada y neteadas contra lo ya pagado. La usan la tarjeta de la OC y Flujo de Proyectos.
+function cuotasSugeridasOC(ocId, pagado){
+  const cuotasOC = cuotasFormaPago
+      .filter(c => c.poId === ocId && c.estado !== 'confirmada' && c.estado !== 'ya_pagada')
+      .sort((a,b) => (a.cuotaNumero||0) - (b.cuotaNumero||0));
+    // Corrimiento en cascada: si una cuota queda vencida sin confirmar, todas
+    // las siguientes se corren por el mismo intervalo real que había entre
+    // ellas (7 días si es semanal, 15 si es quincenal, 30 si es mensual,
+    // etc. — se toma de la diferencia real entre las fechas originales, no
+    // un número fijo), para no acumular dos cuotas en el mismo período.
+    let acumuladoDias = 0;
+    const cuotasConCascada = cuotasOC.map((c, idx) => {
+      const fechaOriginal = c.fecha ? new Date(c.fecha + 'T00:00:00') : null;
+      const fechaEfectiva = fechaOriginal ? addDays(fechaOriginal, acumuladoDias) : null;
+      if(fechaEfectiva && fechaEfectiva < HOY){
+        const siguiente = cuotasOC[idx + 1];
+        const intervalo = (siguiente && siguiente.fecha && c.fecha)
+          ? diasEntre(new Date(c.fecha + 'T00:00:00'), new Date(siguiente.fecha + 'T00:00:00'))
+          : 0;
+        acumuladoDias += intervalo;
+      }
+      return { ...c, fechaOriginal, fechaEfectiva };
+    });
+    // Neteo en cascada: lo ya pagado/anticipado (pagado) se descuenta
+    // primero de la cuota 1, luego de la 2, etc. Si una cuota queda en $0
+    // (ya cubierta por completo), se oculta de la lista.
+    let disponibleParaNetear = pagado;
+  return cuotasConCascada.map(c=>{
+      if(c.estado === 'revisar_manual') return { ...c, montoOriginal: null, montoRestante: null };
+      const montoOriginal = Number(c.monto) || 0;
+      const consumido = Math.min(montoOriginal, Math.max(disponibleParaNetear, 0));
+      disponibleParaNetear -= consumido;
+      return { ...c, montoOriginal, montoRestante: montoOriginal - consumido };
+    }).filter(c => c.estado === 'revisar_manual' || c.montoRestante > 0.01);
+}
+
 function renderOC(){
   cachePagadoOC = null;
   const filtroSel = document.getElementById('filtroAnalitica');
@@ -5574,38 +5611,7 @@ function renderOC(){
         }).join('')
       : `<div class="oc-detail-empty">Sin pagos ejecutados todavía para esta OC.</div>`;
 
-    const cuotasOC = cuotasFormaPago
-      .filter(c => c.poId === oc.id && c.estado !== 'confirmada' && c.estado !== 'ya_pagada')
-      .sort((a,b) => (a.cuotaNumero||0) - (b.cuotaNumero||0));
-    // Corrimiento en cascada: si una cuota queda vencida sin confirmar, todas
-    // las siguientes se corren por el mismo intervalo real que había entre
-    // ellas (7 días si es semanal, 15 si es quincenal, 30 si es mensual,
-    // etc. — se toma de la diferencia real entre las fechas originales, no
-    // un número fijo), para no acumular dos cuotas en el mismo período.
-    let acumuladoDias = 0;
-    const cuotasConCascada = cuotasOC.map((c, idx) => {
-      const fechaOriginal = c.fecha ? new Date(c.fecha + 'T00:00:00') : null;
-      const fechaEfectiva = fechaOriginal ? addDays(fechaOriginal, acumuladoDias) : null;
-      if(fechaEfectiva && fechaEfectiva < HOY){
-        const siguiente = cuotasOC[idx + 1];
-        const intervalo = (siguiente && siguiente.fecha && c.fecha)
-          ? diasEntre(new Date(c.fecha + 'T00:00:00'), new Date(siguiente.fecha + 'T00:00:00'))
-          : 0;
-        acumuladoDias += intervalo;
-      }
-      return { ...c, fechaOriginal, fechaEfectiva };
-    });
-    // Neteo en cascada: lo ya pagado/anticipado (resumen.pagado) se descuenta
-    // primero de la cuota 1, luego de la 2, etc. Si una cuota queda en $0
-    // (ya cubierta por completo), se oculta de la lista.
-    let disponibleParaNetear = resumen.pagado;
-    const cuotasNeteadas = cuotasConCascada.map(c=>{
-      if(c.estado === 'revisar_manual') return { ...c, montoOriginal: null, montoRestante: null };
-      const montoOriginal = Number(c.monto) || 0;
-      const consumido = Math.min(montoOriginal, Math.max(disponibleParaNetear, 0));
-      disponibleParaNetear -= consumido;
-      return { ...c, montoOriginal, montoRestante: montoOriginal - consumido };
-    }).filter(c => c.estado === 'revisar_manual' || c.montoRestante > 0.01);
+    const cuotasNeteadas = cuotasSugeridasOC(oc.id, resumen.pagado);
     const cuotasHtml = cuotasNeteadas.length ? `
       <div class="oc-cuotas">
         <div class="oc-cuotas-title">Forma de pago sugerida (leída de la nota de la OC)</div>
@@ -6612,6 +6618,7 @@ function fpCubiertaPorOdoo(i){
   return i.sec === 'Egreso' && !i.enFG && /OC|factura|duplicado/i.test(i.motivo || '') && !/interno|energycontrol/i.test(i.motivo || '');
 }
 function fpEstadoFG(i, cargados){
+  if(i.sec === 'OC' && i.sugerida) return {cls:'carga', txt:'OC sin pago confirmado'};
   if(i.sec === 'OC') return {cls:'odoo', txt:'✓ Flujo general · Odoo'};
   if(!i.pendiente) return {cls:'no', txt: i.tipo === 'Ingreso' ? 'Cobrado' : 'Pagado'};
   if(cargados.has(i.origen + '|' + i.id)) return {cls:'en', txt:'✓ En flujo general'};
@@ -6838,6 +6845,55 @@ function fpItems(){
         ppa: fpEsPPA(proy), origen: 'odoo_oc', id: m.id, mov: m, oc
       });
     });
+
+    // ---- OC confirmadas en Odoo que todavía NO tienen ningún pago programado ----
+    // (sin factura y sin cuota confirmada). Se muestran con su forma de pago
+    // sugerida (nota de la OC), netea lo ya pagado/anticipado. Si la OC no tiene
+    // cuotas sugeridas, va su saldo completo en "Sin fecha". No están en el flujo
+    // general hasta que se confirme la cuota en la tarjeta de la OC.
+    if(!soloFG){
+      const conPagoProgramado = new Set((movimientosCartera || [])
+        .filter(m => m.estado === 'proyectado' && m.monto < 0 && !m.pagadoManual && m.origen !== 'anticipo_oc_manual' && esPENInterno(m.poInterno))
+        .map(m => String(m.poInterno)));
+      const estadosNoOperativos = new Set(['draft','sent','cancel']);
+      (ordenesCompra || []).forEach(oc => {
+        if(estadosNoOperativos.has(oc.estadoOdoo) || oc.estadoFacturacion === 'invoiced') return;
+        const pen = String(oc.id);
+        if(!esPENInterno(pen) || conPagoProgramado.has(pen)) return;
+        const xp = String(oc.poNumero || oc.analitica || '').match(/\d{3,5}/);
+        const proy = xp ? xp[0] : '';
+        if(!proy || !nombres.has(proy)) return;
+        if(po && proy !== po) return;
+        if(!ppa && fpEsPPA(proy)) return;
+        const pagado = (movimientos || []).filter(m =>
+          m.poInterno != null && String(m.poInterno) === pen && Number(m.monto) < 0 &&
+          (m.estado === 'ejecutado' || (m.estado === 'proyectado' && m.origen === 'anticipo_oc_manual'))
+        ).reduce((s, p) => s + Math.abs(p.monto), 0);
+        const saldo = Math.max((Number(oc.total) || 0) - pagado, 0);
+        if(saldo <= 0.01) return;
+        const base = {
+          tipo: 'Egreso', sec: 'OC', pendiente: true, po: proy, proyecto: nombres.get(proy) || '',
+          tercero: oc.proveedor || '', grupo: pen + ' · ' + (oc.proveedor || ''),
+          categoria: 'OC Odoo · ' + (oc.analitica || ''), enFG: false, motivo: '',
+          ppa: fpEsPPA(proy), origen: 'odoo_oc_sugerida', oc, sugerida: true
+        };
+        const cuotas = cuotasSugeridasOC(oc.id, pagado).filter(c => c.estado !== 'revisar_manual');
+        if(cuotas.length){
+          cuotas.forEach(c => items.push({ ...base,
+            fecha: c.fechaEfectiva ? fmtDateLocal(c.fechaEfectiva) : null,
+            concepto: pen + ' · ' + (c.descripcion || ('Cuota ' + c.cuotaNumero)) + ' (sugerida, sin confirmar)',
+            monto: -Math.abs(c.montoRestante),
+            extra: 'Forma de pago sugerida de la OC',
+            id: 'sug-' + c.id, cuotaSug: c
+          }));
+        }else{
+          items.push({ ...base, fecha: null,
+            concepto: pen + ' · Saldo de la OC sin forma de pago',
+            monto: -saldo, extra: 'Sin forma de pago en la OC', id: 'sug-oc-' + pen
+          });
+        }
+      });
+    }
   }
   return items;
 }
@@ -6899,7 +6955,7 @@ function renderFlujoProyectos(){
 
   let html = '';
   const secciones = [['Ingreso','ing','Ingresos — hitos de cobro pendientes'], ['Egreso','egr', incluirOC ? 'Egresos — presupuesto de la app (sin OC, por pagar)' : 'Egresos — cuotas programadas']];
-  if(incluirOC) secciones.push(['OC','oc','Egresos — OC de Odoo (PEN), ya en tu flujo general']);
+  if(incluirOC) secciones.push(['OC','oc','Egresos — OC de Odoo (PEN)']);
   secciones.forEach(([sec, cls, titulo]) => {
     const filas = [...matriz[sec].entries()].sort((a,b) => Math.abs(suma(b[1].vals)) - Math.abs(suma(a[1].vals)));
     const abierta = fpAbiertas.has(sec) || !!poSel;
@@ -6976,6 +7032,17 @@ function renderFlujoProyectos(){
     const r = i.raw || {};
     if(i.sec === 'OC'){
       const m = i.mov || {}, oc = i.oc || {};
+      const cs = i.cuotaSug;
+      if(i.sugerida){
+        const camposSug = [['OC (PEN)', oc.id], ['Proyecto', i.po + ' · ' + i.proyecto], ['Analítica de la OC', oc.analitica],
+          ['Proveedor', i.tercero], ['Cuota sugerida', cs ? (cs.descripcion || ('Cuota ' + cs.cuotaNumero)) : 'Sin forma de pago'],
+          ['Fecha sugerida', cs && cs.fechaOriginal ? fmtDateLocal(cs.fechaOriginal) : ''], ['Fecha usada (con corrimiento)', i.fecha],
+          ['Estado OC en Odoo', oc.estadoOdoo], ['Facturación', oc.estadoFacturacion], ['Total OC', oc.total != null ? fmtMoney(oc.total) : '']];
+        return `<tr class="fp-exp"><td colspan="7">
+          <div class="fp-exp-grid">${camposSug.map(([k,v]) => `<div><span>${k}</span>${fx(v)}</div>`).join('')}</div>
+          <div class="fp-exp-motivo"><b>Flujo general:</b> La OC ya está confirmada en Odoo, pero todavía no tiene factura ni cuota confirmada, así que aún no está en tu Flujo de caja. Para que entre, pulsa "Confirmar" en la cuota dentro de la tarjeta de la OC (Saldo por Orden de Compra).</div>
+        </td></tr>`;
+      }
       const camposOC = [['OC (PEN)', m.poInterno], ['Proyecto', i.po + ' · ' + i.proyecto], ['Analítica de la OC', oc.analitica || m.po],
         ['Proveedor', i.tercero], ['Concepto', m.concepto], ['Fecha en el flujo', m.fechaProgramada], ['Banco', m.banco],
         ['Cuenta', m.cuenta], ['Origen', m.origen], ['Estado OC en Odoo', oc.estadoOdoo], ['Facturación', oc.estadoFacturacion], ['Total OC', oc.total != null ? fmtMoney(oc.total) : '']];
