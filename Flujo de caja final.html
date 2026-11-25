@@ -2343,6 +2343,11 @@ async function cargarDatos(){
     // cruce pero Odoo aún no lo refleja). El script nunca toca 'eliminado',
     // así que no reaparecen en la siguiente corrida; se pueden restaurar.
     facturasBorradas = movData.filter(m => m.eliminado && m.origen === 'account.move');
+    fpPagadasOdoo = new Map(
+      movData
+        .filter(m => m.origen === 'control_proyectos_pago' && m.pago_real_odoo_id && !m.eliminado)
+        .map(m => [String(m.odoo_id), m])
+    );
     movimientosCartera = movData
       .filter(m =>
         !m.oculto &&
@@ -6620,11 +6625,17 @@ function fpCubiertaPorOdoo(i){
 function fpEstadoFG(i, cargados){
   if(i.sec === 'OC' && i.sugerida) return {cls:'carga', txt:'OC sin pago confirmado'};
   if(i.sec === 'OC') return {cls:'odoo', txt:'✓ Flujo general · Odoo'};
+  const pagoOdoo = i.origen === 'control_proyectos_pago' && fpPagadasOdoo.get(String(i.id));
+  if(pagoOdoo) return {cls:'odoo', txt:'✓ Pagado en Odoo ' + (pagoOdoo.pago_real_fecha || '')};
   if(!i.pendiente) return {cls:'no', txt: i.tipo === 'Ingreso' ? 'Cobrado' : 'Pagado'};
   if(cargados.has(i.origen + '|' + i.id)) return {cls:'en', txt:'✓ En flujo general'};
   if(i.enFG) return {cls:'carga', txt: i.tipo === 'Egreso' ? 'Por pagar' : 'Por cargar'};
   return {cls:'no', txt:'No entra'};
 }
+// Cuotas de la app ya conciliadas por el script con su pago real en Odoo
+// (movimientos origen control_proyectos_pago con pago_real_odoo_id). Esas filas
+// quedan ocultas en el flujo general para no contar doble el egreso.
+let fpPagadasOdoo = new Map();
 let fpCuotas = null, fpHitos = null, fpCargando = false, fpCelda = null, fpFiltrosListos = false;
 const fpAbiertas = new Set(); // bloques desplegados (Ingreso / Egreso / OC); empiezan cerrados
 
@@ -6633,7 +6644,8 @@ const fpAbiertas = new Set(); // bloques desplegados (Ingreso / Egreso / OC); em
 // Crea UNA fila en movimientos (origen control_proyectos_pago, odoo_id = id de la cuota)
 // con el banco elegido. Desde ahí se maneja como cualquier proyectado del flujo general.
 function fpPuedePagar(i, cargados){
-  return esRolCompleto() && i.sec === 'Egreso' && i.pendiente && i.enFG && !cargados.has(i.origen + '|' + i.id);
+  return esRolCompleto() && i.sec === 'Egreso' && i.pendiente && i.enFG && !cargados.has(i.origen + '|' + i.id)
+    && !fpPagadasOdoo.has(String(i.id));
 }
 function fpMovEnFlujo(i){
   return (movimientosCartera || []).find(m => m.origen === i.origen && String(m.odooId) === String(i.id));
@@ -7062,7 +7074,9 @@ function renderFlujoProyectos(){
       ['Fecha contractual', r.fecha_contractual], ['Fecha estimada', r.fecha_estimada], ['Fecha real (cobro)', r.fecha_real], ['Fecha usada en el flujo', r.fecha_flujo]
     ];
     const est = fpEstadoFG(i, cargados);
-    const explicacion = est.cls === 'en' ? 'Esta fila ya está cargada y visible en tu pestaña Flujo de caja.'
+    const explicacion = (i.origen === 'control_proyectos_pago' && fpPagadasOdoo.has(String(i.id)))
+      ? 'Pagada: el script la concilió con el pago registrado en Odoo (' + (fpPagadasOdoo.get(String(i.id)).pago_real_fecha || '') + '). Ya no se suma en tu Flujo de caja para no contarla dos veces; el egreso lo trae el pago real de Odoo.'
+      : est.cls === 'en' ? 'Esta fila ya está cargada y visible en tu pestaña Flujo de caja.'
       : est.cls === 'carga' ? (i.tipo === 'Egreso' ? 'Cumple las reglas (sin OC ni factura en Odoo). Elige el banco y pulsa "Pagar" para que entre a tu Flujo de caja.' : 'Cumple las reglas. Se verá en Flujo de caja cuando se active la carga de hitos.')
       : !i.pendiente ? (i.tipo === 'Ingreso' ? 'Hito ya cobrado según la app.' : 'Cuota marcada como pagada/registrada en la app (puede ser salida de bodega, OC a mano o importada del Excel de Costos).')
       : 'No entra al flujo general: ' + (i.motivo || 'sin motivo registrado') + '.';
