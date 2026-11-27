@@ -392,6 +392,9 @@
   #semMatriz td.neg{color:var(--bad);}
   #semMatriz td.clic{cursor:pointer;}
   #semMatriz td.clic:hover{text-decoration:underline; text-decoration-style:dotted; text-underline-offset:4px; color:var(--navy);}
+  #semMatriz tr.sem-seccion.proy td{background:#FFF1E0; color:#A85A12;}
+  #semMatriz tr.sem-saldo-proy td{background:#FDF1D6; font-weight:700;}
+  #semMatriz tr.sem-proy-revisar td:first-child{color:#A85A12; font-style:italic;}
   .sem-aviso{margin:0 20px 18px; background:#FDF1D6; color:#7A5410; border-radius:8px; padding:11px 14px; font-size:13px; line-height:1.6;}
   .sem-aviso b{color:#5C3D06;}
   .sem-aviso button{margin-left:6px; border:1px solid #E0C48A; background:#fff; border-radius:6px; padding:3px 10px; cursor:pointer; font-size:12.5px; font-weight:600;}
@@ -718,6 +721,8 @@
           </select>
         </span>
         <label title="Saca del flujo las facturas de proveedores vencidas hace más de 90 días. No se borran: quedan listadas en el aviso de abajo."><input type="checkbox" id="semExcluir90"> Excluir CxP vencidas +90 días</label>
+        <label class="sem-solo-completo" title="Agrega abajo lo de la app Control de Proyectos que todavía NO está en tu flujo general: presupuesto sin OC y OC confirmadas sin pago programado. No cambia el saldo comprometido."><input type="checkbox" id="semIncluirProyectos" checked> Proyectos por comprometer</label>
+        <label class="sem-solo-completo" title="Proyectos PPA (SMI, Claro Ibarra): sus egresos se financian con desembolsos"><input type="checkbox" id="semProyPPA" checked> Incluir PPA</label>
         <button type="button" id="semExportar" class="btn-refrescar">⬇ Descargar Excel</button>
       </div>
     </div>
@@ -1880,6 +1885,7 @@ function mostrarDashboard(){
   // Pestaña "Flujo de Proyectos": solo rol completo.
   const tabProy = document.getElementById('tabProyectos');
   if(tabProy) tabProy.style.display = esRolCompleto() ? '' : 'none';
+  document.querySelectorAll('.sem-solo-completo').forEach(el => el.style.display = esRolCompleto() ? '' : 'none');
   prepararBotonOdoo();
   cargarDatos();
 }
@@ -6790,10 +6796,11 @@ function fpEtiquetaPeriodo(clave, tipo){
 }
 
 // ---- items normalizados ----
-function fpItems(){
-  const po = document.getElementById('fpFiltroProyecto').value;
-  const ppa = document.getElementById('fpIncluirPPA').checked;
-  const soloFG = document.getElementById('fpSoloFlujoGeneral').checked;
+function fpItems(opts){
+  const po = opts ? (opts.po || '') : document.getElementById('fpFiltroProyecto').value;
+  const ppa = opts ? !!opts.ppa : document.getElementById('fpIncluirPPA').checked;
+  const soloFG = opts ? !!opts.soloFG : document.getElementById('fpSoloFlujoGeneral').checked;
+  const incluirOCOpt = opts ? !!opts.incluirOC : document.getElementById('fpIncluirOC').checked;
   const items = [];
   fpCuotas.forEach(c => {
     if(po && c.po !== po) return;
@@ -6830,7 +6837,7 @@ function fpItems(){
     });
   });
   // ---- OC de Odoo (PEN) que ya están en el flujo general, de los proyectos de la app ----
-  if(document.getElementById('fpIncluirOC').checked){
+  if(incluirOCOpt){
     const nombres = new Map();
     fpCuotas.forEach(c => { if(!nombres.has(c.po)) nombres.set(c.po, c.proyecto_nombre || ''); });
     fpHitos.forEach(h => { if(!nombres.has(h.po)) nombres.set(h.po, h.proyecto_nombre || ''); });
@@ -7671,7 +7678,7 @@ function tituloCase(texto){
 // Fila en la que cae cada movimiento.
 function filaSemanal(m){
   if(m.monto > 0){
-    if(m.origen === 'hito_cobro_manual') return 'Hitos de cobro (sin facturar)';
+    if(m.origen === 'hito_cobro_manual' || m.origen === 'control_proyectos_hito') return 'Hitos de cobro (sin facturar)';
     if(/Cuentas por Cobrar/i.test(m.cuenta || '')) return 'Facturas por cobrar';
     return 'Otros ingresos';
   }
@@ -7683,12 +7690,13 @@ function filaSemanal(m){
   if(c === 'decevale') return 'DECEVALE (emisión de obligaciones)';
   if(c === 'otros') return 'Otros impostergables';
   if(m.origen === 'oc_forma_pago' || m.origen === 'anticipo_oc_manual') return 'Órdenes de compra';
+  if(m.origen === 'control_proyectos_pago') return 'Proyectos (enviados a pagar)';
   if(/Cuentas por Pagar/i.test(m.cuenta || '')) return 'Facturas de proveedores';
   if(m.origen === 'manual') return 'Movimientos manuales';
   return 'Otros egresos';
 }
 const ORDEN_INGRESOS = ['Facturas por cobrar', 'Hitos de cobro (sin facturar)', 'Otros ingresos'];
-const ORDEN_EGRESOS = ['Facturas de proveedores', 'Órdenes de compra', 'Sueldos', 'IESS', 'SRI',
+const ORDEN_EGRESOS = ['Facturas de proveedores', 'Órdenes de compra', 'Proyectos (enviados a pagar)', 'Sueldos', 'IESS', 'SRI',
   'DECEVALE (emisión de obligaciones)', '__PRESTAMOS__', 'Otros impostergables', 'Movimientos manuales', 'Otros egresos'];
 
 function ordenarFilas(nombres, orden){
@@ -7706,6 +7714,29 @@ function diasVencidaCxP(m){
   const ref = m.fechaVencimiento || m.fechaOriginal || m.fechaFactura;
   return ref ? diasEntre(ref, HOY) : 0;
 }
+
+// Items de la app que todavía no están en el flujo general, con forma de movimiento
+// para que se vean en el detalle (no son editables: no tienen estado 'proyectado').
+function semItemsProyectos(incluirPPA){
+  const cargados = fpCargadosEnFlujo();
+  return fpItems({ po: '', ppa: incluirPPA, soloFG: false, incluirOC: true })
+    .filter(i => i.pendiente && Math.abs(i.monto) > 0.005 && (
+      (i.sec === 'Egreso' && i.enFG && !cargados.has(i.origen + '|' + i.id) && !fpPagadasOdoo.has(String(i.id))) ||
+      (i.sec === 'OC' && i.sugerida)
+    ))
+    .map(i => ({
+      id: 'proy-' + i.origen + '-' + i.id,
+      esProyecto: true, sugerida: !!i.sugerida, estado: 'app',
+      fecha: i.fecha ? new Date(i.fecha + 'T00:00:00') : null,
+      monto: -Math.abs(i.monto),
+      concepto: `Proyecto ${i.po} · ${i.concepto}`,
+      proveedor: i.tercero || 'Por definir',
+      po: `${i.po} · ${i.proyecto}` + (i.ppa ? ' [PPA]' : ''),
+      cuenta: i.categoria || '',
+      banco: i.sugerida ? 'OC sin pago confirmado' : 'Presupuesto (app)',
+    }));
+}
+let semProyPidiendo = false;
 
 function poblarFiltroBancoSemanal(){
   const sel = document.getElementById('semFiltroBanco');
@@ -7783,7 +7814,41 @@ function calcularMatrizSemanal(){
     return r;
   });
 
+  // ---- Bloque de proyectos por comprometer (app Control de Proyectos) ----
+  // Solo lo que NO está en movimientos: cuotas "Por pagar" de la app (sin OC/factura,
+  // sin "Pagar" todavía) y OC confirmadas en Odoo sin pago programado (forma de pago
+  // sugerida). Hitos y OC con pago ya están arriba: no se vuelven a sumar.
+  const proy = { estado: 'off', filas: [], sinFecha: [], porPeriodo: [] };
+  const quiereProy = esRolCompleto() && document.getElementById('semIncluirProyectos').checked;
+  if(quiereProy){
+    if(!fpCuotas || !fpHitos) proy.estado = 'cargando';
+    else if(banco !== 'Todos') proy.estado = 'banco';
+    else {
+      proy.estado = 'ok';
+      const filasProy = new Set();
+      semItemsProyectos(document.getElementById('semProyPPA').checked).forEach(m => {
+        if(!m.fecha){ proy.sinFecha.push(m); return; }
+        const per = periodoDe(m);
+        const fila = (m.sugerida ? 'OC confirmadas sin pago programado' : 'Presupuesto de proyectos sin OC') +
+          (per === 'vencido' ? ' — fecha pasada (revisar)' : '');
+        filasProy.add(fila);
+        (semCeldas[fila + '|' + per] = semCeldas[fila + '|' + per] || []).push(m);
+        (semCeldas['__TOTAL_PROY__|' + per] = semCeldas['__TOTAL_PROY__|' + per] || []).push(m);
+      });
+      const orden = ['Presupuesto de proyectos sin OC', 'Presupuesto de proyectos sin OC — fecha pasada (revisar)',
+        'OC confirmadas sin pago programado', 'OC confirmadas sin pago programado — fecha pasada (revisar)'];
+      proy.filas = orden.filter(f => filasProy.has(f));
+      let acum = 0;
+      proy.porPeriodo = periodos.map((p, i) => {
+        const egr = suma('__TOTAL_PROY__', p.key);
+        acum += egr;
+        return { egr, fin: porPeriodo[i].fin - acum };
+      });
+    }
+  }
+
   return {
+    proy,
     periodos, porPeriodo, suma, saldoBanco, viejas, excluir90, periodoDe,
     filasIng: ordenarFilas([...filasIng], ORDEN_INGRESOS),
     filasEgr: ordenarFilas([...filasEgr], ORDEN_EGRESOS),
@@ -7823,11 +7888,25 @@ function renderSemanal(){
   html += `<tr class="sem-total"><td>Total egresos</td>${P.map(p => celdaMonto('__TOTAL_EGR__', p, ' neg')).join('')}</tr>`;
   html += `<tr class="sem-total"><td>Flujo neto</td>${d.porPeriodo.map((r, i) =>
     `<td class="nums${cls(P[i])} ${r.neto < -0.5 ? 'neg' : 'pos'}">${fmt0(r.neto)}</td>`).join('')}</tr>`;
-  html += filaSaldo('Saldo final', 'fin');
+  html += filaSaldo(d.proy.estado === 'ok' ? 'Saldo final (comprometido)' : 'Saldo final', 'fin');
+  const cols = P.length + 1;
+  if(d.proy.estado === 'ok'){
+    html += `<tr class="sem-seccion proy"><td colspan="${cols}">Proyectos por comprometer — aún no están en tu flujo general</td></tr>`;
+    html += d.proy.filas.length
+      ? d.proy.filas.map(f => `<tr class="${/revisar/.test(f) ? 'sem-proy-revisar' : ''}"><td>${escapeHTML(f)}</td>${P.map(p => celdaMonto(f, p)).join('')}</tr>`).join('')
+      : `<tr><td colspan="${cols}" class="vacio" style="text-align:left;">No hay presupuesto de proyectos pendiente fuera del flujo general.</td></tr>`;
+    html += `<tr class="sem-total"><td>Total proyectos por comprometer</td>${P.map(p => celdaMonto('__TOTAL_PROY__', p, ' neg')).join('')}</tr>`;
+    html += `<tr class="sem-saldo-proy"><td>Saldo final si se paga lo de proyectos</td>${d.proy.porPeriodo.map((r, i) =>
+      `<td class="nums${cls(P[i])}">${fmt0(r.fin)}</td>`).join('')}</tr>`;
+  } else if(d.proy.estado === 'cargando'){
+    html += `<tr><td colspan="${cols}" class="vacio" style="text-align:left;">Cargando proyectos de la app Control de Proyectos…</td></tr>`;
+  } else if(d.proy.estado === 'banco'){
+    html += `<tr><td colspan="${cols}" class="vacio" style="text-align:left;">Los proyectos por comprometer todavía no tienen banco: se muestran solo con "Todos los bancos".</td></tr>`;
+  }
   const body = document.getElementById('semBody');
   body.innerHTML = html;
   // Saldos negativos en rojo
-  body.querySelectorAll('tr.sem-saldo td.nums').forEach(td => { if(td.textContent.startsWith('-')) td.style.color = 'var(--bad)'; });
+  body.querySelectorAll('tr.sem-saldo td.nums, tr.sem-saldo-proy td.nums').forEach(td => { if(td.textContent.startsWith('-')) td.style.color = 'var(--bad)'; });
   body.querySelectorAll('td[data-celda]').forEach(td => td.addEventListener('click', () => abrirDetalleSemanal(td.dataset.celda)));
 
   // Aviso de CxP vencidas +90 días
@@ -7842,6 +7921,17 @@ function renderSemanal(){
       'Facturas de proveedores vencidas hace más de 90 días', d.viejas, true);
   } else {
     aviso.style.display = 'none';
+    aviso.innerHTML = '';
+  }
+  if(d.proy.sinFecha.length){
+    const totalSF = d.proy.sinFecha.reduce((s, m) => s + Math.abs(m.monto), 0);
+    aviso.style.display = 'block';
+    aviso.insertAdjacentHTML('beforeend', `${aviso.innerHTML ? '<br>' : ''}Proyectos: <b>${fmtMoney(totalSF)}</b> en ${d.proy.sinFecha.length} OC confirmada${d.proy.sinFecha.length === 1 ? '' : 's'} sin forma de pago ni fecha; <b>no se suman</b> en ninguna semana. <button type="button" id="semVerSinFecha">Ver detalle</button>`);
+    document.getElementById('semVerSinFecha').onclick = () => mostrarDetalleSemanal('Proyectos: OC sin forma de pago ni fecha', d.proy.sinFecha, false);
+  }
+  if(d.proy.estado === 'cargando' && !semProyPidiendo){
+    semProyPidiendo = true;
+    Promise.resolve(cargarFlujoProyectos()).finally(() => { semProyPidiendo = false; if(fpCuotas && fpHitos) renderSemanal(); });
   }
 
   dibujarGraficoSemanal(d);
@@ -7850,7 +7940,7 @@ function renderSemanal(){
 function abrirDetalleSemanal(clave){
   const [fila, per] = clave.split('|');
   const p = (semExportData?.periodos || []).find(x => x.key === per);
-  const nombreFila = fila === '__TOTAL_ING__' ? 'Total ingresos' : fila === '__TOTAL_EGR__' ? 'Total egresos' : fila;
+  const nombreFila = fila === '__TOTAL_ING__' ? 'Total ingresos' : fila === '__TOTAL_EGR__' ? 'Total egresos' : fila === '__TOTAL_PROY__' ? 'Total proyectos por comprometer' : fila;
   mostrarDetalleSemanal(`${nombreFila} · ${p ? p.titulo + ' (' + p.sub + ')' : ''}`, semCeldas[clave] || [], false);
 }
 
@@ -7881,7 +7971,7 @@ function mostrarDetalleSemanal(titulo, lista, conDias){
 }
 
 function pintarDetalleSemanal(){
-  const filas = [...semDetalleLista].sort((a, b) => a.fecha - b.fecha || a.monto - b.monto);
+  const filas = [...semDetalleLista].sort((a, b) => (a.fecha || 0) - (b.fecha || 0) || a.monto - b.monto);
   const total = filas.reduce((s, m) => s + m.monto, 0);
   const editables = filas.filter(semEditable);
   document.getElementById('semDetalleSub').textContent =
@@ -7896,8 +7986,9 @@ function pintarDetalleSemanal(){
     if(editable){
       celdaFecha = `<input type="date" class="nums sem-fecha" data-id="${m.id}" value="${fmtDate(m.fecha)}">`;
     } else {
-      celdaFecha = `<span class="nums">${fmtDate(m.fecha).split('-').reverse().join('/')}</span>`;
-      if(fechaBloqueada(m)) celdaFecha += `<div class="sem-bloqueo">🔒 Obligación: se cambia con "Negociar fecha" en Obligaciones financieras</div>`;
+      celdaFecha = `<span class="nums">${m.fecha ? fmtDate(m.fecha).split('-').reverse().join('/') : 'Sin fecha'}</span>`;
+      if(m.esProyecto) celdaFecha += `<div class="sem-bloqueo">${m.sugerida ? 'Se confirma en la tarjeta de la OC (Flujo de caja)' : 'Fecha de la app Control de Proyectos · "Pagar" en Flujo de Proyectos'}</div>`;
+      else if(fechaBloqueada(m)) celdaFecha += `<div class="sem-bloqueo">🔒 Obligación: se cambia con "Negociar fecha" en Obligaciones financieras</div>`;
       else if(m.estado === 'proyectado' && !puedeEditar(m)) celdaFecha += `<div class="sem-bloqueo">Sin permiso para editar</div>`;
     }
     if(m.pagadoManual) celdaFecha += ' <span class="badge pagado-hoy-badge">PAGADO HOY</span>';
@@ -7906,7 +7997,7 @@ function pintarDetalleSemanal(){
       <td>${editable ? `<input type="checkbox" class="sem-sel" data-id="${m.id}" ${semSeleccion.has(m.id) ? 'checked' : ''}>` : ''}</td>
       <td>${celdaFecha}</td>
       <td class="nums">${vencia ? fmtDate(vencia).split('-').reverse().join('/') : '—'}${semDetalleConDias ? `<div style="font-size:10.5px; color:var(--bad);">${diasVencidaCxP(m)} días</div>` : ''}</td>
-      <td style="font-size:12px;">${escapeHTML(semPeriodoTexto(m))}</td>
+      <td style="font-size:12px;">${m.fecha ? escapeHTML(semPeriodoTexto(m)) : '—'}</td>
       <td>${escapeHTML(m.concepto || '—')}${linkOdoo(odooUrlMov(m))}</td>
       <td>${escapeHTML(m.proveedor || '—')}</td>
       <td>${escapeHTML(m.po || m.analitica || '—')}</td>
@@ -8005,6 +8096,7 @@ function dibujarGraficoSemanal(d){
         { type: 'bar', label: 'Ingresos', data: d.porPeriodo.map(r => r.ing), backgroundColor: '#6F9A35', borderRadius: 3, order: 2 },
         { type: 'bar', label: 'Egresos', data: d.porPeriodo.map(r => -r.egr), backgroundColor: '#B3401F', borderRadius: 3, order: 2 },
         { type: 'line', label: 'Saldo final', data: d.porPeriodo.map(r => r.fin), borderColor: '#1F3864', backgroundColor: '#1F3864', tension: .25, pointRadius: 3, borderWidth: 2, order: 1 },
+        ...(d.proy.estado === 'ok' ? [{ type: 'line', label: 'Saldo si se paga lo de proyectos', data: d.proy.porPeriodo.map(r => r.fin), borderColor: '#D9822B', backgroundColor: '#D9822B', borderDash: [6, 4], tension: .25, pointRadius: 3, borderWidth: 2, order: 0 }] : []),
       ],
     },
     options: {
@@ -8037,7 +8129,13 @@ function exportarSemanal(){
   d.filasEgr.forEach(f => aoa.push([f, ...d.periodos.map(p => n(d.suma(f, p.key)))]));
   aoa.push(['Total egresos', ...d.porPeriodo.map(r => n(r.egr))]);
   aoa.push(['Flujo neto', ...d.porPeriodo.map(r => n(r.neto))]);
-  aoa.push(['Saldo final', ...d.porPeriodo.map(r => n(r.fin))]);
+  aoa.push([d.proy.estado === 'ok' ? 'Saldo final (comprometido)' : 'Saldo final', ...d.porPeriodo.map(r => n(r.fin))]);
+  if(d.proy.estado === 'ok'){
+    aoa.push(['PROYECTOS POR COMPROMETER (aún no están en el flujo general)']);
+    d.proy.filas.forEach(f => aoa.push([f, ...d.periodos.map(p => n(d.suma(f, p.key)))]));
+    aoa.push(['Total proyectos por comprometer', ...d.proy.porPeriodo.map(r => n(r.egr))]);
+    aoa.push(['Saldo final si se paga lo de proyectos', ...d.proy.porPeriodo.map(r => n(r.fin))]);
+  }
   const h1 = XLSX.utils.aoa_to_sheet(aoa);
   h1['!cols'] = [{ wch: 36 }, ...d.periodos.map(() => ({ wch: 20 }))];
   const rango = XLSX.utils.decode_range(h1['!ref']);
@@ -8048,10 +8146,10 @@ function exportarSemanal(){
 
   const detalle = [];
   d.periodos.forEach(p => {
-    [...d.filasIng, ...d.filasEgr].forEach(f => {
+    [...d.filasIng, ...d.filasEgr, ...(d.proy.estado === 'ok' ? d.proy.filas : [])].forEach(f => {
       (semCeldas[f + '|' + p.key] || []).forEach(m => detalle.push({
         Periodo: `${p.titulo} (${p.sub})`, Fila: f,
-        'Fecha pago': fmtDate(m.fecha),
+        'Fecha pago': m.fecha ? fmtDate(m.fecha) : '',
         'Vencía': (m.fechaVencimiento || m.fechaOriginal) ? fmtDate(m.fechaVencimiento || m.fechaOriginal) : '',
         Concepto: m.concepto || '', 'Proveedor / Cliente': m.proveedor || '',
         'Cuenta contable': m.cuenta || '', 'P.O.': m.po || '', Banco: m.banco || 'Sin banco',
@@ -8077,7 +8175,7 @@ function exportarSemanal(){
   XLSX.writeFile(libro, `flujo_semanal_${fmtDate(new Date())}.xlsx`);
 }
 
-['semFiltroBanco','semFiltroHorizonte','semExcluir90'].forEach(id =>
+['semFiltroBanco','semFiltroHorizonte','semExcluir90','semIncluirProyectos','semProyPPA'].forEach(id =>
   document.getElementById(id).addEventListener('change', renderSemanal));
 document.getElementById('semExportar').addEventListener('click', exportarSemanal);
 </script>
